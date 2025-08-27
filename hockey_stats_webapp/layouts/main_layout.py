@@ -1,0 +1,68 @@
+import dash
+from dash import html, dcc
+import dash_bootstrap_components as dbc
+from layouts.navigation import create_navigation
+
+def create_main_layout():
+    """
+    Create the main layout for the application.
+    
+    Returns:
+        dash.html.Div: The main layout
+    """
+    return html.Div([
+        # Navigation bar
+        create_navigation(),
+        
+        # Main content container
+        dbc.Container([
+            # Welcome message
+            html.H1("Welcome to Hockey Stats", className="text-center mt-4"),
+            html.P("Select a view from the navigation bar above to get started.", className="text-center"),
+            
+            # Dashboard cards
+            dbc.Row([
+                # Player Stats Card
+                dbc.Col(
+                    dbc.Card([
+                        dbc.CardHeader(html.H4("Player Statistics", className="text-center")),
+                        dbc.CardBody([
+                            html.P("View detailed statistics for individual players."),
+                            dbc.Button("Go to Player Stats", href="/player", color="primary", className="w-100")
+                        ])
+                    ], className="mb-4 shadow-sm"),
+                    md=4
+                ),
+                
+                # Team Stats Card
+                dbc.Col(
+                    dbc.Card([
+                        dbc.CardHeader(html.H4("Team Statistics", className="text-center")),
+                        dbc.CardBody([
+                            html.P("View team performance metrics and player rankings."),
+                            dbc.Button("Go to Team Stats", href="/team", color="primary", className="w-100")
+                        ])
+                    ], className="mb-4 shadow-sm"),
+                    md=4
+                ),
+                
+                # Game Stats Card
+                dbc.Col(
+                    dbc.Card([
+                        dbc.CardHeader(html.H4("Game Statistics", className="text-center")),
+                        dbc.CardBody([
+                            html.P("View detailed information about specific games."),
+                            dbc.Button("Go to Game Stats", href="/game", color="primary", className="w-100")
+                        ])
+                    ], className="mb-4 shadow-sm"),
+                    md=4
+                ),
+            ], className="mt-4"),
+            
+            # Footer
+            html.Footer([
+                html.Hr(),
+                html.P("Hockey Stats Web Application", className="text-center text-muted")
+            ], className="mt-5")
+        ], className="mb-5")
+    ])

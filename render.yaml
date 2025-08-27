@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: hockey-stats-webapp
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn hockey_stats_webapp.app:server
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: GOOGLE_CREDENTIALS
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: HOCKEY_STATS_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true

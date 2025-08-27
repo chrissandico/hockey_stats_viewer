@@ -1,0 +1,254 @@
+/* Hockey Stats Web Application Styles */
+
+/* Global Styles */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f8f9fa;
+    color: #212529;
+}
+
+/* Blue and White Theme (Toronto Maple Leafs inspired) */
+.navbar-dark.bg-primary {
+    background-color: #00205b !important; /* Maple Leafs blue */
+}
+
+.btn-primary {
+    background-color: #00205b !important;
+    border-color: #00205b !important;
+}
+
+.btn-primary:hover {
+    background-color: #001a4d !important;
+    border-color: #001a4d !important;
+}
+
+.btn-outline-primary {
+    color: #00205b !important;
+    border-color: #00205b !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: #00205b !important;
+    color: white !important;
+}
+
+.btn-outline-primary.active {
+    background-color: #00205b !important;
+    color: white !important;
+}
+
+.card-header {
+    background-color: #f1f1f1;
+    border-bottom: 2px solid #00205b;
+}
+
+/* Table Styles */
+.table {
+    width: 100%;
+    margin-bottom: 1rem;
+    color: #212529;
+    border-collapse: collapse;
+}
+
+.table th {
+    vertical-align: bottom;
+    border-bottom: 2px solid #dee2e6;
+    padding: 0.75rem;
+    text-align: center;
+}
+
+.table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+    border-top: 1px solid #dee2e6;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 32, 91, 0.075);
+}
+
+/* Result Colors */
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.text-warning {
+    color: #ffc107 !important;
+}
+
+/* Card Styles */
+.card {
+    border: none;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.shadow-sm {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+}
+
+/* Dropdown Styles */
+.Select-control, .dash-dropdown .Select-control {
+    border-radius: 0.25rem;
+    border: 2px solid #00205b;
+    height: 44px;
+    font-size: 1.1rem;
+    background-color: #f8f9fa;
+}
+
+.Select-menu-outer, .dash-dropdown .Select-menu-outer {
+    border-bottom-right-radius: 0.25rem;
+    border-bottom-left-radius: 0.25rem;
+    border: 2px solid #00205b;
+    border-top: none;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.Select-value, .dash-dropdown .Select-value {
+    line-height: 44px !important;
+    padding-left: 10px;
+}
+
+.Select-placeholder, .dash-dropdown .Select-placeholder {
+    line-height: 44px !important;
+    padding-left: 10px;
+    color: #6c757d;
+}
+
+.Select-input, .dash-dropdown .Select-input {
+    height: 44px;
+    padding-left: 10px;
+}
+
+.Select-option, .dash-dropdown .Select-option {
+    padding: 12px 10px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.Select-option:hover, .dash-dropdown .Select-option:hover {
+    background-color: rgba(0, 32, 91, 0.1);
+}
+
+.Select-option.is-selected, .dash-dropdown .Select-option.is-selected {
+    background-color: rgba(0, 32, 91, 0.2);
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+    /* Adjust card padding for smaller screens */
+    .card-body {
+        padding: 1rem;
+    }
+    
+    /* Make tables scrollable horizontally */
+    .table-responsive {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Adjust font sizes */
+    h1 {
+        font-size: 1.8rem;
+    }
+    
+    h4 {
+        font-size: 1.3rem;
+    }
+    
+    /* Stack columns on small screens */
+    .row [class*="col-"] {
+        margin-bottom: 1rem;
+    }
+    
+    /* Adjust button group for mobile */
+    .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+    }
+    
+    .btn-group .btn {
+        flex: 1 0 auto;
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Collapsible Sections for Mobile */
+.collapsible-section {
+    margin-bottom: 1rem;
+}
+
+.collapsible-header {
+    background-color: #f1f1f1;
+    padding: 0.75rem;
+    cursor: pointer;
+    border-radius: 0.25rem;
+    border: 1px solid #dee2e6;
+}
+
+.collapsible-content {
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-bottom-left-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+}
+
+/* Touch-friendly Controls */
+@media (max-width: 768px) {
+    /* Larger touch targets */
+    .btn, .nav-link, .dropdown-item {
+        padding: 0.5rem 1rem;
+        min-height: 44px; /* Minimum touch target size */
+    }
+    
+    /* More space between items */
+    .nav-item, .dropdown-item {
+        margin-bottom: 0.25rem;
+    }
+    
+    /* Larger form controls */
+    input, select, .Select-control {
+        height: 44px;
+    }
+}
+
+/* DataTable Styles */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+    background-color: #f1f1f1;
+    font-weight: bold;
+    text-align: center;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td {
+    text-align: center;
+}
+
+/* Login Page Styles */
+.login-container {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Footer Styles */
+footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid #dee2e6;
+}
