@@ -410,14 +410,14 @@ class DataService:
             'win_percentage': win_percentage
         }
     
-    def get_team_leaderboard(self, stat='points', position=None, limit=5):
+    def get_team_leaderboard(self, stat='points', position=None, limit=None):
         """
         Get a team leaderboard for a specific statistic.
         
         Args:
             stat (str): The statistic to rank by (points, goals, assists, plus_minus)
             position (str, optional): Filter by position (F, D, G)
-            limit (int): Maximum number of players to include
+            limit (int, optional): Maximum number of players to include. If None, includes all players.
             
         Returns:
             list: List of dictionaries containing player statistics
@@ -439,8 +439,12 @@ class DataService:
         if stat in ['points', 'goals', 'assists', 'plus_minus', 'shots', 'penalty_minutes', 'games_played', 'goals_per_game']:
             player_stats.sort(key=lambda x: x[stat], reverse=True)
         
-        # Limit the number of players
-        return player_stats[:limit]
+        # Limit the number of players if a limit is specified
+        if limit is not None:
+            return player_stats[:limit]
+        else:
+            # Return all players if no limit is specified
+            return player_stats
     
     def calculate_goalie_stats(self, player_id):
         """

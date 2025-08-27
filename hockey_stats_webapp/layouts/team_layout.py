@@ -21,8 +21,8 @@ def create_team_layout(data_service):
     games = data_service.get_games()
     
     # Get leaderboards
-    forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', limit=5)
-    defense_points_leaders = data_service.get_team_leaderboard(stat='points', position='D', limit=5)
+    forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F')  # All forwards sorted by points
+    defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D')  # All defense sorted by plus/minus
     
     # Get goalies
     players = data_service.get_players()
@@ -125,7 +125,7 @@ def create_team_layout(data_service):
             # Forwards leaderboard
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H4("Forwards Leaderboard", className="card-title")),
+                    dbc.CardHeader(html.H4("Forwards Leaderboard (Sorted by Points)", className="card-title")),
                     dbc.CardBody([
                         html.Table([
                             html.Thead(
@@ -154,7 +154,7 @@ def create_team_layout(data_service):
             # Defense leaderboard
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H4("Defense Leaderboard", className="card-title")),
+                    dbc.CardHeader(html.H4("Defense Leaderboard (Sorted by Plus/Minus)", className="card-title")),
                     dbc.CardBody([
                         html.Table([
                             html.Thead(
