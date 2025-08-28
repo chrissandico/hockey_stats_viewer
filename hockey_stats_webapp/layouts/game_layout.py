@@ -227,6 +227,51 @@ def register_game_callbacks(app, data_service):
         
         # Create player stats table
         if position == 'G':
+            # Calculate goalie stats for the game
+            goalie_game_stats = []
+            for stats in player_stats:
+                player_id = stats['player']['ID']
+                
+                # Get events for this game
+                events = data_service.get_events()
+                game_events = events[events['GameID'] == game_id]
+                
+                # Get all teams in events to determine which is your team
+                team_counts = events['Team'].value_counts()
+                your_team = team_counts.idxmax() if not team_counts.empty else None
+                team_name = your_team if your_team is not None else 'your_team'
+                
+                # Calculate goals against
+                goals_against_events = game_events[(game_events['IsGoal'] == True) & 
+                                                 (game_events['Team'] != team_name)]
+                goals_against = len(goals_against_events)
+                
+                # Calculate shots against - ensure we count both shots and goals as shots
+                shots_events = game_events[(game_events['EventType'] == 'Shot') & 
+                                         (game_events['Team'] != team_name)]
+                
+                # Also count goals as shots (if they're not already counted as shots)
+                goals_as_shots = game_events[(game_events['IsGoal'] == True) & 
+                                           (game_events['Team'] != team_name) &
+                                           (game_events['EventType'] != 'Shot')]
+                
+                # Combine unique events
+                shots_against = len(shots_events) + len(goals_as_shots)
+                
+                # Calculate saves
+                saves = max(0, shots_against - goals_against)
+                
+                # Calculate save percentage
+                save_percentage = saves / shots_against if shots_against > 0 else 0
+                
+                goalie_game_stats.append({
+                    'player': stats['player'],
+                    'shots_against': shots_against,
+                    'saves': saves,
+                    'goals_against': goals_against,
+                    'save_percentage': save_percentage
+                })
+            
             # Goalie stats table
             return html.Table([
                 html.Thead(
@@ -241,11 +286,11 @@ def register_game_callbacks(app, data_service):
                 html.Tbody([
                     html.Tr([
                         html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                        html.Td("N/A", className="text-center"),  # Would need additional data for these stats
-                        html.Td("N/A", className="text-center"),
-                        html.Td("N/A", className="text-center"),
-                        html.Td("N/A", className="text-center")
-                    ]) for stats in player_stats
+                        html.Td(f"{stats['shots_against']}", className="text-center"),
+                        html.Td(f"{stats['saves']}", className="text-center"),
+                        html.Td(f"{stats['goals_against']}", className="text-center"),
+                        html.Td(f"{stats['save_percentage']:.3f}", className="text-center")
+                    ]) for stats in goalie_game_stats
                 ])
             ], className="table table-striped table-hover")
         else:

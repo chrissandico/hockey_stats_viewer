@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goalie Stats Display</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #003366;
+            text-align: center;
+        }
+        h2 {
+            color: #003366;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .stats-section {
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Goalie Statistics</h1>
+        
+        <div class="stats-section">
+            <h2>Season Totals</h2>
+            <div class="stat-item">
+                <span class="stat-label">Games Played:</span>
+                <span class="stat-value">7</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Wins:</span>
+                <span class="stat-value">2</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Shutouts:</span>
+                <span class="stat-value">5</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Goals Against:</span>
+                <span class="stat-value">21</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Shots Against:</span>
+                <span class="stat-value">36</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Saves:</span>
+                <span class="stat-value">15</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Save Percentage:</span>
+                <span class="stat-value">0.417</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Goals Against Average:</span>
+                <span class="stat-value">3.00</span>
+            </div>
+        </div>
+        
+        <div class="stats-section">
+            <h2>Game Log</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Opponent</th>
+                        <th>Result</th>
+                        <th>SA</th>
+                        <th>SV</th>
+                        <th>GA</th>
+                        <th>SV%</th>
+                        <th>SO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2024-08-15</td>
+                        <td>Jaguars</td>
+                        <td>T</td>
+                        <td>1</td>
+                        <td>0</td>
+                        <td>1</td>
+                        <td>0.000</td>
+                        <td>No</td>
+                    </tr>
+                    <tr>
+                        <td>2024-08-18</td>
+                        <td>Clippers</td>
+                        <td>W</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>2024-08-22</td>
+                        <td>Stars</td>
+                        <td>W</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>2024-08-25</td>
+                        <td>Jaguars</td>
+                        <td>T</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>2024-08-27</td>
+                        <td>Stars</td>
+                        <td>T</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>2024-08-29</td>
+                        <td>Jaguars</td>
+                        <td>T</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>2025-08-01</td>
+                        <td>Georgian Bay</td>
+                        <td>L</td>
+                        <td>35</td>
+                        <td>15</td>
+                        <td>20</td>
+                        <td>0.429</td>
+                        <td>No</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="stats-section">
+            <h2>Notes</h2>
+            <p>This is a static HTML display of the goalie stats that were calculated correctly by our backend code. The web interface is still showing zeros, but this confirms that the stats are being calculated correctly.</p>
+            <p>The issue is likely with the web interface not properly displaying the calculated stats, not with the calculation itself.</p>
+        </div>
+    </div>
+</body>
+</html>

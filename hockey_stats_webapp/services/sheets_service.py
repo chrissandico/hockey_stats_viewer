@@ -170,9 +170,22 @@ class SheetsService:
             boolean_columns = ['IsGoal', 'IsPowerPlay', 'IsShortHanded']
             for col in boolean_columns:
                 if col in df.columns:
-                    # Convert 'TRUE'/'FALSE' strings to Python bool
-                    df[col] = df[col].map({'TRUE': True, 'FALSE': False, True: True, False: False})
-                    print(f"Converted {col} column values: {df[col].unique()}")
+                    # Enhanced boolean conversion to handle more formats
+                    def convert_to_bool(val):
+                        if isinstance(val, bool):
+                            return val
+                        if isinstance(val, str):
+                            val_lower = val.lower().strip()
+                            if val_lower in ('true', 'yes', 'y', '1', 't'):
+                                return True
+                            if val_lower in ('false', 'no', 'n', '0', 'f'):
+                                return False
+                        if isinstance(val, (int, float)):
+                            return bool(val)
+                        return False  # Default to False for None or other values
+                    
+                    df[col] = df[col].apply(convert_to_bool)
+                    print(f"Enhanced conversion for {col} column values: {df[col].unique()}")
             
             self.cache[key] = df
             self.last_refresh[key] = time.time()

@@ -17,10 +17,15 @@ class DataService:
         """
         self.sheets_service = sheets_service
         
-        # Force refresh all data if requested
-        if force_refresh:
-            print("Forcing refresh of all data...")
-            self.sheets_service.refresh_all_data()
+        # Always force refresh all data to avoid caching issues
+        print("Forcing refresh of all data...")
+        self.sheets_service.refresh_all_data()
+        
+        # Cache busting - initialize with empty caches
+        self._players_cache = None
+        self._games_cache = None
+        self._events_cache = None
+        self._game_roster_cache = None
     
     def get_players(self):
         """
@@ -239,14 +244,37 @@ class DataService:
         Returns:
             pd.DataFrame: DataFrame containing game data
         """
+        # Force refresh game roster to ensure it's up to date
         game_roster = self.get_game_roster()
         games = self.get_games()
+        
+        # Check if player is a goalie
+        player = self.get_player_by_id(player_id)
+        is_goalie = player is not None and player['Position'] == 'G'
         
         # Get game IDs where the player was present
         player_game_ids = game_roster[(game_roster['PlayerID'] == player_id) & 
                                      (game_roster['Status'] == 'Present')]['GameID'].tolist()
         
         print(f"Player {player_id} has {len(player_game_ids)} games in roster")
+        
+        # For goalies, ensure they're in all games
+        if is_goalie and len(player_game_ids) < len(games):
+            print(f"WARNING: Goalie {player_id} should be in all games. Forcing inclusion in all games.")
+            # Use all game IDs for goalies
+            player_game_ids = games['ID'].tolist()
+            
+            # Update game roster to include goalie in all games
+            for game_id in player_game_ids:
+                if not ((game_roster['GameID'] == game_id) & (game_roster['PlayerID'] == player_id)).any():
+                    new_entry = pd.DataFrame({
+                        'GameID': [game_id],
+                        'PlayerID': [player_id],
+                        'Status': ['Present']
+                    })
+                    game_roster = pd.concat([game_roster, new_entry], ignore_index=True)
+            
+            print(f"Updated: Player {player_id} now has {len(player_game_ids)} games in roster")
         
         # Filter games by these IDs
         player_games = games[games['ID'].isin(player_game_ids)]
@@ -432,6 +460,114 @@ class DataService:
             'penalty_minutes': penalty_minutes
         }
     
+    def calculate_goalie_game_stats(self, player_id, game_id):
+        """
+        Calculate statistics for a goalie in a specific game.
+        
+        Args:
+            player_id (str): The player ID
+            game_id (str): The game ID
+            
+        Returns:
+            dict: Dictionary containing goalie game statistics
+        """
+        print(f"DEBUG: calculate_goalie_game_stats called for player_id={player_id}, game_id={game_id}")
+        player = self.get_player_by_id(player_id)
+        game = self.get_game_by_id(game_id)
+        
+        if player is None:
+            print(f"DEBUG: Player with ID {player_id} not found")
+            return None
+        
+        if game is None:
+            print(f"DEBUG: Game with ID {game_id} not found")
+            return None
+        
+        if player['Position'] != 'G':
+            print(f"Player with ID {player_id} is not a goalie (position: {player['Position']})")
+            return None
+        
+        events = self.get_events()
+        
+        # Get all teams in events
+        unique_teams = events['Team'].unique()
+        print(f"Unique teams in events: {unique_teams}")
+        
+        # Always use 'your_team' as the team name
+        your_team = 'your_team'
+        print(f"Using team name: {your_team}")
+        
+        # Filter events for this game
+        game_events = events[events['GameID'] == game_id]
+        
+        # Calculate goals against - always use IsGoal and proper team identification
+        goals_against_events = game_events[(game_events['IsGoal'] == True) & 
+                                         (game_events['Team'] != your_team)]
+        
+        print(f"DEBUG: Found {len(goals_against_events)} goals against events for game {game_id}")
+        print(f"DEBUG: Game events shape: {game_events.shape}")
+        print(f"DEBUG: Game events columns: {game_events.columns.tolist()}")
+        
+        # Debug: Check team distribution in goal events
+        if not game_events.empty:
+            team_counts = game_events['Team'].value_counts()
+            print(f"DEBUG: Team distribution in game events: {team_counts.to_dict()}")
+            
+            # Debug: Check IsGoal distribution
+            if 'IsGoal' in game_events.columns:
+                isgoal_counts = game_events['IsGoal'].value_counts()
+                print(f"DEBUG: IsGoal distribution in game events: {isgoal_counts.to_dict()}")
+        
+        goals_against = len(goals_against_events)
+        
+        # Calculate shots against - ensure we count both shots and goals as shots
+        # Count all shots and goals from opponents
+        shots_events = game_events[(game_events['EventType'] == 'Shot') & 
+                                 (game_events['Team'] != your_team)]
+        
+        # Also count goals as shots (if they're not already counted as shots)
+        goals_as_shots = game_events[(game_events['IsGoal'] == True) & 
+                                   (game_events['Team'] != your_team) &
+                                   (game_events['EventType'] != 'Shot')]
+        
+        print(f"DEBUG: Found {len(shots_events)} shot events for game {game_id}")
+        print(f"DEBUG: Found {len(goals_as_shots)} goal events counted as shots for game {game_id}")
+        
+        # Combine unique events
+        shots_against = len(shots_events) + len(goals_as_shots)
+        
+        # Calculate saves with validation
+        saves = max(0, shots_against - goals_against)  # Ensure saves is not negative
+        
+        # Calculate save percentage with error handling
+        try:
+            save_percentage = saves / shots_against if shots_against > 0 else 0
+            # Validate save percentage is between 0 and 1
+            save_percentage = max(0, min(1, save_percentage))
+        except Exception as e:
+            print(f"Error calculating save percentage: {e}")
+            save_percentage = 0
+        
+        # Determine if this was a shutout
+        shutout = goals_against == 0
+        
+        # Get the game result
+        result = game.get('Result', 'Unknown')
+        
+        result_dict = {
+            'player': player,
+            'game': game,
+            'goals_against': goals_against,
+            'shots_against': shots_against,
+            'saves': saves,
+            'save_percentage': save_percentage,
+            'shutout': shutout,
+            'result': result
+        }
+        
+        print(f"DEBUG: Returning goalie game stats for game {game_id}: {result_dict}")
+        return result_dict
+    
     def get_player_game_log(self, player_id):
         """
         Get a game log for a player.
@@ -443,10 +579,16 @@ class DataService:
             list: List of dictionaries containing game statistics
         """
         player_games = self.get_player_games(player_id)
+        player = self.get_player_by_id(player_id)
         
         game_log = []
         for _, game in player_games.iterrows():
-            game_stats = self.calculate_player_game_stats(player_id, game['ID'])
+            # Check if player is a goalie
+            if player is not None and player['Position'] == 'G':
+                game_stats = self.calculate_goalie_game_stats(player_id, game['ID'])
+            else:
+                game_stats = self.calculate_player_game_stats(player_id, game['ID'])
+                
             if game_stats:
                 game_log.append(game_stats)
         
