@@ -92,19 +92,14 @@ app.layout = html.Div([
     [dash.dependencies.Input('url', 'pathname')]
 )
 def display_page(pathname):
-    # TESTING: Bypass authentication for testing
-    print(f"DEBUG: Bypassing authentication for testing - allowing access to {pathname}")
-    
-    # Force authentication for testing
-    session['authenticated'] = True
-    
-    # Always redirect to player page for testing
-    if pathname == '/' or pathname == '/login':
-        print("DEBUG: Redirecting to player page for testing")
-        return create_player_layout(data_service)
+    # Check if user is authenticated
+    if not session.get('authenticated', False) and pathname != '/login':
+        return create_login_layout()
     
     # Display the appropriate page based on the URL
-    if pathname == '/player':
+    if pathname == '/login':
+        return create_login_layout()
+    elif pathname == '/player':
         return create_player_layout(data_service)
     elif pathname == '/team':
         return create_team_layout(data_service)

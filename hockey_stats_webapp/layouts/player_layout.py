@@ -148,24 +148,7 @@ def register_player_callbacks(app, data_service):
         player_info = dbc.Card([
             dbc.CardHeader(html.H4(f"#{player['JerseyNumber']}", className="card-title")),
             dbc.CardBody([
-                # Debug info - visible in browser
-                html.Div([
-                    html.H5("Debug Info", className="text-danger"),
-                    html.Pre(f"""
-Player ID: {player['ID']}
-Position: {player['Position']}
-Is Goalie: {is_goalie}
-Stats Object: {stats if stats else 'None'}
-Stats Keys: {list(stats.keys()) if stats else 'None'}
-Games Played: {stats['games_played'] if stats and 'games_played' in stats else 'N/A'}
-Wins: {stats['wins'] if stats and 'wins' in stats else 'N/A'}
-Shutouts: {stats['shutouts'] if stats and is_goalie and 'shutouts' in stats else 'N/A'}
-Goals Against: {stats['goals_against'] if stats and is_goalie and 'goals_against' in stats else 'N/A'}
-Shots Against: {stats['shots_against'] if stats and is_goalie and 'shots_against' in stats else 'N/A'}
-Saves: {stats['saves'] if stats and is_goalie and 'saves' in stats else 'N/A'}
-Save %: {stats['save_percentage'] if stats and is_goalie and 'save_percentage' in stats else 'N/A'}
-                    """, style={'whiteSpace': 'pre-wrap', 'fontSize': '12px'}),
-                ], className="mb-3 p-2 border border-danger"),
+                # Debug info removed for production
                 
                 dbc.Row([
                     # Player details

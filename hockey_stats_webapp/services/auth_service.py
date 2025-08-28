@@ -55,12 +55,6 @@ class AuthService:
         Returns:
             bool: True if the password matches, False otherwise
         """
-        # For testing purposes, always return True
-        print(f"DEBUG: Auth bypass enabled - allowing any password for testing")
-        return True
-        
-        # Normal authentication logic (disabled for testing)
-        """
         if not password:
             return False
         
@@ -69,7 +63,6 @@ class AuthService:
         
         # Compare with the stored hash
         return hashed == self.password_hash
-        """
     
     def get_password_hash(self):
         """
