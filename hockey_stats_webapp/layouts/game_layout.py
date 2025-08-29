@@ -4,18 +4,20 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
 
-def create_game_layout(data_service):
+def create_game_layout(data_service, team_context=None):
     """
     Create the game statistics layout.
     
     Args:
         data_service (DataService): The data service for retrieving game data
+        team_context (dict, optional): Team context containing team_id and team_name
         
     Returns:
         dash.html.Div: The game statistics layout
     """
-    # Get all games for the dropdown
-    games = data_service.get_games()
+    # Get team-filtered games for the dropdown
+    team_id = team_context['team_id'] if team_context else None
+    games = data_service.get_games(team_id)
     
     # Create enhanced radio options with date, opponent, and result
     radio_options = [

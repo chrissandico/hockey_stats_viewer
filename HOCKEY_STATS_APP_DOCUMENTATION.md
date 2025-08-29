@@ -111,68 +111,36 @@ Horizontal Scrolling: Optimized tables and stats displays for smaller screens
 Data Model
 The application uses a structured data model stored in Google Sheets:
 
-Players Data
+"Players" Data
 ID: Unique Player ID
-
 JerseyNumber: Player's jersey number
-
-FirstName: Player's first name
-
-LastName: Player's last name
-
 TeamID: Team identifier
-
 Position: Player position (F for Forward, D for Defense, G for Goalie)
 
-Games Data
+"Games" Data
 ID: Unique Game ID
-
 Date: Game date
-
 Opponent: Name of opposing team
-
 Location: Game venue
 
-Result: Game outcome (W for Win, L for Loss, T for Tie)
-
-GoalsFor: Goals scored by the team
-
-GoalsAgainst: Goals scored by the opponent
-
-Events Data
+"Events" Table
+ID: Unique Event ID
 GameID: Reference to the Game ID
-
-EventType: Type of event (Goal, Shot, Penalty, Hit, Faceoff)
-
+Timestamp: Time within the period
 Period: Game period when the event occurred
-
-Time: Time within the period
-
-PrimaryPlayerID: ID of the primary player involved
-
-AssistPlayer1ID: ID of the first assist player (for goals)
-
-AssistPlayer2ID: ID of the second assist player (for goals)
-
+EventType: Type of event (Goal, Shot, Penalty, Hit, Faceoff)
 Team: Which team performed the event
-
+PrimaryPlayerID: ID of the primary player involved
+AssistPlayer1ID: ID of the first assist player (for goals)
+AssistPlayer2ID: ID of the second assist player (for goals)
 IsGoal: Boolean indicating if the event was a goal
-
-IsPowerPlay: Boolean indicating if the goal was on power play
-
-IsShortHanded: Boolean indicating if the goal was short-handed
-
 PenaltyType: Type of penalty (if applicable)
-
 PenaltyDuration: Duration of penalty in minutes
-
 YourTeamPlayersOnIce: List of player IDs on ice during the event
 
-Game Roster Data
+"GameRoster" Table
 GameID: Reference to the Game ID
-
 PlayerID: Reference to the Player ID
-
 Status: Player's status for the game (Present or Absent)
 
 User Interface

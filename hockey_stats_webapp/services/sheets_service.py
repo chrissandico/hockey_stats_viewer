@@ -214,10 +214,62 @@ class SheetsService:
         
         return self.cache[key]
     
+    def get_teams(self, force_refresh=False):
+        """
+        Get all teams from the Teams sheet.
+        
+        Args:
+            force_refresh (bool): Force a refresh of the cache
+            
+        Returns:
+            pd.DataFrame: DataFrame containing team data
+        """
+        key = 'teams'
+        
+        if force_refresh or self._should_refresh_cache(key):
+            try:
+                worksheet = self._get_worksheet('Teams')
+                data = worksheet.get_all_records()
+                df = pd.DataFrame(data)
+                
+                # Validate required columns
+                required_columns = ['TeamID', 'TeamName', 'Password']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                if missing_columns:
+                    error_msg = f"Teams sheet missing required columns: {missing_columns}"
+                    print(f"ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                # Validate data integrity
+                if df.empty:
+                    error_msg = "Teams sheet is empty - no team data available"
+                    print(f"ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                # Check for duplicate passwords
+                duplicate_passwords = df[df.duplicated(subset=['Password'], keep=False)]
+                if not duplicate_passwords.empty:
+                    error_msg = f"Duplicate passwords found in Teams sheet: {duplicate_passwords['Password'].tolist()}"
+                    print(f"ERROR: {error_msg}")
+                    raise ValueError(error_msg)
+                
+                print(f"Successfully loaded {len(df)} teams from Teams sheet")
+                
+                self.cache[key] = df
+                self.last_refresh[key] = time.time()
+                
+            except Exception as e:
+                error_msg = f"Failed to load Teams sheet: {str(e)}"
+                print(f"CRITICAL ERROR: {error_msg}")
+                raise Exception(error_msg)
+        
+        return self.cache[key]
+    
     def refresh_all_data(self):
         """
         Refresh all cached data.
         """
+        self.get_teams(force_refresh=True)
         self.get_players(force_refresh=True)
         self.get_games(force_refresh=True)
         self.get_events(force_refresh=True)

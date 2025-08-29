@@ -4,28 +4,32 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
 
-def create_team_layout(data_service):
+def create_team_layout(data_service, team_context=None):
     """
     Create the team statistics layout.
     
     Args:
         data_service (DataService): The data service for retrieving team data
+        team_context (dict, optional): Team context containing team_id and team_name
         
     Returns:
         dash.html.Div: The team statistics layout
     """
-    # Calculate team stats
-    team_stats = data_service.calculate_team_stats()
+    # Get team ID for filtering
+    team_id = team_context['team_id'] if team_context else None
     
-    # Get games for the game log
-    games = data_service.get_games()
+    # Calculate team stats with team filtering
+    team_stats = data_service.calculate_team_stats(team_id)
     
-    # Get leaderboards
-    forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F')  # All forwards sorted by points
-    defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D')  # All defense sorted by plus/minus
+    # Get games for the game log with team filtering
+    games = data_service.get_games(team_id)
     
-    # Get goalies
-    players = data_service.get_players()
+    # Get leaderboards with team filtering
+    forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
+    defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)  # Team defense sorted by plus/minus
+    
+    # Get goalies with team filtering
+    players = data_service.get_players(team_id)
     goalies = players[players['Position'] == 'G']
     goalie_stats = []
     for _, goalie in goalies.iterrows():

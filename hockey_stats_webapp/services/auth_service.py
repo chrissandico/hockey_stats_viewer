@@ -4,24 +4,18 @@ import os
 class AuthService:
     """
     Service for handling authentication.
-    Implements password hashing and verification.
+    Implements team-based password verification using the Teams sheet.
     """
     
-    def __init__(self, password=None):
+    def __init__(self, sheets_service=None):
         """
         Initialize the AuthService.
         
         Args:
-            password (str, optional): The plain text password to hash and store.
-                If not provided, will use the environment variable or default.
+            sheets_service (SheetsService): The sheets service for team data retrieval
         """
-        # Use the provided password, or get from environment, or use the default
-        self.plain_password = password or os.environ.get('HOCKEY_STATS_PASSWORD', 'waxersu12aa')
-        
-        # Hash the password using SHA-256
-        self.password_hash = self._hash_password(self.plain_password)
-        
-        print(f"Authentication service initialized with password hash: {self.password_hash}")
+        self.sheets_service = sheets_service
+        print("Team-based authentication service initialized")
     
     def _hash_password(self, password):
         """
@@ -47,51 +41,57 @@ class AuthService:
     
     def verify_password(self, password):
         """
-        Verify if a password matches the stored hash.
+        Verify if a password matches any team in the Teams sheet.
         
         Args:
             password (str): The password to verify
             
         Returns:
-            bool: True if the password matches, False otherwise
+            dict or False: Team information if password matches, False otherwise
         """
         if not password:
+            print("ERROR: Empty password provided")
             return False
         
-        # Hash the provided password
-        hashed = self._hash_password(password)
+        if not self.sheets_service:
+            print("ERROR: No sheets service available for team authentication")
+            return False
         
-        # Compare with the stored hash
-        return hashed == self.password_hash
+        try:
+            # Get teams data
+            teams = self.sheets_service.get_teams()
+            
+            # Look for matching password
+            matching_team = teams[teams['Password'] == password]
+            
+            if matching_team.empty:
+                print(f"WARNING: Invalid password attempt: '{password}'")
+                return False
+            
+            # Get the first matching team (should be only one due to duplicate check)
+            team = matching_team.iloc[0]
+            team_info = {
+                'team_id': team['TeamID'],
+                'team_name': team['TeamName'],
+                'password': team['Password']
+            }
+            
+            print(f"SUCCESS: Authentication successful for team '{team_info['team_name']}' (ID: {team_info['team_id']})")
+            return team_info
+            
+        except Exception as e:
+            error_msg = f"Authentication error: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            return False
     
-    def get_password_hash(self):
+    def get_team_by_password(self, password):
         """
-        Get the current password hash.
-        
-        Returns:
-            str: The current password hash
-        """
-        return self.password_hash
-    
-    def update_password(self, new_password):
-        """
-        Update the password.
+        Get team information by password.
         
         Args:
-            new_password (str): The new password
+            password (str): The team password
             
         Returns:
-            str: The new password hash
+            dict or None: Team information if found, None otherwise
         """
-        if not new_password:
-            raise ValueError("New password cannot be empty")
-        
-        # Update the plain password
-        self.plain_password = new_password
-        
-        # Hash the new password
-        self.password_hash = self._hash_password(new_password)
-        
-        print(f"Password updated. New hash: {self.password_hash}")
-        
-        return self.password_hash
+        return self.verify_password(password)

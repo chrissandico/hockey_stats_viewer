@@ -3,21 +3,27 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 from layouts.navigation import create_navigation
 
-def create_main_layout():
+def create_main_layout(team_context=None):
     """
     Create the main layout for the application.
+    
+    Args:
+        team_context (dict, optional): Team context containing team_id and team_name
     
     Returns:
         dash.html.Div: The main layout
     """
+    # Get team name for display
+    team_name = team_context['team_name'] if team_context else "Hockey Stats"
+    
     return html.Div([
         # Navigation bar
         create_navigation(),
         
         # Main content container
         dbc.Container([
-            # Welcome message
-            html.H1("Welcome to Hockey Stats", className="text-center mt-4"),
+            # Welcome message with team name
+            html.H1(f"Welcome to {team_name}", className="text-center mt-4"),
             html.P("Select a view from the navigation bar above to get started.", className="text-center"),
             
             # Dashboard cards

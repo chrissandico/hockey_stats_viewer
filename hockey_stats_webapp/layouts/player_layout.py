@@ -4,18 +4,20 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
 
-def create_player_layout(data_service):
+def create_player_layout(data_service, team_context=None):
     """
     Create the player statistics layout.
     
     Args:
         data_service (DataService): The data service for retrieving player data
+        team_context (dict, optional): Team context containing team_id and team_name
         
     Returns:
         dash.html.Div: The player statistics layout
     """
-    # Get all players for the dropdown
-    players = data_service.get_players()
+    # Get team-filtered players for the dropdown
+    team_id = team_context['team_id'] if team_context else None
+    players = data_service.get_players(team_id)
     
     # Create enhanced radio options with jersey number and position
     radio_options = [
@@ -69,6 +71,9 @@ def register_player_callbacks(app, data_service):
         [dash.dependencies.Input('player-dropdown', 'value')]
     )
     def update_player_info(jersey_number):
+        # Get team context from session
+        from flask import session
+        team_id = session.get('team_id') if session.get('authenticated', False) else None
         print(f"\n=== CALLBACK: update_player_info called with jersey_number={jersey_number} ===")
         print(f"DataService instance in callback: {data_service}")
         

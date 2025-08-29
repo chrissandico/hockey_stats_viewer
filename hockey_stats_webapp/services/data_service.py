@@ -27,35 +27,100 @@ class DataService:
         self._events_cache = None
         self._game_roster_cache = None
     
-    def get_players(self):
+    def _filter_by_team(self, df, team_id):
         """
-        Get all players.
+        Filter a DataFrame by TeamID.
         
+        Args:
+            df (pd.DataFrame): DataFrame to filter
+            team_id (str): Team ID to filter by
+            
+        Returns:
+            pd.DataFrame: Filtered DataFrame
+        """
+        if df.empty:
+            return df
+        
+        if 'TeamID' not in df.columns:
+            error_msg = f"TeamID column not found in data. Available columns: {df.columns.tolist()}"
+            print(f"ERROR: {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Filter by team ID
+        filtered_df = df[df['TeamID'] == team_id]
+        print(f"Filtered data: {len(filtered_df)} records for team {team_id} (from {len(df)} total)")
+        
+        return filtered_df
+    
+    def _get_team_name_from_id(self, team_id):
+        """
+        Get team name from team ID.
+        
+        Args:
+            team_id (str): Team ID
+            
+        Returns:
+            str: Team name or team_id if not found
+        """
+        try:
+            teams = self.sheets_service.get_teams()
+            matching_team = teams[teams['TeamID'] == team_id]
+            
+            if not matching_team.empty:
+                return matching_team.iloc[0]['TeamName']
+            else:
+                print(f"WARNING: Team name not found for TeamID {team_id}")
+                return team_id
+                
+        except Exception as e:
+            print(f"ERROR: Failed to get team name for TeamID {team_id}: {str(e)}")
+            return team_id
+    
+    def get_players(self, team_id=None):
+        """
+        Get all players, optionally filtered by team.
+        
+        Args:
+            team_id (str, optional): Team ID to filter by
+            
         Returns:
             pd.DataFrame: DataFrame containing player data
         """
-        return self.sheets_service.get_players()
-    
-    def get_games(self):
-        """
-        Get all games with calculated goal statistics.
+        players = self.sheets_service.get_players()
         
+        if team_id is not None:
+            players = self._filter_by_team(players, team_id)
+        
+        return players
+    
+    def get_games(self, team_id=None):
+        """
+        Get all games with calculated goal statistics, optionally filtered by team.
+        
+        Args:
+            team_id (str, optional): Team ID to filter by
+            
         Returns:
             pd.DataFrame: DataFrame containing game data with calculated columns
         """
         games = self.sheets_service.get_games()
         events = self.sheets_service.get_events()
         
+        # Filter games by team if specified
+        if team_id is not None:
+            games = self._filter_by_team(games, team_id)
+        
         # Print columns for debugging
         print("Games columns:", games.columns.tolist())
         
-        # Get all teams in events to determine which is your team
-        unique_teams = events['Team'].unique()
-        print(f"Unique teams in events: {unique_teams}")
-        
-        # Always use 'your_team' as the team name, regardless of event counts
-        your_team = 'your_team'
-        print(f"Using team name: {your_team}")
+        # Get team name for event filtering
+        if team_id is not None:
+            team_name = self._get_team_name_from_id(team_id)
+            print(f"Using team name: {team_name} for team ID: {team_id}")
+        else:
+            # Fallback to 'your_team' for backward compatibility
+            team_name = 'your_team'
+            print(f"Using fallback team name: {team_name}")
         
         # Add GoalsFor and GoalsAgainst columns
         if not games.empty:
@@ -67,25 +132,19 @@ class DataService:
             for idx, game in games.iterrows():
                 game_events = events[events['GameID'] == game['ID']]
                 
-                # Always use IsGoal column for goal determination with proper team identification
-                if your_team is not None:
-                    goals_for = len(game_events[(game_events['IsGoal'] == True) & 
-                                              (game_events['Team'] == your_team)])
-                    goals_against = len(game_events[(game_events['IsGoal'] == True) & 
-                                                  (game_events['Team'] != your_team)])
-                else:
-                    # Fallback to original logic if team detection fails
-                    goals_for = len(game_events[(game_events['IsGoal'] == True) & 
-                                              (game_events['Team'] == 'your_team')])
-                    goals_against = len(game_events[(game_events['IsGoal'] == True) & 
-                                                  (game_events['Team'] != 'your_team')])
+                # Use IsGoal column for goal determination with proper team identification
+                goals_for = len(game_events[(game_events['IsGoal'] == True) & 
+                                          (game_events['Team'] == team_name)])
+                goals_against = len(game_events[(game_events['IsGoal'] == True) & 
+                                              (game_events['Team'] != team_name)])
                 
                 print(f"Using IsGoal column for game {game['ID']}: {goals_for} goals for, {goals_against} goals against")
                 
                 games.at[idx, 'GoalsFor'] = goals_for
                 games.at[idx, 'GoalsAgainst'] = goals_against
             
-            print("Sample game data:", games.iloc[0].to_dict())
+            if not games.empty:
+                print("Sample game data:", games.iloc[0].to_dict())
         
         # Always ensure Result column exists
         self._ensure_result_column(games)
@@ -597,14 +656,17 @@ class DataService:
         
         return game_log
     
-    def calculate_team_stats(self):
+    def calculate_team_stats(self, team_id=None):
         """
         Calculate team statistics.
         
+        Args:
+            team_id (str, optional): Team ID to filter by
+            
         Returns:
             dict: Dictionary containing team statistics
         """
-        games = self.get_games()
+        games = self.get_games(team_id)
         
         # Ensure Result column exists
         games = self._ensure_result_column(games)
@@ -647,7 +709,7 @@ class DataService:
             'win_percentage': win_percentage
         }
     
-    def get_team_leaderboard(self, stat='points', position=None, limit=None):
+    def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None):
         """
         Get a team leaderboard for a specific statistic.
         
@@ -655,11 +717,12 @@ class DataService:
             stat (str): The statistic to rank by (points, goals, assists, plus_minus)
             position (str, optional): Filter by position (F, D, G)
             limit (int, optional): Maximum number of players to include. If None, includes all players.
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             list: List of dictionaries containing player statistics
         """
-        players = self.get_players()
+        players = self.get_players(team_id)
         
         # Filter by position if specified
         if position:

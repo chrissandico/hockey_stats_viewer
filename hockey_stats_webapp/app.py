@@ -2,7 +2,7 @@ import os
 import dash
 import sys
 import importlib
-from dash import html, dcc
+from dash import html, dcc, Output, Input, State, callback
 import dash_bootstrap_components as dbc
 from flask import session
 
@@ -44,7 +44,7 @@ server.secret_key = os.environ.get('SECRET_KEY', 'hockey-stats-secret-key')
 # Initialize services
 print("=== STARTUP: Initializing services ===")
 sheets_service = SheetsService()
-auth_service = AuthService()
+auth_service = AuthService(sheets_service)  # Pass sheets_service for team-based auth
 data_service = DataService(sheets_service, force_refresh=True)  # Force refresh data on startup
 
 # Verify DataService initialization
@@ -80,6 +80,40 @@ if not goalies.empty:
 else:
     print("WARNING: No goalies found during startup verification!")
 
+# Helper functions for team context
+def get_team_context():
+    """Get team context from session."""
+    if not session.get('authenticated', False):
+        return None
+    
+    team_id = session.get('team_id')
+    team_name = session.get('team_name')
+    
+    if not team_id or not team_name:
+        print("ERROR: Authenticated session missing team context")
+        return None
+    
+    return {
+        'team_id': team_id,
+        'team_name': team_name
+    }
+
+def validate_team_session():
+    """Validate that the session has proper team context."""
+    if not session.get('authenticated', False):
+        return False
+    
+    team_context = get_team_context()
+    if not team_context:
+        # Clear invalid session
+        session['authenticated'] = False
+        session.pop('team_id', None)
+        session.pop('team_name', None)
+        print("WARNING: Invalid team session cleared")
+        return False
+    
+    return True
+
 # Define the app layout
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
@@ -88,25 +122,29 @@ app.layout = html.Div([
 
 # Define the main callback for navigation
 @app.callback(
-    dash.dependencies.Output('page-content', 'children'),
-    [dash.dependencies.Input('url', 'pathname')]
+    Output('page-content', 'children'),
+    Input('url', 'pathname')
 )
 def display_page(pathname):
-    # Check if user is authenticated
-    if not session.get('authenticated', False) and pathname != '/login':
+    # Check if user is authenticated and has valid team session
+    if not validate_team_session() and pathname != '/login':
         return create_login_layout()
     
     # Display the appropriate page based on the URL
     if pathname == '/login':
         return create_login_layout()
     elif pathname == '/player':
-        return create_player_layout(data_service)
+        team_context = get_team_context()
+        return create_player_layout(data_service, team_context)
     elif pathname == '/team':
-        return create_team_layout(data_service)
+        team_context = get_team_context()
+        return create_team_layout(data_service, team_context)
     elif pathname == '/game':
-        return create_game_layout(data_service)
+        team_context = get_team_context()
+        return create_game_layout(data_service, team_context)
     else:
-        return create_main_layout()
+        team_context = get_team_context()
+        return create_main_layout(team_context)
 
 # Create login layout
 def create_login_layout():
@@ -127,32 +165,56 @@ def create_login_layout():
 
 # Define login callback
 @app.callback(
-    [dash.dependencies.Output('url', 'pathname'),
-     dash.dependencies.Output('login-error', 'children')],
-    [dash.dependencies.Input('login-button', 'n_clicks')],
-    [dash.dependencies.State('password-input', 'value')]
+    [Output('url', 'pathname'),
+     Output('login-error', 'children')],
+    Input('login-button', 'n_clicks'),
+    State('password-input', 'value')
 )
 def login(n_clicks, password):
+    print(f"=== LOGIN CALLBACK TRIGGERED ===")
+    print(f"n_clicks: {n_clicks}")
+    print(f"password: {password}")
+    
     if n_clicks is None:
+        print("n_clicks is None, returning no_update")
         return dash.no_update, dash.no_update
     
-    if auth_service.verify_password(password):
-        session['authenticated'] = True
-        return '/', ''
-    else:
-        return dash.no_update, "Incorrect password. Please try again."
+    try:
+        print(f"Attempting to verify password: {password}")
+        team_info = auth_service.verify_password(password)
+        print(f"Auth service returned: {team_info}")
+        
+        if team_info:
+            # Store authentication and team information in session
+            session['authenticated'] = True
+            session['team_id'] = team_info['team_id']
+            session['team_name'] = team_info['team_name']
+            print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']})")
+            return '/', ''
+        else:
+            print("Authentication failed - incorrect password")
+            return dash.no_update, "Incorrect password. Please try again."
+    except Exception as e:
+        print(f"ERROR in login callback: {e}")
+        import traceback
+        traceback.print_exc()
+        return dash.no_update, f"Login error: {str(e)}"
 
 # Define logout callback
 @app.callback(
-    dash.dependencies.Output('url', 'pathname', allow_duplicate=True),
-    [dash.dependencies.Input('logout-button', 'n_clicks')],
+    Output('url', 'pathname', allow_duplicate=True),
+    Input('logout-button', 'n_clicks'),
     prevent_initial_call=True
 )
 def logout(n_clicks):
     if n_clicks is None:
         return dash.no_update
     
+    # Clear all session data
     session['authenticated'] = False
+    session.pop('team_id', None)
+    session.pop('team_name', None)
+    print("User logged out - session cleared")
     return '/login'
 
 # Register callbacks for navigation, player and game views
