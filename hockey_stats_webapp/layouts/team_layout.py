@@ -15,33 +15,45 @@ def create_team_layout(data_service, team_context=None):
     Returns:
         dash.html.Div: The team statistics layout
     """
-    # Get team ID for filtering
-    team_id = team_context['team_id'] if team_context else None
+    # Get team ID from session context like player layout does
+    from flask import session
+    team_id = session.get('team_id') if session.get('authenticated', False) else None
+    
+    print(f"\n=== TEAM LAYOUT: Using team_id from session: {team_id} ===")
     
     # Calculate team stats with team filtering
     team_stats = data_service.calculate_team_stats(team_id)
+    print(f"TEAM LAYOUT: Team stats calculated: {team_stats}")
     
     # Get games for the game log with team filtering
     games = data_service.get_games(team_id)
+    print(f"TEAM LAYOUT: Games retrieved: {len(games)} games")
     
     # Get leaderboards with team filtering
     forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
     defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)  # Team defense sorted by plus/minus
     
-    # Get goalies with team filtering
+    # Get goalies with team filtering - using same approach as player layout
     players = data_service.get_players(team_id)
     goalies = players[players['Position'] == 'G']
+    print(f"TEAM LAYOUT: Found {len(goalies)} goalies for team {team_id}")
+    
     goalie_stats = []
     for _, goalie in goalies.iterrows():
+        print(f"TEAM LAYOUT: Calculating stats for goalie {goalie['ID']} with team_id {team_id}")
         stats = data_service.calculate_goalie_stats(goalie['ID'], team_id)
         if stats:
+            print(f"TEAM LAYOUT: Goalie {goalie['ID']} stats: GP={stats['games_played']}, GAA={stats['gaa']:.2f}, SV%={stats['save_percentage']:.3f}")
             goalie_stats.append(stats)
+        else:
+            print(f"TEAM LAYOUT: No stats returned for goalie {goalie['ID']}")
     
     # Sort goalies by save percentage
     goalie_stats.sort(key=lambda x: x['save_percentage'], reverse=True)
     
     # If no goalie stats available, create a placeholder message
     if not goalie_stats:
+        print("TEAM LAYOUT: No goalie stats available, creating placeholder")
         goalie_stats = [{
             'player': {'JerseyNumber': 'N/A'},
             'games_played': 0,
