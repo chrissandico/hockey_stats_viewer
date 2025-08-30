@@ -95,7 +95,7 @@ def register_player_callbacks(app, data_service):
         print(f"Player position: {player['Position']}, Is goalie: {is_goalie}")
         
         if is_goalie:
-            print(f"=== CALLBACK: Calculating goalie stats for player ID: {player['ID']} ===")
+            print(f"=== CALLBACK: Calculating goalie stats for player ID: {player['ID']} with team_id: {team_id} ===")
             
             # Debug: Check game roster for goalie
             print("Getting game roster...")
@@ -105,7 +105,7 @@ def register_player_callbacks(app, data_service):
             
             # Debug: Check games for goalie
             print("Getting player games...")
-            goalie_games = data_service.get_player_games(player['ID'])
+            goalie_games = data_service.get_player_games(player['ID'], team_id)
             print(f"DEBUG: Goalie games count: {len(goalie_games)}")
             if not goalie_games.empty:
                 print(f"DEBUG: First game data: {goalie_games.iloc[0].to_dict()}")
@@ -115,7 +115,7 @@ def register_player_callbacks(app, data_service):
             # Calculate goalie stats
             print("Calculating goalie stats...")
             try:
-                stats = data_service.calculate_goalie_stats(player['ID'])
+                stats = data_service.calculate_goalie_stats(player['ID'], team_id)
                 print(f"DEBUG: Goalie stats calculated: {stats}")
                 
                 # Verify stats values
@@ -138,13 +138,13 @@ def register_player_callbacks(app, data_service):
             
             # Debug: Check game log for goalie
             print("Getting player game log...")
-            game_log = data_service.get_player_game_log(player['ID'])
+            game_log = data_service.get_player_game_log(player['ID'], team_id)
             print(f"DEBUG: Goalie game log entries: {len(game_log)}")
             if game_log:
                 print(f"DEBUG: First game log entry: {game_log[0]}")
         else:
-            print(f"Calculating player stats for player ID: {player['ID']}")
-            stats = data_service.calculate_player_stats(player['ID'])
+            print(f"Calculating player stats for player ID: {player['ID']} with team_id: {team_id}")
+            stats = data_service.calculate_player_stats(player['ID'], team_id)
             
         if stats is None:
             return html.Div(dbc.Alert("Could not calculate player statistics", color="danger")), html.Div()
@@ -253,7 +253,7 @@ def register_player_callbacks(app, data_service):
         ], className="mb-4 shadow-sm")
         
         # Get player game log
-        game_log = data_service.get_player_game_log(player['ID'])
+        game_log = data_service.get_player_game_log(player['ID'], team_id)
         print(f"DEBUG: Player game log entries: {len(game_log)}")
         
         # Create game log table

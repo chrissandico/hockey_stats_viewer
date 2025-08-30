@@ -60,21 +60,26 @@ class DataService:
             team_id (str): Team ID
             
         Returns:
-            str: Team name or team_id if not found
+            str: Team name or None if not found
         """
+        if team_id is None:
+            return None
+            
         try:
             teams = self.sheets_service.get_teams()
             matching_team = teams[teams['TeamID'] == team_id]
             
             if not matching_team.empty:
-                return matching_team.iloc[0]['TeamName']
+                team_name = matching_team.iloc[0]['TeamName']
+                print(f"Found team name '{team_name}' for TeamID '{team_id}'")
+                return team_name
             else:
-                print(f"WARNING: Team name not found for TeamID {team_id}")
-                return team_id
+                print(f"ERROR: Team name not found for TeamID '{team_id}'")
+                return None
                 
         except Exception as e:
-            print(f"ERROR: Failed to get team name for TeamID {team_id}: {str(e)}")
-            return team_id
+            print(f"ERROR: Failed to get team name for TeamID '{team_id}': {str(e)}")
+            return None
     
     def get_players(self, team_id=None):
         """
@@ -113,17 +118,29 @@ class DataService:
         # Print columns for debugging
         print("Games columns:", games.columns.tolist())
         
-        # Get team name for event filtering
+        # Get team identifier for event filtering
+        # Note: Events data uses team IDs in the Team column, not team names
         if team_id is not None:
-            team_name = self._get_team_name_from_id(team_id)
-            print(f"Using team name: {team_name} for team ID: {team_id}")
+            team_identifier = team_id  # Use team_id directly for event filtering
+            print(f"Using team identifier: '{team_identifier}' for team ID: '{team_id}'")
         else:
-            # Fallback to 'your_team' for backward compatibility
-            team_name = 'your_team'
-            print(f"Using fallback team name: {team_name}")
+            # For backward compatibility, try to get the first team or use fallback
+            try:
+                teams = self.sheets_service.get_teams()
+                if not teams.empty:
+                    team_identifier = teams.iloc[0]['TeamID']  # Use TeamID instead of TeamName
+                    print(f"Using first team identifier: '{team_identifier}'")
+                else:
+                    team_identifier = 'your_team'
+                    print(f"Using fallback team identifier: '{team_identifier}'")
+            except:
+                team_identifier = 'your_team'
+                print(f"Using fallback team identifier: '{team_identifier}'")
         
         # Add GoalsFor and GoalsAgainst columns
         if not games.empty:
+            # Create a copy to avoid pandas warnings
+            games = games.copy()
             # Initialize columns with zeros
             games['GoalsFor'] = 0
             games['GoalsAgainst'] = 0
@@ -134,11 +151,11 @@ class DataService:
                 
                 # Use IsGoal column for goal determination with proper team identification
                 goals_for = len(game_events[(game_events['IsGoal'] == True) & 
-                                          (game_events['Team'] == team_name)])
+                                          (game_events['Team'] == team_identifier)])
                 goals_against = len(game_events[(game_events['IsGoal'] == True) & 
-                                              (game_events['Team'] != team_name)])
+                                              (game_events['Team'] != team_identifier)])
                 
-                print(f"Using IsGoal column for game {game['ID']}: {goals_for} goals for, {goals_against} goals against")
+                print(f"Using IsGoal column for game {game['ID']}: {goals_for} goals for, {goals_against} goals against (team: {team_identifier})")
                 
                 games.at[idx, 'GoalsFor'] = goals_for
                 games.at[idx, 'GoalsAgainst'] = goals_against
@@ -165,6 +182,8 @@ class DataService:
         if 'Result' not in games.columns:
             # Check if we can calculate it
             if not games.empty and 'GoalsFor' in games.columns and 'GoalsAgainst' in games.columns:
+                # Create a copy to avoid pandas warnings
+                games = games.copy()
                 # Create a new Result column
                 games['Result'] = games.apply(
                     lambda row: 'W' if row['GoalsFor'] > row['GoalsAgainst'] else 
@@ -173,6 +192,7 @@ class DataService:
                 )
             else:
                 # If we can't calculate it, add a placeholder
+                games = games.copy()
                 games['Result'] = 'Unknown'
                 print("Warning: Could not calculate Result column. Using placeholder values.")
         
@@ -187,69 +207,29 @@ class DataService:
         """
         return self.sheets_service.get_events()
     
-    def get_game_roster(self):
+    def get_game_roster(self, team_id=None):
         """
-        Get all game roster data.
+        Get all game roster data, optionally filtered by team.
         
+        Args:
+            team_id (str, optional): Team ID to filter by
+            
         Returns:
             pd.DataFrame: DataFrame containing game roster data
         """
         game_roster = self.sheets_service.get_game_roster()
         print(f"Original game roster size: {len(game_roster)}")
         
-        # Get all players and filter goalies
-        players = self.get_players()
-        goalies = players[players['Position'] == 'G']
-        print(f"Found {len(goalies)} goalies in player data")
-        
-        # Get all games
-        games = self.sheets_service.get_games()
-        print(f"Total games: {len(games)}")
-        
-        # If there are goalies, add them to all games
-        if not goalies.empty:
-            # Get the first goalie
-            goalie_id = goalies.iloc[0]['ID']
-            print(f"Using goalie with ID: {goalie_id}")
+        # If team_id is specified, filter the game roster to only include games for that team
+        if team_id is not None:
+            # Get games for the specified team
+            games = self.sheets_service.get_games()
+            team_games = self._filter_by_team(games, team_id)
+            team_game_ids = team_games['ID'].tolist()
             
-            # Check if goalie is already in any games
-            goalie_games = game_roster[game_roster['PlayerID'] == goalie_id]
-            print(f"Goalie already in {len(goalie_games)} games before adding")
-            
-            # Create new entries for the goalie in all games
-            new_entries = []
-            for _, game in games.iterrows():
-                # Check if the goalie is already in the game roster for this game
-                if not ((game_roster['GameID'] == game['ID']) & (game_roster['PlayerID'] == goalie_id)).any():
-                    new_entry = {
-                        'GameID': game['ID'],
-                        'PlayerID': goalie_id,
-                        'Status': 'Present'
-                    }
-                    new_entries.append(new_entry)
-            
-            # If there are new entries, add them to the game roster
-            if new_entries:
-                new_entries_df = pd.DataFrame(new_entries)
-                game_roster = pd.concat([game_roster, new_entries_df], ignore_index=True)
-                print(f"Added goalie {goalie_id} to {len(new_entries)} games")
-            else:
-                print(f"No new games to add goalie {goalie_id} to")
-            
-            # Verify goalie is now in all games
-            goalie_games_after = game_roster[game_roster['PlayerID'] == goalie_id]
-            print(f"Goalie in {len(goalie_games_after)} games after adding")
-            print(f"Total games: {len(games)}")
-            if len(goalie_games_after) != len(games):
-                print(f"WARNING: Goalie should be in {len(games)} games but is only in {len(goalie_games_after)}")
-                
-                # Find which games the goalie is missing from
-                game_ids_with_goalie = goalie_games_after['GameID'].tolist()
-                missing_games = games[~games['ID'].isin(game_ids_with_goalie)]
-                if not missing_games.empty:
-                    print(f"Goalie missing from {len(missing_games)} games: {missing_games['ID'].tolist()}")
-        else:
-            print("No goalies found in player data")
+            # Filter game roster to only include entries for team games
+            game_roster = game_roster[game_roster['GameID'].isin(team_game_ids)]
+            print(f"Filtered game roster to {len(game_roster)} entries for team {team_id} games")
         
         print(f"Final game roster size: {len(game_roster)}")
         return game_roster
@@ -293,19 +273,22 @@ class DataService:
         games = self.get_games()
         return games[games['ID'] == game_id].iloc[0] if not games[games['ID'] == game_id].empty else None
     
-    def get_player_games(self, player_id):
+    def get_player_games(self, player_id, team_id=None):
         """
-        Get all games a player participated in.
+        Get all games a player participated in, optionally filtered by team.
         
         Args:
             player_id (str): The player ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             pd.DataFrame: DataFrame containing game data
         """
-        # Force refresh game roster to ensure it's up to date
-        game_roster = self.get_game_roster()
-        games = self.get_games()
+        # Force refresh game roster to ensure it's up to date, passing team_id for proper filtering
+        game_roster = self.get_game_roster(team_id)
+        
+        # Get games filtered by team if specified
+        games = self.get_games(team_id)
         
         # Check if player is a goalie
         player = self.get_player_by_id(player_id)
@@ -315,38 +298,21 @@ class DataService:
         player_game_ids = game_roster[(game_roster['PlayerID'] == player_id) & 
                                      (game_roster['Status'] == 'Present')]['GameID'].tolist()
         
-        print(f"Player {player_id} has {len(player_game_ids)} games in roster")
+        print(f"Player {player_id} has {len(player_game_ids)} games in roster (team: {team_id})")
         
-        # For goalies, ensure they're in all games
-        if is_goalie and len(player_game_ids) < len(games):
-            print(f"WARNING: Goalie {player_id} should be in all games. Forcing inclusion in all games.")
-            # Use all game IDs for goalies
-            player_game_ids = games['ID'].tolist()
-            
-            # Update game roster to include goalie in all games
-            for game_id in player_game_ids:
-                if not ((game_roster['GameID'] == game_id) & (game_roster['PlayerID'] == player_id)).any():
-                    new_entry = pd.DataFrame({
-                        'GameID': [game_id],
-                        'PlayerID': [player_id],
-                        'Status': ['Present']
-                    })
-                    game_roster = pd.concat([game_roster, new_entry], ignore_index=True)
-            
-            print(f"Updated: Player {player_id} now has {len(player_game_ids)} games in roster")
-        
-        # Filter games by these IDs
+        # Filter games by these IDs (games are already team-filtered)
         player_games = games[games['ID'].isin(player_game_ids)]
-        print(f"Found {len(player_games)} game records for player {player_id}")
+        print(f"Found {len(player_games)} game records for player {player_id} (team: {team_id})")
         
         return player_games
     
-    def calculate_player_stats(self, player_id):
+    def calculate_player_stats(self, player_id, team_id=None):
         """
         Calculate statistics for a player.
         
         Args:
             player_id (str): The player ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             dict: Dictionary containing player statistics
@@ -356,15 +322,32 @@ class DataService:
             return None
         
         events = self.get_events()
-        games = self.get_player_games(player_id)
+        games = self.get_player_games(player_id, team_id)
         
         # Get all teams in events
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Always use 'your_team' as the team name
-        team_name = 'your_team'
-        print(f"Using team name: {team_name}")
+        # Get team name for event filtering
+        if team_id is not None:
+            team_name = self._get_team_name_from_id(team_id)
+            if team_name is None:
+                print(f"ERROR: Cannot calculate player stats without valid team name for team_id: {team_id}")
+                return None
+            print(f"Using team name: '{team_name}' for team ID: '{team_id}'")
+        else:
+            # For backward compatibility, try to get the first team or use fallback
+            try:
+                teams = self.sheets_service.get_teams()
+                if not teams.empty:
+                    team_name = teams.iloc[0]['TeamName']
+                    print(f"Using first team name: '{team_name}'")
+                else:
+                    team_name = 'your_team'
+                    print(f"Using fallback team name: '{team_name}'")
+            except:
+                team_name = 'your_team'
+                print(f"Using fallback team name: '{team_name}'")
         
         # Filter events for this player
         player_events = events[events['PrimaryPlayerID'] == player_id]
@@ -627,17 +610,18 @@ class DataService:
         print(f"DEBUG: Returning goalie game stats for game {game_id}: {result_dict}")
         return result_dict
     
-    def get_player_game_log(self, player_id):
+    def get_player_game_log(self, player_id, team_id=None):
         """
-        Get a game log for a player.
+        Get a game log for a player, optionally filtered by team.
         
         Args:
             player_id (str): The player ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             list: List of dictionaries containing game statistics
         """
-        player_games = self.get_player_games(player_id)
+        player_games = self.get_player_games(player_id, team_id)
         player = self.get_player_by_id(player_id)
         
         game_log = []
@@ -731,7 +715,7 @@ class DataService:
         # Calculate stats for each player
         player_stats = []
         for _, player in players.iterrows():
-            stats = self.calculate_player_stats(player['ID'])
+            stats = self.calculate_player_stats(player['ID'], team_id)
             if stats:
                 player_stats.append(stats)
         
@@ -746,12 +730,13 @@ class DataService:
             # Return all players if no limit is specified
             return player_stats
     
-    def calculate_goalie_stats(self, player_id):
+    def calculate_goalie_stats(self, player_id, team_id=None):
         """
         Calculate statistics for a goalie.
         
         Args:
             player_id (str): The player ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             dict: Dictionary containing goalie statistics
@@ -770,7 +755,7 @@ class DataService:
         events = self.get_events()
         print(f"Total events: {len(events)}")
         
-        games = self.get_player_games(player_id)
+        games = self.get_player_games(player_id, team_id)
         print(f"Goalie games count: {len(games)}")
         
         if games.empty:
@@ -885,6 +870,11 @@ class DataService:
             print(f"Error calculating goalie wins: {e}")
             wins = 0
         
+        # Special handling for goalies not in game roster
+        if games_played == 0:
+            print(f"WARNING: Goalie {player_id} not found in game roster for team {team_id}")
+            print("This may indicate the goalie needs to be added to game rosters")
+        
         # Calculate shutouts (games where goals against is 0)
         shutouts = 0
         for _, game in games.iterrows():
@@ -939,19 +929,20 @@ class DataService:
         # Sort by Period
         return game_events.sort_values(by=['Period'])
     
-    def get_game_player_stats(self, game_id, position=None):
+    def get_game_player_stats(self, game_id, position=None, team_id=None):
         """
         Get player statistics for a specific game.
         
         Args:
             game_id (str): The game ID
             position (str, optional): Filter by position (F, D, G)
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             list: List of dictionaries containing player game statistics
         """
-        game_roster = self.get_game_roster()
-        players = self.get_players()
+        game_roster = self.get_game_roster(team_id)
+        players = self.get_players(team_id)
         
         # Get players who were present for this game
         game_players = game_roster[(game_roster['GameID'] == game_id) & 

@@ -33,12 +33,23 @@ def create_team_layout(data_service, team_context=None):
     goalies = players[players['Position'] == 'G']
     goalie_stats = []
     for _, goalie in goalies.iterrows():
-        stats = data_service.calculate_goalie_stats(goalie['ID'])
+        stats = data_service.calculate_goalie_stats(goalie['ID'], team_id)
         if stats:
             goalie_stats.append(stats)
     
     # Sort goalies by save percentage
     goalie_stats.sort(key=lambda x: x['save_percentage'], reverse=True)
+    
+    # If no goalie stats available, create a placeholder message
+    if not goalie_stats:
+        goalie_stats = [{
+            'player': {'JerseyNumber': 'N/A'},
+            'games_played': 0,
+            'wins': 0,
+            'shutouts': 0,
+            'gaa': 0.0,
+            'save_percentage': 0.0
+        }]
     
     return html.Div([
         # Navigation bar
@@ -202,7 +213,7 @@ def create_team_layout(data_service, team_context=None):
                     ),
                     html.Tbody([
                         html.Tr([
-                            html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                            html.Td(f"#{stats['player']['JerseyNumber']}" if stats['player']['JerseyNumber'] != 'N/A' else "No data available", className="text-start"),
                             html.Td(f"{stats['games_played']}", className="text-center"),
                             html.Td(f"{stats['wins']}", className="text-center"),
                             html.Td(f"{stats['shutouts']}", className="text-center"),
@@ -210,7 +221,12 @@ def create_team_layout(data_service, team_context=None):
                             html.Td(f"{stats['save_percentage']:.3f}", className="text-center")
                         ]) for stats in goalie_stats
                     ])
-                ], className="table table-striped table-hover")
+                ], className="table table-striped table-hover"),
+                # Add note if no goalie data
+                html.Div([
+                    html.P("Note: Goalie statistics may be unavailable if the goalie is not added to game rosters.", 
+                           className="text-muted small mt-2")
+                ]) if not any(stats['games_played'] > 0 for stats in goalie_stats) else html.Div()
             ])
         ], className="mb-4 shadow-sm"),
         
