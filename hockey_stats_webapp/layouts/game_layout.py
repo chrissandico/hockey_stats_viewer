@@ -76,10 +76,7 @@ def create_game_layout(data_service, team_context=None):
                 ], className="mb-3"),
                 html.Div(id='game-player-stats-container')
             ])
-        ], className="mb-4 shadow-sm"),
-        
-        # Game timeline
-        html.Div(id='game-timeline-container')
+        ], className="mb-4 shadow-sm")
     ])
 
 # Callbacks for game statistics
@@ -336,54 +333,3 @@ def register_game_callbacks(app, data_service):
                     ]) for stats in player_stats
                 ])
             ], className="table table-striped table-hover")
-    
-    # Callback for game timeline
-    @app.callback(
-        dash.dependencies.Output('game-timeline-container', 'children'),
-        [dash.dependencies.Input('game-dropdown', 'value')]
-    )
-    def update_game_timeline(game_id):
-        if game_id is None:
-            return html.Div()
-        
-        # Get game timeline
-        timeline = data_service.get_game_timeline(game_id)
-        
-        if not timeline:
-            return html.Div(dbc.Alert("No timeline events found", color="warning"))
-        
-        # Create timeline card
-        return dbc.Card([
-            dbc.CardHeader(html.H4("Game Timeline", className="card-title")),
-            dbc.CardBody([
-                html.Table([
-                    html.Thead(
-                        html.Tr([
-                            html.Th("Period", className="text-center"),
-                            html.Th("Event", className="text-center"),
-                            html.Th("Team", className="text-center"),
-                            html.Th("Player", className="text-start"),
-                            html.Th("Details", className="text-start")
-                        ])
-                    ),
-                    html.Tbody([
-                        html.Tr([
-                            html.Td(f"{event['Period']}", className="text-center"),
-                            html.Td(f"{event['EventType']}", className="text-center"),
-                            html.Td(f"{event['Team']}", className="text-center"),
-                            html.Td(f"{event.get('PrimaryPlayerName', 'N/A')}", className="text-start"),
-                            html.Td(
-                                # Different details based on event type
-                                (f"Goal{' (SH)' if event.get('IsShortHanded') else ''}, " +
-                                 f"Assists: {event.get('AssistPlayer1Name', 'None')}, {event.get('AssistPlayer2Name', 'None')}")
-                                if event['EventType'] == 'Goal' else
-                                f"{event.get('PenaltyType', '')}, {event.get('PenaltyDuration', '')} min"
-                                if event['EventType'] == 'Penalty' else
-                                "",
-                                className="text-start"
-                            )
-                        ]) for event in timeline
-                    ])
-                ], className="table table-striped table-hover")
-            ])
-        ], className="shadow-sm")

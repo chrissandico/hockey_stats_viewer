@@ -33,35 +33,6 @@ def create_team_layout(data_service, team_context=None):
     forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
     defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)  # Team defense sorted by plus/minus
     
-    # Get goalies with team filtering - using same approach as player layout
-    players = data_service.get_players(team_id)
-    goalies = players[players['Position'] == 'G']
-    print(f"TEAM LAYOUT: Found {len(goalies)} goalies for team {team_id}")
-    
-    goalie_stats = []
-    for _, goalie in goalies.iterrows():
-        print(f"TEAM LAYOUT: Calculating stats for goalie {goalie['ID']} with team_id {team_id}")
-        stats = data_service.calculate_goalie_stats(goalie['ID'], team_id)
-        if stats:
-            print(f"TEAM LAYOUT: Goalie {goalie['ID']} stats: GP={stats['games_played']}, GAA={stats['gaa']:.2f}, SV%={stats['save_percentage']:.3f}")
-            goalie_stats.append(stats)
-        else:
-            print(f"TEAM LAYOUT: No stats returned for goalie {goalie['ID']}")
-    
-    # Sort goalies by save percentage
-    goalie_stats.sort(key=lambda x: x['save_percentage'], reverse=True)
-    
-    # If no goalie stats available, create a placeholder message
-    if not goalie_stats:
-        print("TEAM LAYOUT: No goalie stats available, creating placeholder")
-        goalie_stats = [{
-            'player': {'JerseyNumber': 'N/A'},
-            'games_played': 0,
-            'wins': 0,
-            'shutouts': 0,
-            'gaa': 0.0,
-            'save_percentage': 0.0
-        }]
     
     return html.Div([
         # Navigation bar
@@ -207,40 +178,6 @@ def create_team_layout(data_service, team_context=None):
                 ], className="mb-4 shadow-sm")
             ], md=6)
         ]),
-        
-        # Goalie stats
-        dbc.Card([
-            dbc.CardHeader(html.H4("Goalie Statistics", className="card-title")),
-            dbc.CardBody([
-                html.Table([
-                    html.Thead(
-                        html.Tr([
-                            html.Th("Goalie", className="text-start"),
-                            html.Th("GP", className="text-center"),
-                            html.Th("W", className="text-center"),
-                            html.Th("SO", className="text-center"),
-                            html.Th("GAA", className="text-center"),
-                            html.Th("SV%", className="text-center")
-                        ])
-                    ),
-                    html.Tbody([
-                        html.Tr([
-                            html.Td(f"#{stats['player']['JerseyNumber']}" if stats['player']['JerseyNumber'] != 'N/A' else "No data available", className="text-start"),
-                            html.Td(f"{stats['games_played']}", className="text-center"),
-                            html.Td(f"{stats['wins']}", className="text-center"),
-                            html.Td(f"{stats['shutouts']}", className="text-center"),
-                            html.Td(f"{stats['gaa']:.2f}", className="text-center"),
-                            html.Td(f"{stats['save_percentage']:.3f}", className="text-center")
-                        ]) for stats in goalie_stats
-                    ])
-                ], className="table table-striped table-hover"),
-                # Add note if no goalie data
-                html.Div([
-                    html.P("Note: Goalie statistics may be unavailable if the goalie is not added to game rosters.", 
-                           className="text-muted small mt-2")
-                ]) if not any(stats['games_played'] > 0 for stats in goalie_stats) else html.Div()
-            ])
-        ], className="mb-4 shadow-sm"),
         
         # Game log
         dbc.Card([
