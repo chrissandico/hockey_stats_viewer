@@ -164,7 +164,7 @@ class DataService:
                 print("Sample game data:", games.iloc[0].to_dict())
         
         # Always ensure Result column exists
-        self._ensure_result_column(games)
+        games = self._ensure_result_column(games)
         
         return games
     
@@ -178,21 +178,22 @@ class DataService:
         Returns:
             pd.DataFrame: DataFrame with Result column added if needed
         """
+        # Always work with a copy to avoid pandas warnings
+        games = games.copy()
+        
         # Check if Result column already exists
         if 'Result' not in games.columns:
             # Check if we can calculate it
             if not games.empty and 'GoalsFor' in games.columns and 'GoalsAgainst' in games.columns:
-                # Create a copy to avoid pandas warnings
-                games = games.copy()
                 # Create a new Result column
                 games['Result'] = games.apply(
                     lambda row: 'W' if row['GoalsFor'] > row['GoalsAgainst'] else 
                                'L' if row['GoalsFor'] < row['GoalsAgainst'] else 'T', 
                     axis=1
                 )
+                print(f"Added Result column to {len(games)} games")
             else:
                 # If we can't calculate it, add a placeholder
-                games = games.copy()
                 games['Result'] = 'Unknown'
                 print("Warning: Could not calculate Result column. Using placeholder values.")
         

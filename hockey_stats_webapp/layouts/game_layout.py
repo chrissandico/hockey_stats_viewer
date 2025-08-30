@@ -20,10 +20,21 @@ def create_game_layout(data_service, team_context=None):
     games = data_service.get_games(team_id)
     
     # Create enhanced radio options with date, opponent, and result
-    radio_options = [
-        {'label': f"{game['Date']} vs {game['Opponent']} ({game['Result']} {game['GoalsFor']}-{game['GoalsAgainst']})", 'value': game['ID']} 
-        for _, game in games.iterrows()
-    ]
+    radio_options = []
+    for _, game in games.iterrows():
+        try:
+            # Safely access Result column with fallback
+            result = game.get('Result', 'Unknown')
+            goals_for = game.get('GoalsFor', 0)
+            goals_against = game.get('GoalsAgainst', 0)
+            
+            label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against})"
+            radio_options.append({'label': label, 'value': game['ID']})
+        except Exception as e:
+            # Fallback to basic label if there's any error
+            print(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
+            label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
+            radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
     
     # Sort by date (ascending order)
     radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=False)
@@ -96,7 +107,9 @@ def register_game_callbacks(app, data_service):
         
         # Create game summary card
         game = summary['game']
-        result_color = "success" if game['Result'] == 'W' else "danger" if game['Result'] == 'L' else "warning"
+        # Safely access Result column with fallback
+        result = game.get('Result', 'Unknown')
+        result_color = "success" if result == 'W' else "danger" if result == 'L' else "warning"
         
         return dbc.Card([
             dbc.CardHeader(html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title")),
@@ -120,7 +133,7 @@ def register_game_callbacks(app, data_service):
                             ], className="mb-1"),
                             html.Div([
                                 html.Span("Result: ", className="fw-bold"),
-                                html.Span(f"{game['Result']}", className=f"text-{result_color}")
+                                html.Span(f"{result}", className=f"text-{result_color}")
                             ], className="mb-1"),
                             html.Div([
                                 html.Span("Score: ", className="fw-bold"),
