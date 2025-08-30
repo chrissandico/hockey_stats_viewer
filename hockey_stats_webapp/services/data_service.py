@@ -163,7 +163,7 @@ class DataService:
             if not games.empty:
                 print("Sample game data:", games.iloc[0].to_dict())
         
-        # Always ensure Result column exists
+        # Always ensure Result column exists (after GoalsFor/GoalsAgainst are calculated)
         games = self._ensure_result_column(games)
         
         return games
@@ -503,13 +503,14 @@ class DataService:
             'penalty_minutes': penalty_minutes
         }
     
-    def calculate_goalie_game_stats(self, player_id, game_id):
+    def calculate_goalie_game_stats(self, player_id, game_id, team_id=None):
         """
         Calculate statistics for a goalie in a specific game.
         
         Args:
             player_id (str): The player ID
             game_id (str): The game ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             dict: Dictionary containing goalie game statistics
@@ -536,9 +537,23 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Always use 'your_team' as the team name
-        your_team = 'your_team'
-        print(f"Using team name: {your_team}")
+        # Use the team_id parameter for proper team identification
+        if team_id is not None:
+            your_team = team_id  # Use team_id directly for event filtering
+            print(f"Using team identifier: '{your_team}' for team ID: '{team_id}'")
+        else:
+            # For backward compatibility, try to get the first team or use fallback
+            try:
+                teams = self.sheets_service.get_teams()
+                if not teams.empty:
+                    your_team = teams.iloc[0]['TeamID']  # Use TeamID instead of TeamName
+                    print(f"Using first team identifier: '{your_team}'")
+                else:
+                    your_team = 'your_team'
+                    print(f"Using fallback team identifier: '{your_team}'")
+            except:
+                your_team = 'your_team'
+                print(f"Using fallback team identifier: '{your_team}'")
         
         # Filter events for this game
         game_events = events[events['GameID'] == game_id]
@@ -629,7 +644,7 @@ class DataService:
         for _, game in player_games.iterrows():
             # Check if player is a goalie
             if player is not None and player['Position'] == 'G':
-                game_stats = self.calculate_goalie_game_stats(player_id, game['ID'])
+                game_stats = self.calculate_goalie_game_stats(player_id, game['ID'], team_id)
             else:
                 game_stats = self.calculate_player_game_stats(player_id, game['ID'])
                 
@@ -780,9 +795,23 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Always use 'your_team' as the team name
-        your_team = 'your_team'
-        print(f"Using team name: {your_team}")
+        # Use the team_id parameter for proper team identification
+        if team_id is not None:
+            your_team = team_id  # Use team_id directly for event filtering
+            print(f"Using team identifier: '{your_team}' for team ID: '{team_id}'")
+        else:
+            # For backward compatibility, try to get the first team or use fallback
+            try:
+                teams = self.sheets_service.get_teams()
+                if not teams.empty:
+                    your_team = teams.iloc[0]['TeamID']  # Use TeamID instead of TeamName
+                    print(f"Using first team identifier: '{your_team}'")
+                else:
+                    your_team = 'your_team'
+                    print(f"Using fallback team identifier: '{your_team}'")
+            except:
+                your_team = 'your_team'
+                print(f"Using fallback team identifier: '{your_team}'")
         
         # Print game IDs for debugging
         game_ids = games['ID'].tolist()

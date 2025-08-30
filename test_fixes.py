@@ -1,100 +1,159 @@
 #!/usr/bin/env python3
 """
-Test script to verify the fixes for team stats and game logs.
+Test script to verify that the KeyError: 'Result' fixes are working properly.
 """
 
 import sys
 import os
-sys.path.append('hockey_stats_webapp')
+sys.path.append(os.path.join(os.path.dirname(__file__), 'hockey_stats_webapp'))
 
 from services.sheets_service import SheetsService
 from services.data_service import DataService
 from services.auth_service import AuthService
 
-def test_data_service_fixes():
-    """Test the DataService fixes for Result column and team stats."""
-    print("=== Testing DataService Fixes ===")
+def test_games_columns():
+    """Test that games have all required columns including Result, GoalsFor, GoalsAgainst."""
+    print("=== Testing Games Columns ===")
     
     try:
-        # Initialize services
-        print("Initializing services...")
-        auth_service = AuthService()
-        sheets_service = SheetsService(auth_service)
+        # Initialize services (same order as app.py)
+        sheets_service = SheetsService()
+        auth_service = AuthService(sheets_service)
         data_service = DataService(sheets_service)
         
-        # Test get_games with Result column
-        print("\n1. Testing get_games() with Result column...")
-        games = data_service.get_games('your_team')
+        # Get games for the team
+        team_id = 'your_team'
+        games = data_service.get_games(team_id)
         
-        if games.empty:
-            print("WARNING: No games found for team 'your_team'")
+        print(f"Games DataFrame shape: {games.shape}")
+        print(f"Games columns: {games.columns.tolist()}")
+        
+        # Check required columns
+        required_columns = ['ID', 'Date', 'Opponent', 'Location', 'TeamID', 'GoalsFor', 'GoalsAgainst', 'Result']
+        missing_columns = [col for col in required_columns if col not in games.columns]
+        
+        if missing_columns:
+            print(f"ERROR: Missing columns: {missing_columns}")
+            return False
         else:
-            print(f"Found {len(games)} games")
-            print(f"Games columns: {games.columns.tolist()}")
+            print("SUCCESS: All required columns present")
+        
+        # Check sample data
+        if not games.empty:
+            sample_game = games.iloc[0]
+            print(f"Sample game data: {sample_game.to_dict()}")
             
-            # Check if Result column exists
-            if 'Result' in games.columns:
-                print("✓ Result column exists")
-                print(f"Sample game data: {games.iloc[0].to_dict()}")
-                
-                # Check Result values
-                result_counts = games['Result'].value_counts()
-                print(f"Result distribution: {result_counts.to_dict()}")
-            else:
-                print("✗ Result column missing")
-        
-        # Test calculate_team_stats
-        print("\n2. Testing calculate_team_stats()...")
-        team_stats = data_service.calculate_team_stats('your_team')
-        
-        if team_stats:
-            print("✓ Team stats calculated successfully")
-            print(f"Team stats: {team_stats}")
+            # Verify Result column values
+            result_values = games['Result'].unique()
+            print(f"Result column values: {result_values}")
+            
+            # Verify GoalsFor and GoalsAgainst are numeric
+            print(f"GoalsFor data type: {games['GoalsFor'].dtype}")
+            print(f"GoalsAgainst data type: {games['GoalsAgainst'].dtype}")
+            
+            return True
         else:
-            print("✗ Team stats calculation failed")
-        
-        # Test game layout data preparation
-        print("\n3. Testing game layout data preparation...")
-        try:
-            # Simulate what the game layout does
-            radio_options = []
-            for _, game in games.iterrows():
-                try:
-                    result = game.get('Result', 'Unknown')
-                    goals_for = game.get('GoalsFor', 0)
-                    goals_against = game.get('GoalsAgainst', 0)
-                    
-                    label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against})"
-                    radio_options.append({'label': label, 'value': game['ID']})
-                except Exception as e:
-                    print(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
-                    label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
-                    radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
+            print("WARNING: No games found")
+            return False
             
-            print(f"✓ Successfully created {len(radio_options)} game options")
-            if radio_options:
-                print(f"Sample option: {radio_options[0]}")
-        
-        except Exception as e:
-            print(f"✗ Game layout data preparation failed: {e}")
-        
-        print("\n=== Test Results ===")
-        print("✓ DataService initialization: SUCCESS")
-        print("✓ Games retrieval with Result column: SUCCESS" if 'Result' in games.columns else "✗ Games retrieval with Result column: FAILED")
-        print("✓ Team stats calculation: SUCCESS" if team_stats else "✗ Team stats calculation: FAILED")
-        print("✓ Game layout data preparation: SUCCESS")
-        
-        return True
-        
     except Exception as e:
-        print(f"✗ Test failed with error: {e}")
+        print(f"ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
-if __name__ == "__main__":
-    success = test_data_service_fixes()
-    if success:
-        print("\n🎉 All tests passed! The fixes should resolve the deployment issues.")
+def test_game_layout_creation():
+    """Test that game layout can be created without KeyError."""
+    print("\n=== Testing Game Layout Creation ===")
+    
+    try:
+        # Initialize services (same order as app.py)
+        sheets_service = SheetsService()
+        auth_service = AuthService(sheets_service)
+        data_service = DataService(sheets_service)
+        
+        # Import game layout
+        from layouts.game_layout import create_game_layout
+        
+        # Create team context
+        team_context = {
+            'team_id': 'your_team',
+            'team_name': 'WaxersU12AA'
+        }
+        
+        # Try to create the layout
+        layout = create_game_layout(data_service, team_context)
+        
+        print("SUCCESS: Game layout created without errors")
+        return True
+        
+    except Exception as e:
+        print(f"ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_team_stats():
+    """Test that team stats can be calculated without errors."""
+    print("\n=== Testing Team Stats Calculation ===")
+    
+    try:
+        # Initialize services (same order as app.py)
+        sheets_service = SheetsService()
+        auth_service = AuthService(sheets_service)
+        data_service = DataService(sheets_service)
+        
+        # Calculate team stats
+        team_id = 'your_team'
+        team_stats = data_service.calculate_team_stats(team_id)
+        
+        print(f"Team stats: {team_stats}")
+        
+        # Verify required fields
+        required_fields = ['games_played', 'wins', 'losses', 'ties', 'points', 'goals_for', 'goals_against', 'win_percentage']
+        missing_fields = [field for field in required_fields if field not in team_stats]
+        
+        if missing_fields:
+            print(f"ERROR: Missing fields: {missing_fields}")
+            return False
+        else:
+            print("SUCCESS: All required team stats fields present")
+            return True
+            
+    except Exception as e:
+        print(f"ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def main():
+    """Run all tests."""
+    print("Running fix verification tests...\n")
+    
+    tests = [
+        test_games_columns,
+        test_game_layout_creation,
+        test_team_stats
+    ]
+    
+    results = []
+    for test in tests:
+        try:
+            result = test()
+            results.append(result)
+        except Exception as e:
+            print(f"Test {test.__name__} failed with exception: {e}")
+            results.append(False)
+    
+    print(f"\n=== Test Results ===")
+    print(f"Passed: {sum(results)}/{len(results)}")
+    
+    if all(results):
+        print("SUCCESS: All tests passed! Ready to deploy.")
+        return 0
     else:
-        print("\n❌ Some tests failed. Please check the errors above.")
+        print("FAILURE: Some tests failed. Do not deploy.")
+        return 1
+
+if __name__ == "__main__":
+    exit(main())
