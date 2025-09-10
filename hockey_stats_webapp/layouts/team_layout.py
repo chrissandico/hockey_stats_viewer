@@ -25,9 +25,10 @@ def create_team_layout(data_service, team_context=None):
     team_stats = data_service.calculate_team_stats(team_id)
     print(f"TEAM LAYOUT: Team stats calculated: {team_stats}")
     
-    # Get games for the game log with team filtering
+    # Get games for the game log with team filtering and date filtering (only completed games)
     games = data_service.get_games(team_id)
-    print(f"TEAM LAYOUT: Games retrieved: {len(games)} games")
+    games = data_service._filter_games_by_date(games, include_future=False)
+    print(f"TEAM LAYOUT: Games retrieved: {len(games)} games (filtered to completed games only)")
     
     # Get leaderboards with team filtering
     forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
@@ -66,10 +67,6 @@ def create_team_layout(data_service, team_context=None):
                                 html.Span("Ties: ", className="fw-bold"),
                                 html.Span(f"{team_stats['ties']}")
                             ], className="mb-1"),
-                            html.Div([
-                                html.Span("Points: ", className="fw-bold"),
-                                html.Span(f"{team_stats['points']}")
-                            ], className="mb-1"),
                         ])
                     ], md=4),
                     
@@ -99,10 +96,6 @@ def create_team_layout(data_service, team_context=None):
                             html.Div([
                                 html.Span("Win Percentage: ", className="fw-bold"),
                                 html.Span(f"{team_stats['win_percentage']:.3f}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Points Percentage: ", className="fw-bold"),
-                                html.Span(f"{team_stats['points'] / (team_stats['games_played'] * 2):.3f}" if team_stats['games_played'] > 0 else "0.000")
                             ], className="mb-1"),
                             html.Div([
                                 html.Span("Goals For per Game: ", className="fw-bold"),

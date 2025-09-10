@@ -19,6 +19,9 @@ def create_game_layout(data_service, team_context=None):
     team_id = team_context['team_id'] if team_context else None
     games = data_service.get_games(team_id)
     
+    # Filter to only show completed games (past dates)
+    games = data_service._filter_games_by_date(games, include_future=False)
+    
     # Create enhanced radio options with date, opponent, and result
     radio_options = []
     for _, game in games.iterrows():

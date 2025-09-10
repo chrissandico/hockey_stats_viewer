@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime, date
 
 class DataService:
     """
@@ -80,6 +81,72 @@ class DataService:
         except Exception as e:
             print(f"ERROR: Failed to get team name for TeamID '{team_id}': {str(e)}")
             return None
+    
+    def _filter_games_by_date(self, games, include_future=False):
+        """
+        Filter games to only include those on or before the current date.
+        
+        Args:
+            games (pd.DataFrame): DataFrame containing game data
+            include_future (bool): If True, include future games. If False, only past/current games.
+            
+        Returns:
+            pd.DataFrame: Filtered DataFrame containing only completed games
+        """
+        if games.empty:
+            return games
+        
+        if 'Date' not in games.columns:
+            print("WARNING: No Date column found in games data. Returning all games.")
+            return games
+        
+        # Get current date
+        current_date = date.today()
+        print(f"Current date for filtering: {current_date}")
+        
+        # Create a copy to avoid pandas warnings
+        filtered_games = games.copy()
+        
+        # Parse dates and filter
+        def parse_game_date(date_str):
+            """Parse various date formats"""
+            if pd.isna(date_str) or date_str == '':
+                return None
+            
+            # Try different date formats
+            date_formats = [
+                '%m/%d/%Y',    # MM/DD/YYYY
+                '%Y-%m-%d',    # YYYY-MM-DD
+                '%d/%m/%Y',    # DD/MM/YYYY
+                '%m-%d-%Y',    # MM-DD-YYYY
+                '%Y/%m/%d',    # YYYY/MM/DD
+            ]
+            
+            for fmt in date_formats:
+                try:
+                    parsed_date = datetime.strptime(str(date_str), fmt).date()
+                    return parsed_date
+                except ValueError:
+                    continue
+            
+            print(f"WARNING: Could not parse date '{date_str}'. Treating as future game.")
+            return None
+        
+        # Apply date parsing
+        filtered_games['ParsedDate'] = filtered_games['Date'].apply(parse_game_date)
+        
+        # Filter based on include_future parameter
+        if include_future:
+            # Return all games (no filtering)
+            result = filtered_games.drop('ParsedDate', axis=1)
+        else:
+            # Only include games on or before current date
+            mask = (filtered_games['ParsedDate'].notna()) & (filtered_games['ParsedDate'] <= current_date)
+            result = filtered_games[mask].drop('ParsedDate', axis=1)
+            
+            print(f"Date filtering: {len(result)} games out of {len(games)} are completed (on or before {current_date})")
+        
+        return result
     
     def get_players(self, team_id=None):
         """
@@ -274,13 +341,14 @@ class DataService:
         games = self.get_games()
         return games[games['ID'] == game_id].iloc[0] if not games[games['ID'] == game_id].empty else None
     
-    def get_player_games(self, player_id, team_id=None):
+    def get_player_games(self, player_id, team_id=None, include_future=False):
         """
-        Get all games a player participated in, optionally filtered by team.
+        Get all games a player participated in, optionally filtered by team and date.
         
         Args:
             player_id (str): The player ID
             team_id (str, optional): Team ID to filter by
+            include_future (bool): If True, include future games. If False, only past/current games.
             
         Returns:
             pd.DataFrame: DataFrame containing game data
@@ -290,6 +358,9 @@ class DataService:
         
         # Get games filtered by team if specified
         games = self.get_games(team_id)
+        
+        # Apply date filtering to only show completed games by default
+        games = self._filter_games_by_date(games, include_future=include_future)
         
         # Check if player is a goalie
         player = self.get_player_by_id(player_id)
@@ -301,9 +372,9 @@ class DataService:
         
         print(f"Player {player_id} has {len(player_game_ids)} games in roster (team: {team_id})")
         
-        # Filter games by these IDs (games are already team-filtered)
+        # Filter games by these IDs (games are already team-filtered and date-filtered)
         player_games = games[games['ID'].isin(player_game_ids)]
-        print(f"Found {len(player_games)} game records for player {player_id} (team: {team_id})")
+        print(f"Found {len(player_games)} game records for player {player_id} (team: {team_id}, include_future: {include_future})")
         
         return player_games
     
@@ -671,31 +742,32 @@ class DataService:
         # Ensure Result column exists
         games = self._ensure_result_column(games)
         
-        # Calculate wins, losses, and ties with error handling
+        # Filter games to only include completed games (past dates)
+        completed_games = self._filter_games_by_date(games, include_future=False)
+        print(f"Team stats calculation: Using {len(completed_games)} completed games out of {len(games)} total games")
+        
+        # Calculate wins, losses, and ties with error handling - only from completed games
         try:
-            wins = len(games[games['Result'] == 'W'])
-            losses = len(games[games['Result'] == 'L'])
-            ties = len(games[games['Result'] == 'T'])
+            wins = len(completed_games[completed_games['Result'] == 'W'])
+            losses = len(completed_games[completed_games['Result'] == 'L'])
+            ties = len(completed_games[completed_games['Result'] == 'T'])
         except KeyError as e:
             print(f"Error calculating team stats: {e}")
             wins = 0
             losses = 0
             ties = 0
         
-        # Calculate points (2 for win, 1 for tie)
-        points = wins * 2 + ties
-        
-        # Calculate goals for and against with error handling
+        # Calculate goals for and against with error handling - only from completed games
         try:
-            goals_for = games['GoalsFor'].sum()
-            goals_against = games['GoalsAgainst'].sum()
+            goals_for = completed_games['GoalsFor'].sum()
+            goals_against = completed_games['GoalsAgainst'].sum()
         except KeyError as e:
             print(f"Error calculating goals: {e}")
             goals_for = 0
             goals_against = 0
         
-        # Calculate win percentage
-        games_played = len(games)
+        # Calculate win percentage - only from completed games
+        games_played = len(completed_games)
         win_percentage = wins / games_played if games_played > 0 else 0
         
         return {
@@ -703,7 +775,6 @@ class DataService:
             'wins': wins,
             'losses': losses,
             'ties': ties,
-            'points': points,
             'goals_for': goals_for,
             'goals_against': goals_against,
             'win_percentage': win_percentage
