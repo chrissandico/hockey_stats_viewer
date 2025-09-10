@@ -30,7 +30,10 @@ from layouts.navigation import create_navigation, register_navigation_callbacks
 # Initialize the Dash app with Bootstrap theme
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    ],
     suppress_callback_exceptions=True,
     meta_tags=[
         {"name": "viewport", "content": "width=device-width, initial-scale=1.0"}
@@ -149,19 +152,53 @@ def display_page(pathname):
 # Create login layout
 def create_login_layout():
     return html.Div([
-        html.H1("Hockey Stats App - Login", className="text-center mt-4"),
+        # Hockey-themed header
         html.Div([
-            dbc.Card(
-                dbc.CardBody([
-                    html.H4("Team Login", className="card-title text-center"),
-                    dbc.Input(id="password-input", type="password", placeholder="Enter team password"),
-                    html.Div(id="login-error", className="text-danger mt-2"),
-                    dbc.Button("Login", id="login-button", color="primary", className="mt-3 w-100")
+            html.H1([
+                html.I(className="fas fa-hockey-puck me-2", style={"color": "#00205b"}),
+                "Welcome to the Rink",
+                html.I(className="fas fa-hockey-puck ms-2", style={"color": "#00205b"})
+            ], className="text-center mt-4 hockey-header")
+        ]),
+        
+        # Login card with hockey theme
+        html.Div([
+            dbc.Card([
+                dbc.CardHeader([
+                    html.H4([
+                        html.I(className="fas fa-users me-2"),
+                        "Team Access"
+                    ], className="card-title text-center mb-0")
                 ]),
-                className="shadow-sm"
-            )
-        ], className="d-flex justify-content-center align-items-center", style={"height": "50vh"})
-    ])
+                dbc.CardBody([
+                    # Password input group with toggle
+                    dbc.InputGroup([
+                        dbc.InputGroupText(html.I(className="fas fa-key")),
+                        dbc.Input(
+                            id="password-input", 
+                            type="password", 
+                            placeholder="Enter team access code",
+                            className="hockey-input"
+                        ),
+                        dbc.Button(
+                            html.I(id="password-toggle-icon", className="fas fa-eye"),
+                            id="password-toggle",
+                            color="outline-secondary",
+                            className="password-toggle-btn"
+                        )
+                    ], className="mb-3"),
+                    
+                    html.Div(id="login-error", className="text-danger mb-2"),
+                    
+                    dbc.Button([
+                        html.I(className="fas fa-sign-in-alt me-2"),
+                        "Enter the Rink"
+                    ], id="login-button", color="primary", className="w-100 hockey-login-btn")
+                ])
+            ], className="shadow hockey-card")
+        ], className="d-flex justify-content-center align-items-center login-container", 
+           style={"minHeight": "60vh"})
+    ], className="hockey-login-page")
 
 # Define login callback
 @app.callback(
@@ -199,6 +236,25 @@ def login(n_clicks, password):
         import traceback
         traceback.print_exc()
         return dash.no_update, f"Login error: {str(e)}"
+
+# Define password toggle callback
+@app.callback(
+    [Output('password-input', 'type'),
+     Output('password-toggle-icon', 'className')],
+    Input('password-toggle', 'n_clicks'),
+    prevent_initial_call=True
+)
+def toggle_password_visibility(n_clicks):
+    if n_clicks is None:
+        return dash.no_update, dash.no_update
+    
+    # Toggle between password and text type
+    if n_clicks % 2 == 1:
+        # Show password
+        return 'text', 'fas fa-eye-slash'
+    else:
+        # Hide password
+        return 'password', 'fas fa-eye'
 
 # Define logout callback
 @app.callback(
