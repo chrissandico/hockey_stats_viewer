@@ -49,11 +49,28 @@ def create_player_layout(data_service, team_context=None):
             ])
         ], className="mb-4 shadow-sm"),
         
-        # Player info and season stats
-        html.Div(id='player-info-container', className="mb-4"),
+        # Progress indicator for data loading
+        html.Div(id='player-progress-container', style={'display': 'none'}),
         
-        # Game log
-        html.Div(id='player-game-log-container')
+        # Player info and season stats with loading
+        dcc.Loading(
+            id="player-info-loading",
+            type="default",
+            color="#00205b",
+            children=[
+                html.Div(id='player-info-container', className="mb-4")
+            ]
+        ),
+        
+        # Game log with loading
+        dcc.Loading(
+            id="player-game-log-loading",
+            type="default",
+            color="#00205b",
+            children=[
+                html.Div(id='player-game-log-container')
+            ]
+        )
     ])
 
 # Callback to update player info and stats

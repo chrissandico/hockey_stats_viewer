@@ -120,7 +120,15 @@ def validate_team_session():
 # Define the app layout
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
-    html.Div(id='page-content')
+    dcc.Loading(
+        id="main-loading",
+        type="default",
+        color="#00205b",
+        children=[
+            html.Div(id='page-content')
+        ],
+        style={"minHeight": "200px"}
+    )
 ])
 
 # Define the main callback for navigation

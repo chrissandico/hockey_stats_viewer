@@ -63,10 +63,17 @@ def create_game_layout(data_service, team_context=None):
             ])
         ], className="mb-4 shadow-sm"),
         
-        # Game summary
-        html.Div(id='game-summary-container', className="mb-4"),
+        # Game summary with loading
+        dcc.Loading(
+            id="game-summary-loading",
+            type="default",
+            color="#00205b",
+            children=[
+                html.Div(id='game-summary-container', className="mb-4")
+            ]
+        ),
         
-        # Position filter for player stats
+        # Position filter for player stats with loading
         dbc.Card([
             dbc.CardHeader(html.H4("Player Performance", className="card-title")),
             dbc.CardBody([
@@ -77,7 +84,14 @@ def create_game_layout(data_service, team_context=None):
                     dbc.Button("Defense", id="btn-defense", color="primary", outline=True, className="me-1"),
                     dbc.Button("Goalies", id="btn-goalies", color="primary", outline=True)
                 ], className="mb-3"),
-                html.Div(id='game-player-stats-container')
+                dcc.Loading(
+                    id="game-player-stats-loading",
+                    type="default",
+                    color="#00205b",
+                    children=[
+                        html.Div(id='game-player-stats-container')
+                    ]
+                )
             ])
         ], className="mb-4 shadow-sm")
     ])
