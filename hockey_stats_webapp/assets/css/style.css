@@ -633,6 +633,20 @@ footer {
     animation: spin 1s linear infinite;
 }
 
+/* Disable loading animations for password toggle button */
+.password-toggle-btn.loading {
+    color: inherit !important;
+    position: static;
+}
+
+.password-toggle-btn.loading::after {
+    display: none !important;
+}
+
+.password-toggle-btn {
+    pointer-events: auto !important;
+}
+
 /* Mobile Loading Optimizations */
 @media (max-width: 768px) {
     ._dash-loading::after {
