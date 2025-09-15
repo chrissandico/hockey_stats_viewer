@@ -82,6 +82,60 @@ class DataService:
             print(f"ERROR: Failed to get team name for TeamID '{team_id}': {str(e)}")
             return None
     
+    def _get_team_identifier_for_events(self, team_id):
+        """
+        Get the correct team identifier to use when filtering events.
+        
+        Args:
+            team_id (str): Team ID from games/teams data
+            
+        Returns:
+            str: Team identifier used in events data
+        """
+        if team_id is None:
+            return None
+            
+        # Get all unique teams from events to understand the mapping
+        events = self.sheets_service.get_events()
+        unique_event_teams = events['Team'].unique() if not events.empty and 'Team' in events.columns else []
+        
+        print(f"Available teams in events: {unique_event_teams}")
+        print(f"Looking for team_id: {team_id}")
+        
+        # Try direct match first
+        if team_id in unique_event_teams:
+            print(f"Direct match found: {team_id}")
+            return team_id
+        
+        # Try to find a mapping based on team names
+        try:
+            teams = self.sheets_service.get_teams()
+            team_row = teams[teams['TeamID'] == team_id]
+            
+            if not team_row.empty:
+                team_name = team_row.iloc[0]['TeamName']
+                
+                # Check if team name appears in events
+                for event_team in unique_event_teams:
+                    if team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower():
+                        print(f"Found mapping: {team_id} -> {event_team} (via team name: {team_name})")
+                        return event_team
+                
+                # Special handling for common patterns
+                if 'your_team' == team_id and len(unique_event_teams) > 0:
+                    # Find the team that's not 'opponent'
+                    non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
+                    if non_opponent_teams:
+                        mapped_team = non_opponent_teams[0]
+                        print(f"Mapping 'your_team' to first non-opponent team: {mapped_team}")
+                        return mapped_team
+        except Exception as e:
+            print(f"Error in team mapping: {e}")
+        
+        # Fallback - return the team_id as-is
+        print(f"No mapping found, using team_id as-is: {team_id}")
+        return team_id
+    
     def _filter_games_by_date(self, games, include_future=False):
         """
         Filter games to only include those on or before the current date.
@@ -175,6 +229,17 @@ class DataService:
         Returns:
             pd.DataFrame: DataFrame containing game data with calculated columns
         """
+        # Create a cache key based on team_id
+        cache_key = f"games_{team_id}" if team_id else "games_all"
+        
+        # Check if we have cached results
+        if not hasattr(self, '_games_calculated_cache'):
+            self._games_calculated_cache = {}
+        
+        if cache_key in self._games_calculated_cache:
+            print(f"Using cached games data for {cache_key}")
+            return self._games_calculated_cache[cache_key].copy()
+        
         games = self.sheets_service.get_games()
         events = self.sheets_service.get_events()
         
@@ -185,18 +250,18 @@ class DataService:
         # Print columns for debugging
         print("Games columns:", games.columns.tolist())
         
-        # Get team identifier for event filtering
-        # Note: Events data uses team IDs in the Team column, not team names
+        # Get team identifier for event filtering using the new mapping method
         if team_id is not None:
-            team_identifier = team_id  # Use team_id directly for event filtering
-            print(f"Using team identifier: '{team_identifier}' for team ID: '{team_id}'")
+            team_identifier = self._get_team_identifier_for_events(team_id)
+            print(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
         else:
             # For backward compatibility, try to get the first team or use fallback
             try:
                 teams = self.sheets_service.get_teams()
                 if not teams.empty:
-                    team_identifier = teams.iloc[0]['TeamID']  # Use TeamID instead of TeamName
-                    print(f"Using first team identifier: '{team_identifier}'")
+                    first_team_id = teams.iloc[0]['TeamID']
+                    team_identifier = self._get_team_identifier_for_events(first_team_id)
+                    print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                 else:
                     team_identifier = 'your_team'
                     print(f"Using fallback team identifier: '{team_identifier}'")
@@ -212,7 +277,8 @@ class DataService:
             games['GoalsFor'] = 0
             games['GoalsAgainst'] = 0
             
-            # Calculate goals for each game
+            # Calculate goals for each game - but only do this expensive operation once
+            print(f"Calculating goals for {len(games)} games (team: {team_identifier})")
             for idx, game in games.iterrows():
                 game_events = events[events['GameID'] == game['ID']]
                 
@@ -222,16 +288,19 @@ class DataService:
                 goals_against = len(game_events[(game_events['IsGoal'] == True) & 
                                               (game_events['Team'] != team_identifier)])
                 
-                print(f"Using IsGoal column for game {game['ID']}: {goals_for} goals for, {goals_against} goals against (team: {team_identifier})")
-                
                 games.at[idx, 'GoalsFor'] = goals_for
                 games.at[idx, 'GoalsAgainst'] = goals_against
             
+            print(f"Completed goal calculations for {len(games)} games")
             if not games.empty:
                 print("Sample game data:", games.iloc[0].to_dict())
         
         # Always ensure Result column exists (after GoalsFor/GoalsAgainst are calculated)
         games = self._ensure_result_column(games)
+        
+        # Cache the results
+        self._games_calculated_cache[cache_key] = games.copy()
+        print(f"Cached games data for {cache_key}")
         
         return games
     
@@ -510,9 +579,10 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Always use 'your_team' as the team name
-        team_name = 'your_team'
-        print(f"Using team name: {team_name}")
+        # Get the proper team identifier from the game's TeamID
+        game_team_id = game.get('TeamID', 'your_team')
+        team_identifier = self._get_team_identifier_for_events(game_team_id)
+        print(f"Using team identifier: '{team_identifier}' for game team ID: '{game_team_id}'")
         
         # Filter events for this player and game
         game_events = events[events['GameID'] == game_id]
@@ -548,10 +618,10 @@ class DataService:
         
         plus_events = game_events[(game_events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
                                  (game_events['IsGoal'] == True) & 
-                                 (game_events['Team'] == team_name)]
+                                 (game_events['Team'] == team_identifier)]
         minus_events = game_events[(game_events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
                                   (game_events['IsGoal'] == True) & 
-                                  (game_events['Team'] != team_name)]
+                                  (game_events['Team'] != team_identifier)]
         print(f"Using IsGoal column for plus/minus calculation for player {player_id} in game {game_id}: +{len(plus_events)}, -{len(minus_events)}")
         
         plus_minus = len(plus_events) - len(minus_events)
@@ -1090,31 +1160,32 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Always use 'your_team' as the team name
-        team_name = 'your_team'
-        print(f"Using team name: {team_name}")
+        # Get the proper team identifier from the game's TeamID
+        game_team_id = game.get('TeamID', 'your_team')
+        team_identifier = self._get_team_identifier_for_events(game_team_id)
+        print(f"Using team identifier: '{team_identifier}' for game team ID: '{game_team_id}'")
         
         # Calculate shots with proper team identification
         your_team_shots = len(game_events[(game_events['EventType'].isin(['Goal', 'Shot'])) & 
-                                         (game_events['Team'] == team_name)])
+                                         (game_events['Team'] == team_identifier)])
         opponent_shots = len(game_events[(game_events['EventType'].isin(['Goal', 'Shot'])) & 
-                                        (game_events['Team'] != team_name)])
+                                        (game_events['Team'] != team_identifier)])
         
         # Calculate penalty minutes with proper team identification
         your_team_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
-                                         (game_events['Team'] == team_name)]
+                                         (game_events['Team'] == team_identifier)]
         opponent_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
-                                        (game_events['Team'] != team_name)]
+                                        (game_events['Team'] != team_identifier)]
         
         your_team_pim = your_team_penalties['PenaltyDuration'].sum() if not your_team_penalties.empty else 0
         opponent_pim = opponent_penalties['PenaltyDuration'].sum() if not opponent_penalties.empty else 0
         
         # Calculate power play goals - always use IsGoal with proper team identification
         your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                           (game_events['Team'] == team_name) & 
+                                           (game_events['Team'] == team_identifier) & 
                                            (game_events.get('IsPowerPlay', False) == True)])
         opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                          (game_events['Team'] != team_name) & 
+                                          (game_events['Team'] != team_identifier) & 
                                           (game_events.get('IsPowerPlay', False) == True)])
         print(f"Using IsGoal column for power play goals in game {game_id}")
         
@@ -1125,10 +1196,10 @@ class DataService:
                 # Estimate power play goals based on timing of goals and penalties
                 # This is a simplified approach - in a real app, you'd need more detailed logic
                 your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                                   (game_events['Team'] == team_name) & 
+                                                   (game_events['Team'] == team_identifier) & 
                                                    (~game_events.get('IsShortHanded', False))])
                 opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                                  (game_events['Team'] != team_name) & 
+                                                  (game_events['Team'] != team_identifier) & 
                                                   (~game_events.get('IsShortHanded', False))])
         
         # Calculate power play opportunities
