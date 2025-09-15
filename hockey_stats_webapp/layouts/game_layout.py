@@ -97,14 +97,17 @@ def create_game_layout(data_service, team_context=None):
     ])
 
 # Callbacks for game statistics
-def register_game_callbacks(app, data_service):
+def register_game_callbacks(app, data_service, team_context=None):
     """
     Register callbacks for the game statistics layout.
     
     Args:
         app (dash.Dash): The Dash application
         data_service (DataService): The data service for retrieving game data
+        team_context (dict, optional): Team context containing team_id and team_name
     """
+    # Extract team_id from context for use in callbacks
+    team_id = team_context['team_id'] if team_context else None
     # Callback for game summary
     @app.callback(
         dash.dependencies.Output('game-summary-container', 'children'),
@@ -248,8 +251,8 @@ def register_game_callbacks(app, data_service):
         elif goalies_active:
             position = 'G'
         
-        # Get player stats for the game
-        player_stats = data_service.get_game_player_stats(game_id, position)
+        # Get player stats for the game - pass team_id to filter only logged-in team players
+        player_stats = data_service.get_game_player_stats(game_id, position, team_id)
         
         if not player_stats:
             return html.Div(dbc.Alert("No player statistics found", color="warning"))
