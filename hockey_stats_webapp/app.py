@@ -172,7 +172,6 @@ def create_login_layout():
                 dbc.CardBody([
                     # Password input group with toggle
                     dbc.InputGroup([
-                        dbc.InputGroupText(html.I(className="fas fa-key")),
                         dbc.Input(
                             id="password-input", 
                             type="password", 
@@ -193,10 +192,21 @@ def create_login_layout():
                         "Login"
                     ], id="login-button", color="primary", className="w-100")
                 ])
-            ], className="shadow")
+            ], className="shadow", style={
+                "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                "backdropFilter": "blur(10px)"
+            })
         ], className="d-flex justify-content-center align-items-center login-container", 
-           style={"minHeight": "60vh"})
-    ])
+           style={"minHeight": "100vh"})
+    ], style={
+        "backgroundImage": "url('/assets/theshift.jpg')",
+        "backgroundSize": "cover",
+        "backgroundPosition": "center",
+        "backgroundRepeat": "no-repeat",
+        "backgroundAttachment": "fixed",
+        "minHeight": "100vh",
+        "width": "100%"
+    })
 
 # Define login callback
 @app.callback(
