@@ -242,6 +242,17 @@ def register_game_callbacks(app, data_service, team_context=None):
         if game_id is None:
             return html.Div()
         
+        # Get team context from session (import here to avoid circular imports)
+        from flask import session
+        
+        # Get team_id from session for proper filtering
+        session_team_id = None
+        if session.get('authenticated', False):
+            session_team_id = session.get('team_id')
+        
+        # Use session team_id if available, otherwise fall back to passed team_id
+        effective_team_id = session_team_id if session_team_id else team_id
+        
         # Determine position filter
         position = None
         if forwards_active:
@@ -251,8 +262,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         elif goalies_active:
             position = 'G'
         
-        # Get player stats for the game - pass team_id to filter only logged-in team players
-        player_stats = data_service.get_game_player_stats(game_id, position, team_id)
+        # Get player stats for the game - pass effective_team_id to filter only logged-in team players
+        player_stats = data_service.get_game_player_stats(game_id, position, effective_team_id)
         
         if not player_stats:
             return html.Div(dbc.Alert("No player statistics found", color="warning"))

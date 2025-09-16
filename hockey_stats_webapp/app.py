@@ -285,9 +285,12 @@ def logout(n_clicks):
 register_navigation_callbacks(app)
 register_player_callbacks(app, data_service)
 
-# Register game callbacks with team context support
-# Note: We need to handle team context dynamically in the callbacks since it's session-based
-def register_game_callbacks_with_context():
+# Register game callbacks - use the fixed version from game_layout.py
+# Note: We pass None for team_context since it will be retrieved dynamically from session
+register_game_callbacks(app, data_service, team_context=None)
+
+# REMOVED: Duplicate callback registration that was overriding the fixed deduplication logic
+def register_game_callbacks_with_context_DISABLED():
     """Register game callbacks with dynamic team context support."""
     
     # Import here to avoid circular imports
@@ -506,9 +509,6 @@ def register_game_callbacks_with_context():
                     ]) for stats in player_stats
                 ])
             ], className="table table-striped table-hover")
-
-# Register the game callbacks with context support
-register_game_callbacks_with_context()
 
 # Run the app
 if __name__ == '__main__':

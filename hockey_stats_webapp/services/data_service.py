@@ -1123,6 +1123,14 @@ class DataService:
         game_players = pd.merge(game_players, players[['ID', 'Position']], 
                                left_on='PlayerID', right_on='ID')
         
+        # Remove duplicate players (same PlayerID for same game)
+        original_count = len(game_players)
+        game_players = game_players.drop_duplicates(subset=['PlayerID'], keep='first')
+        deduplicated_count = len(game_players)
+        
+        if original_count > deduplicated_count:
+            print(f"Deduplicated game roster: removed {original_count - deduplicated_count} duplicate entries for game {game_id}")
+        
         # Filter by position if specified
         if position:
             game_players = game_players[game_players['Position'] == position]
