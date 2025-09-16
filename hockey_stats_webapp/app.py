@@ -160,16 +160,7 @@ def display_page(pathname):
 # Create login layout
 def create_login_layout():
     return html.Div([
-        # Hockey-themed header
-        html.Div([
-            html.H1([
-                html.I(className="fas fa-hockey-puck me-2", style={"color": "#00205b"}),
-                "Welcome to the Rink",
-                html.I(className="fas fa-hockey-puck ms-2", style={"color": "#00205b"})
-            ], className="text-center mt-4 hockey-header")
-        ]),
-        
-        # Login card with hockey theme
+        # Login card
         html.Div([
             dbc.Card([
                 dbc.CardHeader([
@@ -185,8 +176,7 @@ def create_login_layout():
                         dbc.Input(
                             id="password-input", 
                             type="password", 
-                            placeholder="Enter team access code",
-                            className="hockey-input"
+                            placeholder="Enter team access code"
                         ),
                         dbc.Button(
                             html.I(id="password-toggle-icon", className="fas fa-eye"),
@@ -200,13 +190,13 @@ def create_login_layout():
                     
                     dbc.Button([
                         html.I(className="fas fa-sign-in-alt me-2"),
-                        "Enter the Rink"
-                    ], id="login-button", color="primary", className="w-100 hockey-login-btn")
+                        "Login"
+                    ], id="login-button", color="primary", className="w-100")
                 ])
-            ], className="shadow hockey-card")
+            ], className="shadow")
         ], className="d-flex justify-content-center align-items-center login-container", 
            style={"minHeight": "60vh"})
-    ], className="hockey-login-page")
+    ])
 
 # Define login callback
 @app.callback(
