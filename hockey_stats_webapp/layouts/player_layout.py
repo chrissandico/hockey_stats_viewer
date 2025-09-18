@@ -255,19 +255,11 @@ def register_player_callbacks(app, data_service):
                                     html.Span(f"{stats['goals_against']}")
                                 ], className="mb-1"),
                             ] if player['Position'] == 'G' else [
-                                # Skater additional stats
-                                html.Div([
-                                    html.Span("Shots: ", className="fw-bold"),
-                                    html.Span(f"{stats['shots']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Penalty Minutes: ", className="fw-bold"),
-                                    html.Span(f"{stats['penalty_minutes']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Goals per Game: ", className="fw-bold"),
-                                    html.Span(f"{stats['goals_per_game']:.2f}")
-                                ], className="mb-1"),
+            # Skater additional stats
+            html.Div([
+                html.Span("Penalty Minutes: ", className="fw-bold"),
+                html.Span(f"{stats['penalty_minutes']}")
+            ], className="mb-1"),
                             ])
                         ])
                     ], md=4),

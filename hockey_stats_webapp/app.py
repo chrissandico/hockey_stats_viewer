@@ -225,6 +225,10 @@ def login(n_clicks, password):
         return dash.no_update, dash.no_update
     
     try:
+        # Force refresh teams data to get the latest passwords from Google Sheets
+        print("Forcing refresh of teams data to get latest passwords...")
+        sheets_service.get_teams(force_refresh=True)
+        
         print(f"Attempting to verify password: {password}")
         team_info = auth_service.verify_password(password)
         print(f"Auth service returned: {team_info}")
