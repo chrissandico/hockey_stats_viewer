@@ -730,29 +730,32 @@ class DataService:
             'goals_per_game': goals_per_game
         }
     
-    def calculate_player_game_stats(self, player_id, game_id):
+    def calculate_player_game_stats(self, player_id, game_id, team_id=None):
         """
         Calculate statistics for a player in a specific game.
         
         Args:
             player_id (str): The player ID
             game_id (str): The game ID
+            team_id (str, optional): Team ID to use for proper team context
             
         Returns:
             dict: Dictionary containing player game statistics
         """
         player = self.get_player_by_id(player_id)
         
-        # Get the player's team_id to ensure consistent team filtering
-        player_team_id = None
-        if player is not None:
-            # Try to get team_id from player data or use a fallback
-            try:
-                teams = self.sheets_service.get_teams()
-                if not teams.empty:
-                    player_team_id = teams.iloc[0]['TeamID']  # Use first team as fallback
-            except:
-                player_team_id = 'your_team'
+        # Use the provided team_id, or get the player's team_id from the player data
+        player_team_id = team_id
+        if player_team_id is None and player is not None:
+            # Get team_id from player data
+            player_team_id = player.get('TeamID')
+            
+        # If still no team_id, try to get it from the game
+        if player_team_id is None:
+            game_temp = self.sheets_service.get_games()
+            game_row = game_temp[game_temp['ID'] == game_id]
+            if not game_row.empty:
+                player_team_id = game_row.iloc[0].get('TeamID')
         
         game = self.get_game_by_id(game_id, player_team_id)
         
@@ -935,7 +938,7 @@ class DataService:
             if player is not None and player['Position'] == 'G':
                 game_stats = self.calculate_goalie_game_stats(player_id, game['ID'], team_id)
             else:
-                game_stats = self.calculate_player_game_stats(player_id, game['ID'])
+                game_stats = self.calculate_player_game_stats(player_id, game['ID'], team_id)
                 
             if game_stats:
                 game_log.append(game_stats)
@@ -1286,7 +1289,7 @@ class DataService:
         # Calculate stats for each player
         player_stats = []
         for _, player_row in game_players.iterrows():
-            stats = self.calculate_player_game_stats(player_row['PlayerID'], game_id)
+            stats = self.calculate_player_game_stats(player_row['PlayerID'], game_id, team_id)
             if stats:
                 player_stats.append(stats)
         

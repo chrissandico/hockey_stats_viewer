@@ -98,12 +98,18 @@ def register_player_callbacks(app, data_service):
             print("No jersey number selected, returning empty divs")
             return html.Div(), html.Div()
         
-        # Get player by jersey number
-        print(f"Getting player with jersey number: {jersey_number}")
-        player = data_service.get_player_by_jersey(jersey_number)
-        if player is None:
-            print(f"ERROR: Player with jersey number {jersey_number} not found!")
+        # Get player by jersey number - filter by team to ensure we get the right player
+        print(f"Getting player with jersey number: {jersey_number} for team: {team_id}")
+        
+        # Get team-filtered players first
+        team_players = data_service.get_players(team_id)
+        matching_players = team_players[team_players['JerseyNumber'] == jersey_number]
+        
+        if matching_players.empty:
+            print(f"ERROR: Player with jersey number {jersey_number} not found for team {team_id}!")
             return html.Div(dbc.Alert("Player not found", color="danger")), html.Div()
+        
+        player = matching_players.iloc[0]
         
         print(f"Found player: ID={player['ID']}, Position={player['Position']}")
         
