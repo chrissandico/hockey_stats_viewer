@@ -168,7 +168,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                 html.Span(f"{game['GoalsFor']} - {game['GoalsAgainst']}")
                             ], className="mb-1"),
                         ])
-                    ], md=4),
+                    ], md=6),
                     
                     # Shots and penalties
                     dbc.Col([
@@ -191,22 +191,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                 html.Span(f"{summary['opponent_pim']}")
                             ], className="mb-1"),
                         ])
-                    ], md=4),
-                    
-                    # Power play
-                    dbc.Col([
-                        html.H5("Power Play"),
-                        html.Div([
-                            html.Div([
-                                html.Span("Your Team PP: ", className="fw-bold"),
-                                html.Span(f"{summary['your_team_pp_goals']} / {summary['your_team_pp_opps']} ({summary['your_team_pp_pct']:.1%})")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Opponent PP: ", className="fw-bold"),
-                                html.Span(f"{summary['opponent_pp_goals']} / {summary['opponent_pp_opps']} ({summary['opponent_pp_pct']:.1%})")
-                            ], className="mb-1"),
-                        ])
-                    ], md=4),
+                    ], md=6),
                 ])
             ])
         ], className="shadow-sm")
