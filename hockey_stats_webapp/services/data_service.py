@@ -397,17 +397,18 @@ class DataService:
         players = self.get_players()
         return players[players['ID'] == player_id].iloc[0] if not players[players['ID'] == player_id].empty else None
     
-    def get_game_by_id(self, game_id):
+    def get_game_by_id(self, game_id, team_id=None):
         """
         Get a game by ID.
         
         Args:
             game_id (str): The game ID
+            team_id (str, optional): Team ID to filter by
             
         Returns:
             pd.Series: The game data
         """
-        games = self.get_games()
+        games = self.get_games(team_id)
         return games[games['ID'] == game_id].iloc[0] if not games[games['ID'] == game_id].empty else None
     
     def get_player_games(self, player_id, team_id=None, include_future=False):
@@ -447,6 +448,173 @@ class DataService:
         
         return player_games
     
+    def calculate_plus_minus_for_events(self, player_id, events, team_identifier):
+        """
+        Calculate plus/minus for a player based on events using the proper decision tree logic.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            team_identifier (str): Team identifier for filtering events
+            
+        Returns:
+            int: Plus/minus value
+        """
+        def is_player_on_ice(players_str, pid):
+            """Helper function to check if player is on ice"""
+            if not players_str or pd.isna(players_str):
+                return False
+            # Try to parse as a list if it's a string representation of a list
+            if isinstance(players_str, str):
+                try:
+                    # Remove brackets and split by commas
+                    players_list = players_str.strip('[]').replace(' ', '').split(',')
+                    return pid in players_list
+                except:
+                    # Fallback to simple string contains check
+                    return pid in players_str
+            return False
+        
+        plus_minus = 0
+        
+        # Filter to only goal events where the player was on ice
+        goal_events = events[
+            (events['IsGoal'] == True) & 
+            (events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id)))
+        ]
+        
+        print(f"Processing {len(goal_events)} goal events for player {player_id}")
+        
+        for _, goal_event in goal_events.iterrows():
+            # Check for penalty shot goals first (no plus/minus awarded)
+            if goal_event.get('IsPenaltyShot', False):
+                print(f"Penalty shot goal - no plus/minus awarded")
+                continue
+            
+            # Get skater counts for decision tree
+            scoring_team = goal_event['Team']
+            
+            # Parse player counts from the event data
+            # This is a simplified approach - in a real implementation, you'd need actual skater counts
+            # For now, we'll use the GoalSituation field if available, otherwise infer from team
+            goal_situation = goal_event.get('GoalSituation', '')
+            
+            # Apply the decision tree logic
+            if 'Power Play' in goal_situation or goal_event.get('IsPowerPlay', False):
+                # Rule 1: Power Play Goal (No +/- Awarded)
+                print(f"Power play goal - no plus/minus awarded")
+                continue
+            elif 'Even Strength' in goal_situation or goal_situation == '':
+                # Rule 2: Even Strength Goal (+/- Awarded)
+                if scoring_team == team_identifier:
+                    plus_minus += 1
+                    print(f"Even strength goal FOR team - player gets +1")
+                else:
+                    plus_minus -= 1
+                    print(f"Even strength goal AGAINST team - player gets -1")
+            elif 'Short Handed' in goal_situation or goal_event.get('IsShortHanded', False):
+                # Rule 3: Short-Handed Goal (+/- Awarded)
+                if scoring_team == team_identifier:
+                    plus_minus += 1
+                    print(f"Short-handed goal FOR team - player gets +1")
+                else:
+                    plus_minus -= 1
+                    print(f"Short-handed goal AGAINST team - player gets -1")
+            else:
+                # Default case - treat as even strength if situation is unclear
+                if scoring_team == team_identifier:
+                    plus_minus += 1
+                    print(f"Unknown situation goal FOR team - treating as even strength, player gets +1")
+                else:
+                    plus_minus -= 1
+                    print(f"Unknown situation goal AGAINST team - treating as even strength, player gets -1")
+        
+        print(f"Final plus/minus for player {player_id}: {plus_minus}")
+        return plus_minus
+
+    def calculate_goals_for_events(self, player_id, events):
+        """
+        Calculate goals for a player based on events.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            
+        Returns:
+            int: Number of goals scored
+        """
+        player_events = events[events['PrimaryPlayerID'] == player_id]
+        goals = len(player_events[(player_events['IsGoal'] == True)])
+        print(f"Calculated {goals} goals for player {player_id}")
+        return goals
+
+    def calculate_assists_for_events(self, player_id, events):
+        """
+        Calculate assists for a player based on events.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            
+        Returns:
+            int: Number of assists
+        """
+        assist1_events = events[events['AssistPlayer1ID'] == player_id]
+        assist2_events = events[events['AssistPlayer2ID'] == player_id]
+        assists = len(assist1_events) + len(assist2_events)
+        print(f"Calculated {assists} assists for player {player_id} ({len(assist1_events)} primary + {len(assist2_events)} secondary)")
+        return assists
+
+    def calculate_points_for_events(self, player_id, events):
+        """
+        Calculate points (goals + assists) for a player based on events.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            
+        Returns:
+            int: Number of points (goals + assists)
+        """
+        goals = self.calculate_goals_for_events(player_id, events)
+        assists = self.calculate_assists_for_events(player_id, events)
+        points = goals + assists
+        print(f"Calculated {points} points for player {player_id} ({goals}G + {assists}A)")
+        return points
+
+    def calculate_shots_for_events(self, player_id, events):
+        """
+        Calculate shots for a player based on events.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            
+        Returns:
+            int: Number of shots
+        """
+        player_events = events[events['PrimaryPlayerID'] == player_id]
+        shots = len(player_events[player_events['EventType'] == 'Shot'])
+        print(f"Calculated {shots} shots for player {player_id}")
+        return shots
+
+    def calculate_penalty_minutes_for_events(self, player_id, events):
+        """
+        Calculate penalty minutes for a player based on events.
+        
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            
+        Returns:
+            int: Number of penalty minutes
+        """
+        player_events = events[events['PrimaryPlayerID'] == player_id]
+        penalty_events = player_events[player_events['EventType'] == 'Penalty']
+        penalty_minutes = penalty_events['PenaltyDuration'].sum() if not penalty_events.empty else 0
+        print(f"Calculated {penalty_minutes} penalty minutes for player {player_id}")
+        return penalty_minutes
+
     def calculate_player_stats(self, player_id, team_id=None):
         """
         Calculate statistics for a player.
@@ -469,74 +637,32 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Get team name for event filtering
+        # Get team identifier for event filtering (same as game stats method)
         if team_id is not None:
-            team_name = self._get_team_name_from_id(team_id)
-            if team_name is None:
-                print(f"ERROR: Cannot calculate player stats without valid team name for team_id: {team_id}")
-                return None
-            print(f"Using team name: '{team_name}' for team ID: '{team_id}'")
+            team_identifier = self._get_team_identifier_for_events(team_id)
+            print(f"Using team identifier: '{team_identifier}' for team ID: '{team_id}'")
         else:
             # For backward compatibility, try to get the first team or use fallback
             try:
                 teams = self.sheets_service.get_teams()
                 if not teams.empty:
-                    team_name = teams.iloc[0]['TeamName']
-                    print(f"Using first team name: '{team_name}'")
+                    first_team_id = teams.iloc[0]['TeamID']
+                    team_identifier = self._get_team_identifier_for_events(first_team_id)
+                    print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                 else:
-                    team_name = 'your_team'
-                    print(f"Using fallback team name: '{team_name}'")
+                    team_identifier = 'your_team'
+                    print(f"Using fallback team identifier: '{team_identifier}'")
             except:
-                team_name = 'your_team'
-                print(f"Using fallback team name: '{team_name}'")
+                team_identifier = 'your_team'
+                print(f"Using fallback team identifier: '{team_identifier}'")
         
-        # Filter events for this player
-        player_events = events[events['PrimaryPlayerID'] == player_id]
-        
-        # Calculate goals - always use IsGoal
-        goals = len(player_events[(player_events['IsGoal'] == True)])
-        print(f"Using IsGoal column for player {player_id}: {goals} goals")
-        
-        # Calculate assists
-        assist1_events = events[events['AssistPlayer1ID'] == player_id]
-        assist2_events = events[events['AssistPlayer2ID'] == player_id]
-        assists = len(assist1_events) + len(assist2_events)
-        
-        # Calculate points
-        points = goals + assists
-        
-        # Calculate plus/minus - always use IsGoal
-        # Parse YourTeamPlayersOnIce as a list and check if player_id is in it
-        def is_player_on_ice(players_str, pid):
-            if not players_str or pd.isna(players_str):
-                return False
-            # Try to parse as a list if it's a string representation of a list
-            if isinstance(players_str, str):
-                try:
-                    # Remove brackets and split by commas
-                    players_list = players_str.strip('[]').replace(' ', '').split(',')
-                    return pid in players_list
-                except:
-                    # Fallback to simple string contains check
-                    return pid in players_str
-            return False
-        
-        plus_events = events[(events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
-                            (events['IsGoal'] == True) & 
-                            (events['Team'] == team_name)]
-        minus_events = events[(events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
-                             (events['IsGoal'] == True) & 
-                             (events['Team'] != team_name)]
-        print(f"Using IsGoal column for plus/minus calculation for player {player_id}: +{len(plus_events)}, -{len(minus_events)}")
-        
-        plus_minus = len(plus_events) - len(minus_events)
-        
-        # Calculate shots
-        shots = len(player_events[player_events['EventType'] == 'Shot'])
-        
-        # Calculate penalty minutes
-        penalty_events = player_events[player_events['EventType'] == 'Penalty']
-        penalty_minutes = penalty_events['PenaltyDuration'].sum() if not penalty_events.empty else 0
+        # Calculate all stats using centralized functions
+        goals = self.calculate_goals_for_events(player_id, events)
+        assists = self.calculate_assists_for_events(player_id, events)
+        points = self.calculate_points_for_events(player_id, events)
+        plus_minus = self.calculate_plus_minus_for_events(player_id, events, team_identifier)
+        shots = self.calculate_shots_for_events(player_id, events)
+        penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, events)
         
         # Calculate games played
         games_played = len(games)
@@ -568,7 +694,19 @@ class DataService:
             dict: Dictionary containing player game statistics
         """
         player = self.get_player_by_id(player_id)
-        game = self.get_game_by_id(game_id)
+        
+        # Get the player's team_id to ensure consistent team filtering
+        player_team_id = None
+        if player is not None:
+            # Try to get team_id from player data or use a fallback
+            try:
+                teams = self.sheets_service.get_teams()
+                if not teams.empty:
+                    player_team_id = teams.iloc[0]['TeamID']  # Use first team as fallback
+            except:
+                player_team_id = 'your_team'
+        
+        game = self.get_game_by_id(game_id, player_team_id)
         
         if player is None or game is None:
             return None
@@ -579,59 +717,21 @@ class DataService:
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
         
-        # Get the proper team identifier from the game's TeamID
+        # Get the proper team identifier from the game's TeamID using the same logic as season stats
         game_team_id = game.get('TeamID', 'your_team')
         team_identifier = self._get_team_identifier_for_events(game_team_id)
         print(f"Using team identifier: '{team_identifier}' for game team ID: '{game_team_id}'")
         
-        # Filter events for this player and game
+        # Filter events for this game
         game_events = events[events['GameID'] == game_id]
-        player_game_events = game_events[game_events['PrimaryPlayerID'] == player_id]
         
-        # Calculate goals - always use IsGoal
-        goals = len(player_game_events[(player_game_events['IsGoal'] == True)])
-        print(f"Using IsGoal column for player {player_id} in game {game_id}: {goals} goals")
-        
-        # Calculate assists
-        assist1_events = game_events[game_events['AssistPlayer1ID'] == player_id]
-        assist2_events = game_events[game_events['AssistPlayer2ID'] == player_id]
-        assists = len(assist1_events) + len(assist2_events)
-        
-        # Calculate points
-        points = goals + assists
-        
-        # Calculate plus/minus - always use IsGoal
-        # Parse YourTeamPlayersOnIce as a list and check if player_id is in it
-        def is_player_on_ice(players_str, pid):
-            if not players_str or pd.isna(players_str):
-                return False
-            # Try to parse as a list if it's a string representation of a list
-            if isinstance(players_str, str):
-                try:
-                    # Remove brackets and split by commas
-                    players_list = players_str.strip('[]').replace(' ', '').split(',')
-                    return pid in players_list
-                except:
-                    # Fallback to simple string contains check
-                    return pid in players_str
-            return False
-        
-        plus_events = game_events[(game_events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
-                                 (game_events['IsGoal'] == True) & 
-                                 (game_events['Team'] == team_identifier)]
-        minus_events = game_events[(game_events['YourTeamPlayersOnIce'].apply(lambda x: is_player_on_ice(x, player_id))) & 
-                                  (game_events['IsGoal'] == True) & 
-                                  (game_events['Team'] != team_identifier)]
-        print(f"Using IsGoal column for plus/minus calculation for player {player_id} in game {game_id}: +{len(plus_events)}, -{len(minus_events)}")
-        
-        plus_minus = len(plus_events) - len(minus_events)
-        
-        # Calculate shots
-        shots = len(player_game_events[player_game_events['EventType'] == 'Shot'])
-        
-        # Calculate penalty minutes
-        penalty_events = player_game_events[player_game_events['EventType'] == 'Penalty']
-        penalty_minutes = penalty_events['PenaltyDuration'].sum() if not penalty_events.empty else 0
+        # Calculate all stats using centralized functions
+        goals = self.calculate_goals_for_events(player_id, game_events)
+        assists = self.calculate_assists_for_events(player_id, game_events)
+        points = self.calculate_points_for_events(player_id, game_events)
+        plus_minus = self.calculate_plus_minus_for_events(player_id, game_events, team_identifier)
+        shots = self.calculate_shots_for_events(player_id, game_events)
+        penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, game_events)
         
         return {
             'player': player,

@@ -302,7 +302,6 @@ def register_player_callbacks(app, data_service):
                         'Assists': game_stats['assists'],
                         'Points': game_stats['points'],
                         '+/-': game_stats['plus_minus'],
-                        'Shots': game_stats['shots'],
                         'PIM': game_stats['penalty_minutes']
                     })
             
@@ -329,7 +328,6 @@ def register_player_callbacks(app, data_service):
                     {'name': 'Assists', 'id': 'Assists'},
                     {'name': 'Points', 'id': 'Points'},
                     {'name': '+/-', 'id': '+/-'},
-                    {'name': 'Shots', 'id': 'Shots'},
                     {'name': 'PIM', 'id': 'PIM'}
                 ]
                 

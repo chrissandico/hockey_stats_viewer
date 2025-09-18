@@ -347,7 +347,6 @@ def register_game_callbacks(app, data_service, team_context=None):
                         html.Th("A", className="text-center"),
                         html.Th("P", className="text-center"),
                         html.Th("+/-", className="text-center"),
-                        html.Th("Shots", className="text-center"),
                         html.Th("PIM", className="text-center")
                     ])
                 ),
@@ -359,7 +358,6 @@ def register_game_callbacks(app, data_service, team_context=None):
                         html.Td(f"{stats['assists']}", className="text-center"),
                         html.Td(f"{stats['points']}", className="text-center"),
                         html.Td(f"{stats['plus_minus']}", className="text-center"),
-                        html.Td(f"{stats['shots']}", className="text-center"),
                         html.Td(f"{stats['penalty_minutes']}", className="text-center")
                     ]) for stats in player_stats
                 ])
