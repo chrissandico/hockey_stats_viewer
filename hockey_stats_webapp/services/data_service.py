@@ -456,8 +456,16 @@ class DataService:
         Returns:
             pd.Series: The game data
         """
+        # Always use team-specific games when team_id is provided to ensure consistent data
         games = self.get_games(team_id)
-        return games[games['ID'] == game_id].iloc[0] if not games[games['ID'] == game_id].empty else None
+        matching_games = games[games['ID'] == game_id]
+        if not matching_games.empty:
+            game = matching_games.iloc[0]
+            print(f"get_game_by_id: Found game {game_id} with GoalsFor={game.get('GoalsFor', 'N/A')}, GoalsAgainst={game.get('GoalsAgainst', 'N/A')} (team_id={team_id})")
+            return game
+        else:
+            print(f"get_game_by_id: Game {game_id} not found (team_id={team_id})")
+            return None
     
     def get_player_games(self, player_id, team_id=None, include_future=False):
         """
