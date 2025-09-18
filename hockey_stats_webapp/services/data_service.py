@@ -1298,17 +1298,19 @@ class DataService:
         
         return player_stats
     
-    def get_game_summary(self, game_id):
+    def get_game_summary(self, game_id, team_id=None):
         """
         Get a summary of a game.
         
         Args:
             game_id (str): The game ID
+            team_id (str, optional): Team ID to ensure consistent data source
             
         Returns:
             dict: Dictionary containing game summary
         """
-        game = self.get_game_by_id(game_id)
+        # Use team_id to get the game from the same data source as other methods
+        game = self.get_game_by_id(game_id, team_id)
         if game is None:
             return None
         
@@ -1368,6 +1370,9 @@ class DataService:
         # Calculate power play percentage
         your_team_pp_pct = your_team_pp_goals / your_team_pp_opps if your_team_pp_opps > 0 else 0
         opponent_pp_pct = opponent_pp_goals / opponent_pp_opps if opponent_pp_opps > 0 else 0
+        
+        print(f"Game summary for {game_id}: Using consistent goals data from get_games method")
+        print(f"Goals For: {game.get('GoalsFor', 0)}, Goals Against: {game.get('GoalsAgainst', 0)}")
         
         return {
             'game': game,

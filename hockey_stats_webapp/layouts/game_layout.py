@@ -117,8 +117,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         if game_id is None:
             return html.Div()
         
-        # Get game summary
-        summary = data_service.get_game_summary(game_id)
+        # Get game summary - pass team_id for consistency
+        summary = data_service.get_game_summary(game_id, team_id)
         if summary is None:
             return html.Div(dbc.Alert("Game not found", color="danger"))
         
