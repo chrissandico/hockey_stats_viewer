@@ -82,9 +82,27 @@ class DataService:
             print(f"ERROR: Failed to get team name for TeamID '{team_id}': {str(e)}")
             return None
     
+    def _normalize_team_name(self, name):
+        """
+        Normalize a team name for comparison by removing spaces, special characters, and converting to lowercase.
+        
+        Args:
+            name (str): Team name to normalize
+            
+        Returns:
+            str: Normalized team name
+        """
+        if not name:
+            return ""
+        
+        # Remove spaces, convert to lowercase, remove common special characters
+        normalized = name.lower().replace(" ", "").replace("-", "").replace("_", "")
+        return normalized
+    
     def _get_team_identifier_for_events(self, team_id):
         """
         Get the correct team identifier to use when filtering events.
+        Enhanced version with better matching logic.
         
         Args:
             team_id (str): Team ID from games/teams data
@@ -99,26 +117,55 @@ class DataService:
         events = self.sheets_service.get_events()
         unique_event_teams = events['Team'].unique() if not events.empty and 'Team' in events.columns else []
         
+        print(f"=== TEAM IDENTIFIER MAPPING ===")
         print(f"Available teams in events: {unique_event_teams}")
-        print(f"Looking for team_id: {team_id}")
+        print(f"Looking for team_id: '{team_id}'")
         
-        # Try direct match first
+        # Method 1: Try direct match first
         if team_id in unique_event_teams:
-            print(f"Direct match found: {team_id}")
+            print(f"✅ Direct match found: {team_id}")
             return team_id
         
-        # Try to find a mapping based on team names
+        # Method 2: Try normalized TeamID matching
+        normalized_team_id = self._normalize_team_name(team_id)
+        for event_team in unique_event_teams:
+            normalized_event_team = self._normalize_team_name(event_team)
+            if normalized_team_id == normalized_event_team:
+                print(f"✅ Normalized TeamID match found: '{team_id}' -> '{event_team}'")
+                print(f"   (normalized: '{normalized_team_id}' == '{normalized_event_team}')")
+                return event_team
+        
+        # Method 3: Try to find a mapping based on team names
         try:
             teams = self.sheets_service.get_teams()
             team_row = teams[teams['TeamID'] == team_id]
             
             if not team_row.empty:
                 team_name = team_row.iloc[0]['TeamName']
+                print(f"Team name from Teams sheet: '{team_name}'")
                 
-                # Check if team name appears in events
+                # Method 3a: Check if team name appears in events (original logic)
                 for event_team in unique_event_teams:
                     if team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower():
-                        print(f"Found mapping: {team_id} -> {event_team} (via team name: {team_name})")
+                        print(f"✅ Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
+                        return event_team
+                
+                # Method 3b: Try normalized team name matching
+                normalized_team_name = self._normalize_team_name(team_name)
+                for event_team in unique_event_teams:
+                    normalized_event_team = self._normalize_team_name(event_team)
+                    if normalized_team_name == normalized_event_team:
+                        print(f"✅ Normalized team name match found: '{team_id}' -> '{event_team}'")
+                        print(f"   (team name '{team_name}' normalized: '{normalized_team_name}' == '{normalized_event_team}')")
+                        return event_team
+                
+                # Method 3c: Try partial normalized matching (team name contains event team or vice versa)
+                for event_team in unique_event_teams:
+                    normalized_event_team = self._normalize_team_name(event_team)
+                    if (normalized_team_name in normalized_event_team or 
+                        normalized_event_team in normalized_team_name) and len(normalized_event_team) > 2:
+                        print(f"✅ Partial normalized match found: '{team_id}' -> '{event_team}'")
+                        print(f"   ('{normalized_team_name}' <-> '{normalized_event_team}')")
                         return event_team
                 
                 # Special handling for common patterns
@@ -127,13 +174,14 @@ class DataService:
                     non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
                     if non_opponent_teams:
                         mapped_team = non_opponent_teams[0]
-                        print(f"Mapping 'your_team' to first non-opponent team: {mapped_team}")
+                        print(f"✅ Special 'your_team' mapping: {mapped_team}")
                         return mapped_team
         except Exception as e:
-            print(f"Error in team mapping: {e}")
+            print(f"❌ Error in team mapping: {e}")
         
         # Fallback - return the team_id as-is
-        print(f"No mapping found, using team_id as-is: {team_id}")
+        print(f"⚠️  No mapping found, using team_id as-is: '{team_id}'")
+        print(f"   This may cause issues if '{team_id}' doesn't exist in events data")
         return team_id
     
     def _filter_games_by_date(self, games, include_future=False):
