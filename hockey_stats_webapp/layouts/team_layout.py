@@ -33,13 +33,19 @@ def create_team_layout(data_service, team_context=None):
     games = data_service._filter_games_by_date(games, include_future=False)
     print(f"TEAM LAYOUT: Games retrieved: {len(games)} games (filtered to completed games only)")
     
-    # Get leaderboards with team filtering - use different sorting for defense based on coach status
-    forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
-    
-    # For defense, use plus_minus for coaches, points for non-coaches
-    defense_sort_stat = 'plus_minus' if is_coach else 'points'
-    defense_leaders = data_service.get_team_leaderboard(stat=defense_sort_stat, position='D', team_id=team_id)
-    defense_sort_label = "Plus/Minus" if is_coach else "Points"
+    # Get leaderboards with team filtering - use different sorting based on coach status
+    if is_coach:
+        # Coaches: Forwards by points, Defense by plus/minus
+        forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)
+        defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)
+        forwards_sort_label = "Points"
+        defense_sort_label = "Plus/Minus"
+    else:
+        # Non-coaches: Both forwards and defense by jersey number
+        forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id)
+        defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id)
+        forwards_sort_label = "Jersey Number"
+        defense_sort_label = "Jersey Number"
     
     
     return html.Div([
@@ -135,7 +141,7 @@ def create_team_layout(data_service, team_context=None):
                     # Forwards leaderboard
                     dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader(html.H4("Forwards Leaderboard (Sorted by Points)", className="card-title")),
+                            dbc.CardHeader(html.H4(f"Forwards Leaderboard (Sorted by {forwards_sort_label})", className="card-title")),
                             dbc.CardBody([
                                 html.Table([
                                     html.Thead(

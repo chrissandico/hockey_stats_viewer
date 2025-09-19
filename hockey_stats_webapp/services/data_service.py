@@ -1014,7 +1014,7 @@ class DataService:
         Get a team leaderboard for a specific statistic.
         
         Args:
-            stat (str): The statistic to rank by (points, goals, assists, plus_minus)
+            stat (str): The statistic to rank by (points, goals, assists, plus_minus, jersey_number)
             position (str, optional): Filter by position (F, D, G)
             limit (int, optional): Maximum number of players to include. If None, includes all players.
             team_id (str, optional): Team ID to filter by
@@ -1036,7 +1036,10 @@ class DataService:
                 player_stats.append(stats)
         
         # Sort by the specified statistic
-        if stat in ['points', 'goals', 'assists', 'plus_minus', 'shots', 'penalty_minutes', 'games_played', 'goals_per_game']:
+        if stat == 'jersey_number':
+            # Sort by jersey number (ascending)
+            player_stats.sort(key=lambda x: int(x['player']['JerseyNumber']) if str(x['player']['JerseyNumber']).isdigit() else float('inf'))
+        elif stat in ['points', 'goals', 'assists', 'plus_minus', 'shots', 'penalty_minutes', 'games_played', 'goals_per_game']:
             player_stats.sort(key=lambda x: x[stat], reverse=True)
         
         # Limit the number of players if a limit is specified
