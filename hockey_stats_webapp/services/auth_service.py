@@ -70,13 +70,18 @@ class AuthService:
             
             # Get the first matching team (should be only one due to duplicate check)
             team = matching_team.iloc[0]
+            
+            # Check if this is a coach login (password starts with 'c')
+            is_coach = password.startswith('c')
+            
             team_info = {
                 'team_id': team['TeamID'],
                 'team_name': team['TeamName'],
-                'password': team['Password']
+                'password': team['Password'],
+                'is_coach': is_coach
             }
             
-            print(f"SUCCESS: Authentication successful for team '{team_info['team_name']}' (ID: {team_info['team_id']})")
+            print(f"SUCCESS: Authentication successful for team '{team_info['team_name']}' (ID: {team_info['team_id']}, Coach: {is_coach})")
             return team_info
             
         except Exception as e:

@@ -238,7 +238,8 @@ def login(n_clicks, password):
             session['authenticated'] = True
             session['team_id'] = team_info['team_id']
             session['team_name'] = team_info['team_name']
-            print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']})")
+            session['is_coach'] = team_info.get('is_coach', False)  # Store coach flag
+            print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']}, Coach: {session['is_coach']})")
             return '/', ''
         else:
             print("Authentication failed - incorrect password")

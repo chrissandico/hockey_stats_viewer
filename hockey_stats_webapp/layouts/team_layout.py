@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
+import config
 
 def create_team_layout(data_service, team_context=None):
     """
@@ -15,11 +16,13 @@ def create_team_layout(data_service, team_context=None):
     Returns:
         dash.html.Div: The team statistics layout
     """
-    # Get team ID from session context like player layout does
+    # Get team ID and coach status from session context like player layout does
     from flask import session
     team_id = session.get('team_id') if session.get('authenticated', False) else None
+    is_coach = session.get('is_coach', False)
     
     print(f"\n=== TEAM LAYOUT: Using team_id from session: {team_id} ===")
+    print(f"TEAM LAYOUT: Coach status: {is_coach}")
     
     # Calculate team stats with team filtering
     team_stats = data_service.calculate_team_stats(team_id)
@@ -30,9 +33,13 @@ def create_team_layout(data_service, team_context=None):
     games = data_service._filter_games_by_date(games, include_future=False)
     print(f"TEAM LAYOUT: Games retrieved: {len(games)} games (filtered to completed games only)")
     
-    # Get leaderboards with team filtering
+    # Get leaderboards with team filtering - use different sorting for defense based on coach status
     forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)  # Team forwards sorted by points
-    defense_points_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)  # Team defense sorted by plus/minus
+    
+    # For defense, use plus_minus for coaches, points for non-coaches
+    defense_sort_stat = 'plus_minus' if is_coach else 'points'
+    defense_leaders = data_service.get_team_leaderboard(stat=defense_sort_stat, position='D', team_id=team_id)
+    defense_sort_label = "Plus/Minus" if is_coach else "Points"
     
     
     return html.Div([
@@ -137,7 +144,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Th("G", className="text-center"),
                                             html.Th("A", className="text-center"),
                                             html.Th("P", className="text-center"),
-                                            html.Th("+/-", className="text-center")
+                                            # Only show plus/minus column for coaches
+                                            *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
                                         ])
                                     ),
                                     html.Tbody([
@@ -146,7 +154,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Td(f"{stats['goals']}", className="text-center"),
                                             html.Td(f"{stats['assists']}", className="text-center"),
                                             html.Td(f"{stats['points']}", className="text-center"),
-                                            html.Td(f"{stats['plus_minus']}", className="text-center")
+                                            # Only show plus/minus cell for coaches
+                                            *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
                                         ]) for stats in forwards_points_leaders
                                     ])
                                 ], className="table table-striped table-hover")
@@ -157,7 +166,7 @@ def create_team_layout(data_service, team_context=None):
                     # Defense leaderboard
                     dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader(html.H4("Defense Leaderboard (Sorted by Plus/Minus)", className="card-title")),
+                            dbc.CardHeader(html.H4(f"Defense Leaderboard (Sorted by {defense_sort_label})", className="card-title")),
                             dbc.CardBody([
                                 html.Table([
                                     html.Thead(
@@ -166,7 +175,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Th("G", className="text-center"),
                                             html.Th("A", className="text-center"),
                                             html.Th("P", className="text-center"),
-                                            html.Th("+/-", className="text-center")
+                                            # Only show plus/minus column for coaches
+                                            *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
                                         ])
                                     ),
                                     html.Tbody([
@@ -175,8 +185,9 @@ def create_team_layout(data_service, team_context=None):
                                             html.Td(f"{stats['goals']}", className="text-center"),
                                             html.Td(f"{stats['assists']}", className="text-center"),
                                             html.Td(f"{stats['points']}", className="text-center"),
-                                            html.Td(f"{stats['plus_minus']}", className="text-center")
-                                        ]) for stats in defense_points_leaders
+                                            # Only show plus/minus cell for coaches
+                                            *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                        ]) for stats in defense_leaders
                                     ])
                                 ], className="table table-striped table-hover")
                             ])

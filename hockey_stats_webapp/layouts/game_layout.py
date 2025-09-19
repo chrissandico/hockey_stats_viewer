@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
+import config
 
 def create_game_layout(data_service, team_context=None):
     """
@@ -120,10 +121,12 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         
-        # Get team_id from session for proper filtering
+        # Get team_id and coach status from session for proper filtering
         session_team_id = None
+        is_coach = False
         if session.get('authenticated', False):
             session_team_id = session.get('team_id')
+            is_coach = session.get('is_coach', False)
         
         # Use session team_id if available, otherwise fall back to passed team_id
         effective_team_id = session_team_id if session_team_id else team_id
@@ -174,6 +177,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                     dbc.Col([
                         html.H5("Shots & Penalties"),
                         html.Div([
+                            # Always show shots
                             html.Div([
                                 html.Span("Your Team Shots: ", className="fw-bold"),
                                 html.Span(f"{summary['your_team_shots']}")
@@ -182,14 +186,18 @@ def register_game_callbacks(app, data_service, team_context=None):
                                 html.Span("Opponent Shots: ", className="fw-bold"),
                                 html.Span(f"{summary['opponent_shots']}")
                             ], className="mb-1"),
-                            html.Div([
-                                html.Span("Your Team PIM: ", className="fw-bold"),
-                                html.Span(f"{summary['your_team_pim']}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Opponent PIM: ", className="fw-bold"),
-                                html.Span(f"{summary['opponent_pim']}")
-                            ], className="mb-1"),
+                            
+                            # Only show PIM for coaches
+                            *([
+                                html.Div([
+                                    html.Span("Your Team PIM: ", className="fw-bold"),
+                                    html.Span(f"{summary['your_team_pim']}")
+                                ], className="mb-1"),
+                                html.Div([
+                                    html.Span("Opponent PIM: ", className="fw-bold"),
+                                    html.Span(f"{summary['opponent_pim']}")
+                                ], className="mb-1"),
+                            ] if is_coach or not config.is_coaches_only_stat('your_team_pim') else []),
                         ])
                     ], md=6),
                 ])
@@ -241,10 +249,12 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         
-        # Get team_id from session for proper filtering
+        # Get team_id and coach status from session for proper filtering
         session_team_id = None
+        is_coach = False
         if session.get('authenticated', False):
             session_team_id = session.get('team_id')
+            is_coach = session.get('is_coach', False)
         
         # Use session team_id if available, otherwise fall back to passed team_id
         effective_team_id = session_team_id if session_team_id else team_id
@@ -298,28 +308,43 @@ def register_game_callbacks(app, data_service, team_context=None):
                 ])
             ], className="table table-striped table-hover")
         else:
-            # Skater stats table
+            # Skater stats table - conditionally include coaches-only columns
+            header_cells = [
+                html.Th("Player", className="text-start"),
+                html.Th("Pos", className="text-center"),
+                html.Th("G", className="text-center"),
+                html.Th("A", className="text-center"),
+                html.Th("P", className="text-center"),
+            ]
+            
+            # Only add coaches-only columns if user is a coach
+            if is_coach or not config.is_coaches_only_stat('plus_minus'):
+                header_cells.append(html.Th("+/-", className="text-center"))
+            
+            if is_coach or not config.is_coaches_only_stat('PIM'):
+                header_cells.append(html.Th("PIM", className="text-center"))
+            
+            # Create rows with conditional cells
+            rows = []
+            for stats in player_stats:
+                row_cells = [
+                    html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                    html.Td(f"{stats['player']['Position']}", className="text-center"),
+                    html.Td(f"{stats['goals']}", className="text-center"),
+                    html.Td(f"{stats['assists']}", className="text-center"),
+                    html.Td(f"{stats['points']}", className="text-center"),
+                ]
+                
+                # Only add coaches-only cells if user is a coach
+                if is_coach or not config.is_coaches_only_stat('plus_minus'):
+                    row_cells.append(html.Td(f"{stats['plus_minus']}", className="text-center"))
+                
+                if is_coach or not config.is_coaches_only_stat('PIM'):
+                    row_cells.append(html.Td(f"{stats['penalty_minutes']}", className="text-center"))
+                
+                rows.append(html.Tr(row_cells))
+            
             return html.Table([
-                html.Thead(
-                    html.Tr([
-                        html.Th("Player", className="text-start"),
-                        html.Th("Pos", className="text-center"),
-                        html.Th("G", className="text-center"),
-                        html.Th("A", className="text-center"),
-                        html.Th("P", className="text-center"),
-                        html.Th("+/-", className="text-center"),
-                        html.Th("PIM", className="text-center")
-                    ])
-                ),
-                html.Tbody([
-                    html.Tr([
-                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                        html.Td(f"{stats['player']['Position']}", className="text-center"),
-                        html.Td(f"{stats['goals']}", className="text-center"),
-                        html.Td(f"{stats['assists']}", className="text-center"),
-                        html.Td(f"{stats['points']}", className="text-center"),
-                        html.Td(f"{stats['plus_minus']}", className="text-center"),
-                        html.Td(f"{stats['penalty_minutes']}", className="text-center")
-                    ]) for stats in player_stats
-                ])
+                html.Thead(html.Tr(header_cells)),
+                html.Tbody(rows)
             ], className="table table-striped table-hover")

@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
+import config
 
 def create_player_layout(data_service, team_context=None):
     """
@@ -91,8 +92,10 @@ def register_player_callbacks(app, data_service):
         # Get team context from session
         from flask import session
         team_id = session.get('team_id') if session.get('authenticated', False) else None
+        is_coach = session.get('is_coach', False)
         print(f"\n=== CALLBACK: update_player_info called with jersey_number={jersey_number} ===")
         print(f"DataService instance in callback: {data_service}")
+        print(f"Coach status: {is_coach}")
         
         if jersey_number is None:
             print("No jersey number selected, returning empty divs")
@@ -228,10 +231,11 @@ def register_player_callbacks(app, data_service):
                                     html.Span("Points: ", className="fw-bold"),
                                     html.Span(f"{stats['points']}")
                                 ], className="mb-1"),
-                                html.Div([
+                                # Only show plus/minus for coaches
+                                *([html.Div([
                                     html.Span("Plus/Minus: ", className="fw-bold"),
                                     html.Span(f"{stats['plus_minus']}")
-                                ], className="mb-1"),
+                                ], className="mb-1")] if is_coach or not config.is_coaches_only_stat('plus_minus') else []),
                             ])
                         ])
                     ], md=4),
@@ -255,11 +259,11 @@ def register_player_callbacks(app, data_service):
                                     html.Span(f"{stats['goals_against']}")
                                 ], className="mb-1"),
                             ] if player['Position'] == 'G' else [
-            # Skater additional stats
-            html.Div([
-                html.Span("Penalty Minutes: ", className="fw-bold"),
-                html.Span(f"{stats['penalty_minutes']}")
-            ], className="mb-1"),
+                                # Skater additional stats - only show PIM for coaches
+                                *([html.Div([
+                                    html.Span("Penalty Minutes: ", className="fw-bold"),
+                                    html.Span(f"{stats['penalty_minutes']}")
+                                ], className="mb-1")] if is_coach or not config.is_coaches_only_stat('penalty_minutes') else []),
                             ])
                         ])
                     ], md=4),
@@ -292,16 +296,24 @@ def register_player_callbacks(app, data_service):
                     print(f"DEBUG: Created game log entry: {game_log_entry}")
                     game_log_data.append(game_log_entry)
                 else:
-                    game_log_data.append({
+                    # Skater game log - conditionally include coaches-only stats
+                    entry = {
                         'Date': game_stats['game']['Date'],
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['game']['Result'],
                         'Goals': game_stats['goals'],
                         'Assists': game_stats['assists'],
                         'Points': game_stats['points'],
-                        '+/-': game_stats['plus_minus'],
-                        'PIM': game_stats['penalty_minutes']
-                    })
+                    }
+                    
+                    # Only add coaches-only stats if user is a coach
+                    if is_coach or not config.is_coaches_only_stat('plus_minus'):
+                        entry['+/-'] = game_stats['plus_minus']
+                    
+                    if is_coach or not config.is_coaches_only_stat('PIM'):
+                        entry['PIM'] = game_stats['penalty_minutes']
+                    
+                    game_log_data.append(entry)
             
             game_log_df = pd.DataFrame(game_log_data)
                 
@@ -318,6 +330,7 @@ def register_player_callbacks(app, data_service):
                     {'name': 'Shutout', 'id': 'SO'}
                 ]
             else:
+                # Skater columns - conditionally include coaches-only columns
                 columns = [
                     {'name': 'Date', 'id': 'Date'},
                     {'name': 'Opponent', 'id': 'Opponent'},
@@ -325,9 +338,14 @@ def register_player_callbacks(app, data_service):
                     {'name': 'Goals', 'id': 'Goals'},
                     {'name': 'Assists', 'id': 'Assists'},
                     {'name': 'Points', 'id': 'Points'},
-                    {'name': '+/-', 'id': '+/-'},
-                    {'name': 'PIM', 'id': 'PIM'}
                 ]
+                
+                # Only add coaches-only columns if user is a coach
+                if is_coach or not config.is_coaches_only_stat('plus_minus'):
+                    columns.append({'name': '+/-', 'id': '+/-'})
+                
+                if is_coach or not config.is_coaches_only_stat('PIM'):
+                    columns.append({'name': 'PIM', 'id': 'PIM'})
                 
             game_log_card = dbc.Card([
                 dbc.CardHeader(html.H4("Game Log", className="card-title")),
