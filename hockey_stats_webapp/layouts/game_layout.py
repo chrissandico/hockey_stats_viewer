@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
+from components.period_breakdown import create_period_breakdown_component
 import config
 
 def create_game_layout(data_service, team_context=None):
@@ -136,73 +137,90 @@ def register_game_callbacks(app, data_service, team_context=None):
         if summary is None:
             return html.Div(dbc.Alert("Game not found", color="danger"))
         
+        # Get period breakdown data
+        period_data = data_service.get_period_breakdown(game_id, effective_team_id)
+        
         # Create game summary card
         game = summary['game']
         # Safely access Result column with fallback
         result = game.get('Result', 'Unknown')
         result_color = "success" if result == 'W' else "danger" if result == 'L' else "warning"
         
-        return dbc.Card([
-            dbc.CardHeader(html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title")),
-            dbc.CardBody([
-                dbc.Row([
-                    # Game details
-                    dbc.Col([
-                        html.H5("Game Details"),
-                        html.Div([
+        # Create the main game summary components
+        game_summary_components = [
+            dbc.Card([
+                dbc.CardHeader(html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title")),
+                dbc.CardBody([
+                    dbc.Row([
+                        # Game details
+                        dbc.Col([
+                            html.H5("Game Details"),
                             html.Div([
-                                html.Span("Date: ", className="fw-bold"),
-                                html.Span(f"{game['Date']}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Opponent: ", className="fw-bold"),
-                                html.Span(f"{game['Opponent']}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Location: ", className="fw-bold"),
-                                html.Span(f"{game['Location']}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Result: ", className="fw-bold"),
-                                html.Span(f"{result}", className=f"text-{result_color}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Score: ", className="fw-bold"),
-                                html.Span(f"{game['GoalsFor']} - {game['GoalsAgainst']}")
-                            ], className="mb-1"),
-                        ])
-                    ], md=6),
-                    
-                    # Shots and penalties
-                    dbc.Col([
-                        html.H5("Shots & Penalties"),
-                        html.Div([
-                            # Always show shots
-                            html.Div([
-                                html.Span("Your Team Shots: ", className="fw-bold"),
-                                html.Span(f"{summary['your_team_shots']}")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Opponent Shots: ", className="fw-bold"),
-                                html.Span(f"{summary['opponent_shots']}")
-                            ], className="mb-1"),
-                            
-                            # Only show PIM for coaches
-                            *([
                                 html.Div([
-                                    html.Span("Your Team PIM: ", className="fw-bold"),
-                                    html.Span(f"{summary['your_team_pim']}")
+                                    html.Span("Date: ", className="fw-bold"),
+                                    html.Span(f"{game['Date']}")
                                 ], className="mb-1"),
                                 html.Div([
-                                    html.Span("Opponent PIM: ", className="fw-bold"),
-                                    html.Span(f"{summary['opponent_pim']}")
+                                    html.Span("Opponent: ", className="fw-bold"),
+                                    html.Span(f"{game['Opponent']}")
                                 ], className="mb-1"),
-                            ] if is_coach or not config.is_coaches_only_stat('your_team_pim') else []),
-                        ])
-                    ], md=6),
+                                html.Div([
+                                    html.Span("Location: ", className="fw-bold"),
+                                    html.Span(f"{game['Location']}")
+                                ], className="mb-1"),
+                                html.Div([
+                                    html.Span("Result: ", className="fw-bold"),
+                                    html.Span(f"{result}", className=f"text-{result_color}")
+                                ], className="mb-1"),
+                                html.Div([
+                                    html.Span("Score: ", className="fw-bold"),
+                                    html.Span(f"{game['GoalsFor']} - {game['GoalsAgainst']}")
+                                ], className="mb-1"),
+                            ])
+                        ], md=6),
+                        
+                        # Shots and penalties
+                        dbc.Col([
+                            html.H5("Shots & Penalties"),
+                            html.Div([
+                                # Always show shots
+                                html.Div([
+                                    html.Span("Your Team Shots: ", className="fw-bold"),
+                                    html.Span(f"{summary['your_team_shots']}")
+                                ], className="mb-1"),
+                                html.Div([
+                                    html.Span("Opponent Shots: ", className="fw-bold"),
+                                    html.Span(f"{summary['opponent_shots']}")
+                                ], className="mb-1"),
+                                
+                                # Only show PIM for coaches
+                                *([
+                                    html.Div([
+                                        html.Span("Your Team PIM: ", className="fw-bold"),
+                                        html.Span(f"{summary['your_team_pim']}")
+                                    ], className="mb-1"),
+                                    html.Div([
+                                        html.Span("Opponent PIM: ", className="fw-bold"),
+                                        html.Span(f"{summary['opponent_pim']}")
+                                    ], className="mb-1"),
+                                ] if is_coach or not config.is_coaches_only_stat('your_team_pim') else []),
+                            ])
+                        ], md=6),
+                    ])
                 ])
-            ])
-        ], className="shadow-sm")
+            ], className="shadow-sm")
+        ]
+        
+        # Add period breakdown component if data is available
+        if period_data:
+            period_breakdown_component = create_period_breakdown_component(
+                period_data, 
+                title="Period Breakdown", 
+                show_title=True
+            )
+            game_summary_components.append(period_breakdown_component)
+        
+        return html.Div(game_summary_components)
     
     # Callback for position filter buttons
     @app.callback(

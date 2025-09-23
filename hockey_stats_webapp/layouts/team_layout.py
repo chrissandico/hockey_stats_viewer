@@ -35,17 +35,21 @@ def create_team_layout(data_service, team_context=None):
     
     # Get leaderboards with team filtering - use different sorting based on coach status
     if is_coach:
-        # Coaches: Forwards by points, Defense by plus/minus
+        # Coaches: Forwards by points, Defense by plus/minus, Goalies by save percentage
         forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)
         defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)
+        goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id)
         forwards_sort_label = "Points"
         defense_sort_label = "Plus/Minus"
+        goalies_sort_label = "Save Percentage"
     else:
-        # Non-coaches: Both forwards and defense by jersey number
+        # Non-coaches: All positions by jersey number
         forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id)
         defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id)
+        goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id)
         forwards_sort_label = "Jersey Number"
         defense_sort_label = "Jersey Number"
+        goalies_sort_label = "Jersey Number"
     
     
     return html.Div([
@@ -199,7 +203,40 @@ def create_team_layout(data_service, team_context=None):
                             ])
                         ], className="mb-4 shadow-sm")
                     ], md=6)
-                ])
+                ]),
+                
+                # Goalies leaderboard - full width row
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardHeader(html.H4(f"Goalies Leaderboard (Sorted by {goalies_sort_label})", className="card-title")),
+                            dbc.CardBody([
+                                html.Table([
+                                    html.Thead(
+                                        html.Tr([
+                                            html.Th("Player", className="text-start"),
+                                            html.Th("GP", className="text-center"),
+                                            html.Th("W", className="text-center"),
+                                            html.Th("SV%", className="text-center"),
+                                            html.Th("GAA", className="text-center"),
+                                            html.Th("SO", className="text-center")
+                                        ])
+                                    ),
+                                    html.Tbody([
+                                        html.Tr([
+                                            html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                                            html.Td(f"{stats['games_played']}", className="text-center"),
+                                            html.Td(f"{stats['wins']}", className="text-center"),
+                                            html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
+                                            html.Td(f"{stats['gaa']:.2f}", className="text-center"),
+                                            html.Td(f"{stats['shutouts']}", className="text-center")
+                                        ]) for stats in goalies_leaders
+                                    ])
+                                ], className="table table-striped table-hover")
+                            ])
+                        ], className="mb-4 shadow-sm")
+                    ], md=12)
+                ], className="mt-3") if goalies_leaders else html.Div()
             ]
         ),
         

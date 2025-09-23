@@ -99,6 +99,41 @@ class DataService:
         normalized = name.lower().replace(" ", "").replace("-", "").replace("_", "")
         return normalized
     
+    def _filter_goalie_events(self, events, goalie_id, game_id=None):
+        """
+        Filter events for goalie statistics with backward compatibility for GoalieOnIceId.
+        
+        Args:
+            events (pd.DataFrame): Events data to filter
+            goalie_id (str): The goalie's player ID
+            game_id (str, optional): Game ID to filter by (if None, uses all events)
+            
+        Returns:
+            pd.DataFrame: Filtered events that should be attributed to this goalie
+        """
+        # Filter by game if specified
+        if game_id is not None:
+            events = events[events['GameID'] == game_id]
+        
+        # Check if GoalieOnIceId column exists and has data
+        has_goalie_on_ice_data = ('GoalieOnIceId' in events.columns and 
+                                 not events['GoalieOnIceId'].isna().all())
+        
+        if has_goalie_on_ice_data:
+            print(f"Using GoalieOnIceId column for goalie {goalie_id} event filtering")
+            # Filter events where this goalie was on ice OR where goalie info is missing (backward compatibility)
+            goalie_events = events[
+                (events['GoalieOnIceId'] == goalie_id) | 
+                (events['GoalieOnIceId'].isna())
+            ]
+            print(f"Found {len(goalie_events)} events for goalie {goalie_id} using GoalieOnIceId filtering")
+        else:
+            print(f"GoalieOnIceId column not available, using all events for goalie {goalie_id}")
+            # Fall back to using all events (original behavior)
+            goalie_events = events
+        
+        return goalie_events
+
     def _get_team_identifier_for_events(self, team_id):
         """
         Get the correct team identifier to use when filtering events.
@@ -805,7 +840,7 @@ class DataService:
     
     def calculate_goalie_game_stats(self, player_id, game_id, team_id=None):
         """
-        Calculate statistics for a goalie in a specific game.
+        Calculate statistics for a goalie in a specific game with GoalieOnIceId support.
         
         Args:
             player_id (str): The player ID
@@ -855,41 +890,41 @@ class DataService:
                 your_team = 'your_team'
                 print(f"Using fallback team identifier: '{your_team}'")
         
-        # Filter events for this game
-        game_events = events[events['GameID'] == game_id]
+        # Use the new helper method to filter events for this goalie and game
+        goalie_events = self._filter_goalie_events(events, player_id, game_id)
         
-        # Calculate goals against - always use IsGoal and proper team identification
-        goals_against_events = game_events[(game_events['IsGoal'] == True) & 
-                                         (game_events['Team'] != your_team)]
+        print(f"DEBUG: Filtered to {len(goalie_events)} events for goalie {player_id} in game {game_id}")
+        print(f"DEBUG: Game events columns: {goalie_events.columns.tolist()}")
         
-        print(f"DEBUG: Found {len(goals_against_events)} goals against events for game {game_id}")
-        print(f"DEBUG: Game events shape: {game_events.shape}")
-        print(f"DEBUG: Game events columns: {game_events.columns.tolist()}")
-        
-        # Debug: Check team distribution in goal events
-        if not game_events.empty:
-            team_counts = game_events['Team'].value_counts()
-            print(f"DEBUG: Team distribution in game events: {team_counts.to_dict()}")
+        # Debug: Check team distribution in filtered events
+        if not goalie_events.empty:
+            team_counts = goalie_events['Team'].value_counts()
+            print(f"DEBUG: Team distribution in filtered events: {team_counts.to_dict()}")
             
             # Debug: Check IsGoal distribution
-            if 'IsGoal' in game_events.columns:
-                isgoal_counts = game_events['IsGoal'].value_counts()
-                print(f"DEBUG: IsGoal distribution in game events: {isgoal_counts.to_dict()}")
+            if 'IsGoal' in goalie_events.columns:
+                isgoal_counts = goalie_events['IsGoal'].value_counts()
+                print(f"DEBUG: IsGoal distribution in filtered events: {isgoal_counts.to_dict()}")
         
+        # Calculate goals against - use filtered events and proper team identification
+        goals_against_events = goalie_events[(goalie_events['IsGoal'] == True) & 
+                                           (goalie_events['Team'] != your_team)]
+        
+        print(f"DEBUG: Found {len(goals_against_events)} goals against events for goalie {player_id} in game {game_id}")
         goals_against = len(goals_against_events)
         
-        # Calculate shots against - ensure we count both shots and goals as shots
-        # Count all shots and goals from opponents
-        shots_events = game_events[(game_events['EventType'] == 'Shot') & 
-                                 (game_events['Team'] != your_team)]
+        # Calculate shots against - ensure we count both shots and goals as shots from filtered events
+        # Count all shots from opponents when this goalie was on ice
+        shots_events = goalie_events[(goalie_events['EventType'] == 'Shot') & 
+                                   (goalie_events['Team'] != your_team)]
         
         # Also count goals as shots (if they're not already counted as shots)
-        goals_as_shots = game_events[(game_events['IsGoal'] == True) & 
-                                   (game_events['Team'] != your_team) &
-                                   (game_events['EventType'] != 'Shot')]
+        goals_as_shots = goalie_events[(goalie_events['IsGoal'] == True) & 
+                                     (goalie_events['Team'] != your_team) &
+                                     (goalie_events['EventType'] != 'Shot')]
         
-        print(f"DEBUG: Found {len(shots_events)} shot events for game {game_id}")
-        print(f"DEBUG: Found {len(goals_as_shots)} goal events counted as shots for game {game_id}")
+        print(f"DEBUG: Found {len(shots_events)} shot events for goalie {player_id} in game {game_id}")
+        print(f"DEBUG: Found {len(goals_as_shots)} goal events counted as shots for goalie {player_id} in game {game_id}")
         
         # Combine unique events
         shots_against = len(shots_events) + len(goals_as_shots)
@@ -906,7 +941,7 @@ class DataService:
             print(f"Error calculating save percentage: {e}")
             save_percentage = 0
         
-        # Determine if this was a shutout
+        # Determine if this was a shutout (no goals against when this goalie was on ice)
         shutout = goals_against == 0
         
         # Get the game result
@@ -923,7 +958,7 @@ class DataService:
             'result': result
         }
         
-        print(f"DEBUG: Returning goalie game stats for game {game_id}: {result_dict}")
+        print(f"DEBUG: Returning enhanced goalie game stats for game {game_id}: {result_dict}")
         return result_dict
     
     def get_player_game_log(self, player_id, team_id=None):
@@ -1014,7 +1049,7 @@ class DataService:
         Get a team leaderboard for a specific statistic.
         
         Args:
-            stat (str): The statistic to rank by (points, goals, assists, plus_minus, jersey_number)
+            stat (str): The statistic to rank by (points, goals, assists, plus_minus, jersey_number, save_percentage, gaa, wins, shutouts)
             position (str, optional): Filter by position (F, D, G)
             limit (int, optional): Maximum number of players to include. If None, includes all players.
             team_id (str, optional): Team ID to filter by
@@ -1028,10 +1063,16 @@ class DataService:
         if position:
             players = players[players['Position'] == position]
         
-        # Calculate stats for each player
+        # Calculate stats for each player - use appropriate method based on position
         player_stats = []
         for _, player in players.iterrows():
-            stats = self.calculate_player_stats(player['ID'], team_id)
+            if player['Position'] == 'G':
+                # Use goalie stats calculation for goalies
+                stats = self.calculate_goalie_stats(player['ID'], team_id)
+            else:
+                # Use regular player stats calculation for skaters
+                stats = self.calculate_player_stats(player['ID'], team_id)
+            
             if stats:
                 player_stats.append(stats)
         
@@ -1040,7 +1081,14 @@ class DataService:
             # Sort by jersey number (ascending)
             player_stats.sort(key=lambda x: int(x['player']['JerseyNumber']) if str(x['player']['JerseyNumber']).isdigit() else float('inf'))
         elif stat in ['points', 'goals', 'assists', 'plus_minus', 'shots', 'penalty_minutes', 'games_played', 'goals_per_game']:
+            # Skater stats - sort descending (higher is better)
             player_stats.sort(key=lambda x: x[stat], reverse=True)
+        elif stat in ['save_percentage', 'wins', 'shutouts']:
+            # Goalie stats where higher is better - sort descending
+            player_stats.sort(key=lambda x: x[stat], reverse=True)
+        elif stat == 'gaa':
+            # Goals Against Average - lower is better, sort ascending
+            player_stats.sort(key=lambda x: x[stat], reverse=False)
         
         # Limit the number of players if a limit is specified
         if limit is not None:
@@ -1051,7 +1099,7 @@ class DataService:
     
     def calculate_goalie_stats(self, player_id, team_id=None):
         """
-        Calculate statistics for a goalie.
+        Calculate statistics for a goalie with GoalieOnIceId support.
         
         Args:
             player_id (str): The player ID
@@ -1069,7 +1117,7 @@ class DataService:
             print(f"Player with ID {player_id} is not a goalie (position: {player['Position']})")
             return None
         
-        print(f"Calculating stats for goalie: {player_id}")
+        print(f"Calculating enhanced stats for goalie: {player_id}")
         
         events = self.get_events()
         print(f"Total events: {len(events)}")
@@ -1120,66 +1168,42 @@ class DataService:
         game_ids = games['ID'].tolist()
         print(f"Goalie game IDs: {game_ids}")
         
-        # Calculate goals against - always use IsGoal and proper team identification
-        if your_team is not None:
-            goals_against_events = events[(events['IsGoal'] == True) & 
-                                         (events['Team'] != your_team) & 
-                                         (events['GameID'].isin(games['ID']))]
-        else:
-            # Fallback to original logic if team detection fails
-            goals_against_events = events[(events['IsGoal'] == True) & 
-                                         (events['Team'] != 'your_team') & 
-                                         (events['GameID'].isin(games['ID']))]
+        # Use the new helper method to filter events for this goalie across all their games
+        # Filter events to only include games this goalie played in
+        goalie_game_events = events[events['GameID'].isin(game_ids)]
+        goalie_events = self._filter_goalie_events(goalie_game_events, player_id)
         
-        print(f"Found {len(goals_against_events)} goals against for goalie {player_id}")
+        print(f"Filtered to {len(goalie_events)} events for goalie {player_id} across all games")
         
-        # Debug: Check if there are any goal events for the goalie's games
-        all_goal_events = events[(events['IsGoal'] == True) & 
-                               (events['GameID'].isin(games['ID']))]
-        print(f"Total goal events in goalie's games: {len(all_goal_events)}")
+        # Debug: Check team distribution in filtered events
+        if not goalie_events.empty:
+            team_counts = goalie_events['Team'].value_counts()
+            print(f"Team distribution in filtered events: {team_counts.to_dict()}")
         
-        # Debug: Check team distribution in goal events
-        if not all_goal_events.empty:
-            team_counts = all_goal_events['Team'].value_counts()
-            print(f"Team distribution in goal events: {team_counts.to_dict()}")
+        # Calculate goals against using filtered events and proper team identification
+        goals_against_events = goalie_events[(goalie_events['IsGoal'] == True) & 
+                                           (goalie_events['Team'] != your_team)]
         
+        print(f"Found {len(goals_against_events)} goals against for goalie {player_id} using enhanced filtering")
         goals_against = len(goals_against_events)
         
-        # Calculate shots against - ensure we count both shots and goals as shots
-        if your_team is not None:
-            # Count all shots and goals from opponents
-            shots_events = events[(events['EventType'] == 'Shot') & 
-                                 (events['Team'] != your_team) & 
-                                 (events['GameID'].isin(games['ID']))]
-            print(f"Shot events against: {len(shots_events)}")
-            
-            # Also count goals as shots (if they're not already counted as shots)
-            goals_as_shots = events[(events['IsGoal'] == True) & 
-                                   (events['Team'] != your_team) & 
-                                   (events['GameID'].isin(games['ID'])) &
-                                   (events['EventType'] != 'Shot')]
-            print(f"Goal events counted as shots: {len(goals_as_shots)}")
-            
-            # Combine unique events
-            shots_against = len(shots_events) + len(goals_as_shots)
-        else:
-            # Fallback to improved logic if team detection fails
-            shots_against_events = events[((events['EventType'] == 'Shot') | (events['IsGoal'] == True)) & 
-                                         (events['Team'] != 'your_team') & 
-                                         (events['GameID'].isin(games['ID']))]
-            shots_against = len(shots_against_events)
+        # Calculate shots against using filtered events - ensure we count both shots and goals as shots
+        # Count all shots from opponents when this goalie was on ice
+        shots_events = goalie_events[(goalie_events['EventType'] == 'Shot') & 
+                                   (goalie_events['Team'] != your_team)]
         
-        print(f"Found {shots_against} shots against for goalie {player_id}")
+        # Also count goals as shots (if they're not already counted as shots)
+        goals_as_shots = goalie_events[(goalie_events['IsGoal'] == True) & 
+                                     (goalie_events['Team'] != your_team) &
+                                     (goalie_events['EventType'] != 'Shot')]
         
-        # Debug: Check if there are any shot events for the goalie's games
-        all_shot_events = events[(events['EventType'] == 'Shot') & 
-                               (events['GameID'].isin(games['ID']))]
-        print(f"Total shot events in goalie's games: {len(all_shot_events)}")
+        print(f"Shot events against goalie {player_id}: {len(shots_events)}")
+        print(f"Goal events counted as shots for goalie {player_id}: {len(goals_as_shots)}")
         
-        # Debug: Check team distribution in shot events
-        if not all_shot_events.empty:
-            team_counts = all_shot_events['Team'].value_counts()
-            print(f"Team distribution in shot events: {team_counts.to_dict()}")
+        # Combine unique events
+        shots_against = len(shots_events) + len(goals_as_shots)
+        
+        print(f"Found {shots_against} total shots against for goalie {player_id} using enhanced filtering")
         
         # Calculate saves with validation
         saves = max(0, shots_against - goals_against)  # Ensure saves is not negative
@@ -1208,12 +1232,16 @@ class DataService:
             print(f"WARNING: Goalie {player_id} not found in game roster for team {team_id}")
             print("This may indicate the goalie needs to be added to game rosters")
         
-        # Calculate shutouts (games where goals against is 0)
+        # Calculate shutouts using enhanced filtering (games where no goals against when this goalie was on ice)
         shutouts = 0
         for _, game in games.iterrows():
-            game_goals_against = len(goals_against_events[goals_against_events['GameID'] == game['ID']])
+            game_goalie_events = self._filter_goalie_events(events, player_id, game['ID'])
+            game_goals_against = len(game_goalie_events[(game_goalie_events['IsGoal'] == True) & 
+                                                       (game_goalie_events['Team'] != your_team)])
             if game_goals_against == 0:
                 shutouts += 1
+        
+        print(f"Calculated {shutouts} shutouts for goalie {player_id} using enhanced filtering")
         
         # Calculate goals against average with error handling
         try:
@@ -1431,7 +1459,7 @@ class DataService:
             # For events where IsGoal is True but EventType is not 'Goal', update EventType
             mask = (game_events['IsGoal'] == True) & (game_events['EventType'] != 'Goal')
             if mask.any():
-                print(f"Found {mask.sum()} events with IsGoal=True but EventType!='Goal', updating EventType")
+                print(f"Found {game_events.sum()} events with IsGoal=True but EventType!='Goal', updating EventType")
                 game_events.loc[mask, 'EventType'] = 'Goal'
         
         # Sort by Period
@@ -1466,3 +1494,98 @@ class DataService:
             timeline.append(event_dict)
         
         return timeline
+    
+    def get_period_breakdown(self, game_id, team_id=None):
+        """
+        Get period-by-period scoring breakdown for a game.
+        
+        Args:
+            game_id (str): The game ID
+            team_id (str, optional): Team ID to filter by
+            
+        Returns:
+            dict: Dictionary containing period-by-period scoring data with structure:
+                {
+                    'your_team': {
+                        'name': 'Team Name',
+                        'periods': [goals_p1, goals_p2, goals_p3],
+                        'total': total_goals
+                    },
+                    'opponent': {
+                        'name': 'Opponent Name', 
+                        'periods': [goals_p1, goals_p2, goals_p3],
+                        'total': total_goals
+                    }
+                }
+        """
+        # Get game data to extract team and opponent names
+        game = self.get_game_by_id(game_id, team_id)
+        if game is None:
+            print(f"Game {game_id} not found")
+            return None
+        
+        # Get events for this game
+        events = self.get_events()
+        game_events = events[events['GameID'] == game_id]
+        
+        if game_events.empty:
+            print(f"No events found for game {game_id}")
+            return None
+        
+        # Get team identifier for event filtering using the same logic as other methods
+        game_team_id = game.get('TeamID', 'your_team')
+        team_identifier = self._get_team_identifier_for_events(game_team_id)
+        print(f"Using team identifier: '{team_identifier}' for game team ID: '{game_team_id}'")
+        
+        # Get team names
+        your_team_name = self._get_team_name_from_id(game_team_id) or game_team_id
+        opponent_name = game.get('Opponent', 'Opponent')
+        
+        # Initialize period data structure
+        period_data = {
+            'your_team': {
+                'name': your_team_name,
+                'periods': [0, 0, 0],  # Periods 1, 2, 3
+                'total': 0
+            },
+            'opponent': {
+                'name': opponent_name,
+                'periods': [0, 0, 0],  # Periods 1, 2, 3
+                'total': 0
+            }
+        }
+        
+        # Filter to only goal events
+        goal_events = game_events[game_events['IsGoal'] == True]
+        print(f"Found {len(goal_events)} goal events for game {game_id}")
+        
+        # Count goals by period and team
+        for _, goal_event in goal_events.iterrows():
+            period = goal_event.get('Period', 1)
+            scoring_team = goal_event.get('Team', '')
+            
+            # Ensure period is valid (1, 2, or 3)
+            if period not in [1, 2, 3]:
+                print(f"Invalid period {period} found, skipping goal event")
+                continue
+            
+            # Convert period to array index (0, 1, 2)
+            period_index = period - 1
+            
+            # Determine which team scored
+            if scoring_team == team_identifier:
+                # Your team scored
+                period_data['your_team']['periods'][period_index] += 1
+                period_data['your_team']['total'] += 1
+                print(f"Your team goal in period {period}")
+            else:
+                # Opponent scored
+                period_data['opponent']['periods'][period_index] += 1
+                period_data['opponent']['total'] += 1
+                print(f"Opponent goal in period {period}")
+        
+        print(f"Period breakdown for game {game_id}:")
+        print(f"  {your_team_name}: {period_data['your_team']['periods']} (Total: {period_data['your_team']['total']})")
+        print(f"  {opponent_name}: {period_data['opponent']['periods']} (Total: {period_data['opponent']['total']})")
+        
+        return period_data
