@@ -137,7 +137,7 @@ class DataService:
     def _get_team_identifier_for_events(self, team_id):
         """
         Get the correct team identifier to use when filtering events.
-        Enhanced version with better matching logic.
+        Enhanced version with better matching logic and fallback handling.
         
         Args:
             team_id (str): Team ID from games/teams data
@@ -214,10 +214,11 @@ class DataService:
         except Exception as e:
             print(f"❌ Error in team mapping: {e}")
         
-        # Fallback - return the team_id as-is
-        print(f"⚠️  No mapping found, using team_id as-is: '{team_id}'")
-        print(f"   This may cause issues if '{team_id}' doesn't exist in events data")
-        return team_id
+        # Enhanced fallback - if no events found, use 'your_team' as default for stats consistency
+        print(f"⚠️  No mapping found for '{team_id}' in events data")
+        print(f"   Using 'your_team' as fallback to prevent stats calculation errors")
+        print(f"   Note: This team may need events added to the Events sheet")
+        return 'your_team'  # Use a known team identifier as fallback
     
     def _filter_games_by_date(self, games, include_future=False):
         """
@@ -381,7 +382,7 @@ class DataService:
         # Always ensure Result column exists (after GoalsFor/GoalsAgainst are calculated)
         games = self._ensure_result_column(games)
         
-        # Cache the results
+        # Cache the results (cache all games, not just completed ones)
         self._games_calculated_cache[cache_key] = games.copy()
         print(f"Cached games data for {cache_key}")
         
@@ -991,6 +992,21 @@ class DataService:
         
         return game_log
     
+
+    def get_completed_games_count(self, team_id=None):
+        """
+        Get the count of completed games (past dates only) for a team.
+        This ensures consistency between team stats and game counts.
+        
+        Args:
+            team_id (str, optional): Team ID to filter by
+            
+        Returns:
+            int: Number of completed games
+        """
+        games = self.get_games(team_id)
+        completed_games = self._filter_games_by_date(games, include_future=False)
+        return len(completed_games)
     def calculate_team_stats(self, team_id=None):
         """
         Calculate team statistics.
@@ -1069,9 +1085,27 @@ class DataService:
             if player['Position'] == 'G':
                 # Use goalie stats calculation for goalies
                 stats = self.calculate_goalie_stats(player['ID'], team_id)
+                # Add missing fields for goalies to match skater stats structure
+                if stats:
+                    stats['points'] = 0  # Goalies don't have points
+                    stats['goals'] = 0
+                    stats['assists'] = 0
+                    stats['plus_minus'] = 0
+                    stats['shots'] = 0
+                    stats['penalty_minutes'] = 0
+                    stats['goals_per_game'] = 0
             else:
                 # Use regular player stats calculation for skaters
                 stats = self.calculate_player_stats(player['ID'], team_id)
+                # Add missing fields for skaters to match goalie stats structure
+                if stats:
+                    stats['wins'] = 0  # Skaters don't have wins
+                    stats['shutouts'] = 0
+                    stats['goals_against'] = 0
+                    stats['shots_against'] = 0
+                    stats['saves'] = 0
+                    stats['save_percentage'] = 0
+                    stats['gaa'] = 0
             
             if stats:
                 player_stats.append(stats)
