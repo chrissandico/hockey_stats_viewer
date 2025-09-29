@@ -564,15 +564,16 @@ class DataService:
             print(f"get_game_by_id: Game {game_id} not found (team_id={team_id})")
             return None
     
-    def get_player_games(self, player_id, team_id=None, include_future=False):
+    def get_player_games(self, player_id, team_id=None, include_future=False, game_type=None):
         """
-        Get all games a player participated in, optionally filtered by team and date.
+        Get all games a player participated in, optionally filtered by team, date, and game type.
         For goalies, only includes games where they faced at least 1 shot on goal (SOG > 0).
         
         Args:
             player_id (str): The player ID
             team_id (str, optional): Team ID to filter by
             include_future (bool): If True, include future games. If False, only past/current games.
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             pd.DataFrame: DataFrame containing game data
@@ -580,8 +581,8 @@ class DataService:
         # Force refresh game roster to ensure it's up to date, passing team_id for proper filtering
         game_roster = self.get_game_roster(team_id)
         
-        # Get games filtered by team if specified
-        games = self.get_games(team_id)
+        # Get games filtered by team and game type if specified
+        games = self.get_games(team_id, game_type)
         
         # Apply date filtering to only show completed games by default
         games = self._filter_games_by_date(games, include_future=include_future)
@@ -823,13 +824,14 @@ class DataService:
         print(f"Calculated {penalty_minutes} penalty minutes for player {player_id}")
         return penalty_minutes
 
-    def calculate_player_stats(self, player_id, team_id=None):
+    def calculate_player_stats(self, player_id, team_id=None, game_type=None):
         """
         Calculate statistics for a player.
         
         Args:
             player_id (str): The player ID
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             dict: Dictionary containing player statistics
@@ -839,7 +841,7 @@ class DataService:
             return None
         
         events = self.get_events()
-        games = self.get_player_games(player_id, team_id)
+        games = self.get_player_games(player_id, team_id, game_type=game_type)
         
         # Get all teams in events
         unique_teams = events['Team'].unique()
@@ -1181,7 +1183,7 @@ class DataService:
             'win_percentage': win_percentage
         }
     
-    def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None):
+    def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None, game_type=None):
         """
         Get a team leaderboard for a specific statistic.
         
@@ -1190,6 +1192,7 @@ class DataService:
             position (str, optional): Filter by position (F, D, G)
             limit (int, optional): Maximum number of players to include. If None, includes all players.
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             list: List of dictionaries containing player statistics
@@ -1205,7 +1208,7 @@ class DataService:
         for _, player in players.iterrows():
             if player['Position'] == 'G':
                 # Use goalie stats calculation for goalies
-                stats = self.calculate_goalie_stats(player['ID'], team_id)
+                stats = self.calculate_goalie_stats(player['ID'], team_id, game_type)
                 # Add missing fields for goalies to match skater stats structure
                 if stats:
                     stats['points'] = 0  # Goalies don't have points
@@ -1217,7 +1220,7 @@ class DataService:
                     stats['goals_per_game'] = 0
             else:
                 # Use regular player stats calculation for skaters
-                stats = self.calculate_player_stats(player['ID'], team_id)
+                stats = self.calculate_player_stats(player['ID'], team_id, game_type)
                 # Add missing fields for skaters to match goalie stats structure
                 if stats:
                     stats['wins'] = 0  # Skaters don't have wins
@@ -1252,13 +1255,14 @@ class DataService:
             # Return all players if no limit is specified
             return player_stats
     
-    def calculate_goalie_stats(self, player_id, team_id=None):
+    def calculate_goalie_stats(self, player_id, team_id=None, game_type=None):
         """
         Calculate statistics for a goalie with GoalieOnIceId support.
         
         Args:
             player_id (str): The player ID
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             dict: Dictionary containing goalie statistics
@@ -1277,7 +1281,7 @@ class DataService:
         events = self.get_events()
         print(f"Total events: {len(events)}")
         
-        games = self.get_player_games(player_id, team_id)
+        games = self.get_player_games(player_id, team_id, game_type=game_type)
         print(f"Goalie games count: {len(games)}")
         
         if games.empty:

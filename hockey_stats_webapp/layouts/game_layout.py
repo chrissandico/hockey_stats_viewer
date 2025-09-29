@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
 from components.period_breakdown import create_period_breakdown_component
+from components.game_type_filter import create_game_type_badge
 import config
 
 def create_game_layout(data_service, team_context=None):
@@ -24,7 +25,7 @@ def create_game_layout(data_service, team_context=None):
     # Filter to only show completed games (past dates)
     games = data_service._filter_games_by_date(games, include_future=False)
     
-    # Create enhanced radio options with date, opponent, and result
+    # Create enhanced radio options with date, opponent, result, and game type
     radio_options = []
     for _, game in games.iterrows():
         try:
@@ -32,8 +33,10 @@ def create_game_layout(data_service, team_context=None):
             result = game.get('Result', 'Unknown')
             goals_for = game.get('GoalsFor', 0)
             goals_against = game.get('GoalsAgainst', 0)
+            game_type = game.get('GameType', 'E')
+            game_type_name = config.get_game_type_name(game_type)
             
-            label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against})"
+            label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against}) - {game_type_name}"
             radio_options.append({'label': label, 'value': game['ID']})
         except Exception as e:
             # Fallback to basic label if there's any error
@@ -146,10 +149,18 @@ def register_game_callbacks(app, data_service, team_context=None):
         result = game.get('Result', 'Unknown')
         result_color = "success" if result == 'W' else "danger" if result == 'L' else "warning"
         
+        # Get game type for badge
+        game_type = game.get('GameType', 'E')
+        
         # Create the main game summary components
         game_summary_components = [
             dbc.Card([
-                dbc.CardHeader(html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title")),
+                dbc.CardHeader([
+                    html.Div([
+                        html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title d-inline-block me-2"),
+                        create_game_type_badge(game_type)
+                    ], className="d-flex align-items-center")
+                ]),
                 dbc.CardBody([
                     dbc.Row([
                         # Game details
