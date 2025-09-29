@@ -144,6 +144,26 @@ class SheetsService:
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             
+            # Handle game type data from column F
+            # If GameType column doesn't exist or has empty values, default to 'E' (Exhibition)
+            if 'GameType' not in df.columns:
+                print("GameType column not found in Games sheet, adding default values")
+                df['GameType'] = 'E'  # Default to Exhibition
+            else:
+                # Fill empty/null game type values with default
+                df['GameType'] = df['GameType'].fillna('E')
+                df['GameType'] = df['GameType'].replace('', 'E')
+                
+                # Validate game type values and replace invalid ones with default
+                from config import is_valid_game_type, DEFAULT_GAME_TYPE
+                invalid_mask = ~df['GameType'].apply(is_valid_game_type)
+                if invalid_mask.any():
+                    invalid_count = invalid_mask.sum()
+                    print(f"Found {invalid_count} invalid game type values, replacing with default '{DEFAULT_GAME_TYPE}'")
+                    df.loc[invalid_mask, 'GameType'] = DEFAULT_GAME_TYPE
+                
+                print(f"Game type distribution: {df['GameType'].value_counts().to_dict()}")
+            
             self.cache[key] = df
             self.last_refresh[key] = time.time()
         

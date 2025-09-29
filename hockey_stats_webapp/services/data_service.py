@@ -286,6 +286,62 @@ class DataService:
         
         return result
     
+    def _filter_games_by_type(self, games, game_type=None):
+        """
+        Filter games by game type.
+        
+        Args:
+            games (pd.DataFrame): DataFrame containing game data
+            game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
+            
+        Returns:
+            pd.DataFrame: Filtered DataFrame containing only games of the specified type
+        """
+        if games.empty or game_type is None:
+            return games
+        
+        if 'GameType' not in games.columns:
+            print("WARNING: No GameType column found in games data. Returning all games.")
+            return games
+        
+        # Filter by game type
+        filtered_games = games[games['GameType'] == game_type]
+        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
+        
+        return filtered_games
+    
+    def _get_game_type_from_session(self):
+        """
+        Get the currently selected game type from the Flask session.
+        
+        Returns:
+            str: The selected game type code, or None if not set
+        """
+        try:
+            from flask import session
+            return session.get('selected_game_type')
+        except RuntimeError:
+            # Working outside of request context (e.g., in tests)
+            return None
+    
+    def _set_game_type_in_session(self, game_type):
+        """
+        Set the currently selected game type in the Flask session.
+        
+        Args:
+            game_type (str): The game type code to set
+        """
+        from flask import session
+        from config import is_valid_game_type, DEFAULT_GAME_TYPE
+        
+        # Validate game type
+        if game_type and is_valid_game_type(game_type):
+            session['selected_game_type'] = game_type
+        else:
+            session['selected_game_type'] = DEFAULT_GAME_TYPE
+        
+        print(f"Set game type in session: {session['selected_game_type']}")
+    
     def get_players(self, team_id=None):
         """
         Get all players, optionally filtered by team.
@@ -303,18 +359,19 @@ class DataService:
         
         return players
     
-    def get_games(self, team_id=None):
+    def get_games(self, team_id=None, game_type=None):
         """
-        Get all games with calculated goal statistics, optionally filtered by team.
+        Get all games with calculated goal statistics, optionally filtered by team and game type.
         
         Args:
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
             
         Returns:
             pd.DataFrame: DataFrame containing game data with calculated columns
         """
-        # Create a cache key based on team_id
-        cache_key = f"games_{team_id}" if team_id else "games_all"
+        # Create a cache key based on team_id and game_type
+        cache_key = f"games_{team_id}_{game_type}" if team_id or game_type else "games_all"
         
         # Check if we have cached results
         if not hasattr(self, '_games_calculated_cache'):
@@ -330,6 +387,10 @@ class DataService:
         # Filter games by team if specified
         if team_id is not None:
             games = self._filter_by_team(games, team_id)
+        
+        # Filter games by game type if specified
+        if game_type is not None:
+            games = self._filter_games_by_type(games, game_type)
         
         # Print columns for debugging
         print("Games columns:", games.columns.tolist())
@@ -362,7 +423,7 @@ class DataService:
             games['GoalsAgainst'] = 0
             
             # Calculate goals for each game - but only do this expensive operation once
-            print(f"Calculating goals for {len(games)} games (team: {team_identifier})")
+            print(f"Calculating goals for {len(games)} games (team: {team_identifier}, game_type: {game_type})")
             for idx, game in games.iterrows():
                 game_events = events[events['GameID'] == game['ID']]
                 
@@ -506,6 +567,7 @@ class DataService:
     def get_player_games(self, player_id, team_id=None, include_future=False):
         """
         Get all games a player participated in, optionally filtered by team and date.
+        For goalies, only includes games where they faced at least 1 shot on goal (SOG > 0).
         
         Args:
             player_id (str): The player ID
@@ -537,6 +599,60 @@ class DataService:
         # Filter games by these IDs (games are already team-filtered and date-filtered)
         player_games = games[games['ID'].isin(player_game_ids)]
         print(f"Found {len(player_games)} game records for player {player_id} (team: {team_id}, include_future: {include_future})")
+        
+        # Special handling for goalies: only count games where they faced at least 1 shot
+        if is_goalie and not player_games.empty:
+            print(f"Applying goalie-specific filtering for player {player_id} (Position: G)")
+            
+            # Get events data for filtering
+            events = self.get_events()
+            
+            # Get team identifier for proper event filtering
+            if team_id is not None:
+                team_identifier = self._get_team_identifier_for_events(team_id)
+            else:
+                # For backward compatibility, try to get the first team or use fallback
+                try:
+                    teams = self.sheets_service.get_teams()
+                    if not teams.empty:
+                        first_team_id = teams.iloc[0]['TeamID']
+                        team_identifier = self._get_team_identifier_for_events(first_team_id)
+                    else:
+                        team_identifier = 'your_team'
+                except:
+                    team_identifier = 'your_team'
+            
+            # Filter games to only include those where the goalie faced shots
+            valid_game_ids = []
+            
+            for _, game in player_games.iterrows():
+                game_id = game['ID']
+                
+                # Use the existing helper method to filter events for this goalie and game
+                goalie_events = self._filter_goalie_events(events, player_id, game_id)
+                
+                # Calculate shots against for this game
+                shots_events = goalie_events[(goalie_events['EventType'] == 'Shot') & 
+                                           (goalie_events['Team'] != team_identifier)]
+                
+                # Also count goals as shots (if they're not already counted as shots)
+                goals_as_shots = goalie_events[(goalie_events['IsGoal'] == True) & 
+                                             (goalie_events['Team'] != team_identifier) &
+                                             (goalie_events['EventType'] != 'Shot')]
+                
+                # Total shots against for this game
+                shots_against = len(shots_events) + len(goals_as_shots)
+                
+                # Only include games where the goalie faced at least 1 shot
+                if shots_against > 0:
+                    valid_game_ids.append(game_id)
+                    print(f"  Game {game_id}: {shots_against} shots against - COUNTED")
+                else:
+                    print(f"  Game {game_id}: 0 shots against - EXCLUDED from GP")
+            
+            # Filter to only valid games
+            player_games = player_games[player_games['ID'].isin(valid_game_ids)]
+            print(f"After goalie filtering: {len(player_games)} games count as played for goalie {player_id}")
         
         return player_games
     
@@ -1007,17 +1123,22 @@ class DataService:
         games = self.get_games(team_id)
         completed_games = self._filter_games_by_date(games, include_future=False)
         return len(completed_games)
-    def calculate_team_stats(self, team_id=None):
+    def calculate_team_stats(self, team_id=None, game_type=None):
         """
         Calculate team statistics.
         
         Args:
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             dict: Dictionary containing team statistics
         """
-        games = self.get_games(team_id)
+        # Get the current game type from session if not provided
+        if game_type is None:
+            game_type = self._get_game_type_from_session()
+        
+        games = self.get_games(team_id, game_type)
         
         # Ensure Result column exists
         games = self._ensure_result_column(games)

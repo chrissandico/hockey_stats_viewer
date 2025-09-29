@@ -9,6 +9,28 @@ COACHES_ONLY_STATS = [
     'opponent_pim'      # Opponent penalty minutes in game summary
 ]
 
+# Game type constants
+GAME_TYPES = {
+    'E': {
+        'name': 'Exhibition',
+        'color': '#FF9800',  # Orange
+        'badge_class': 'warning'
+    },
+    'R': {
+        'name': 'Regular Season',
+        'color': '#2196F3',  # Blue
+        'badge_class': 'primary'
+    },
+    'T': {
+        'name': 'Tournament',
+        'color': '#9C27B0',  # Purple
+        'badge_class': 'secondary'
+    }
+}
+
+# Default game type
+DEFAULT_GAME_TYPE = 'E'
+
 def is_coaches_only_stat(stat_name):
     """
     Check if a statistic is only visible to coaches.
@@ -20,3 +42,66 @@ def is_coaches_only_stat(stat_name):
         bool: True if the stat is coaches-only, False otherwise
     """
     return stat_name in COACHES_ONLY_STATS
+
+def get_game_type_name(game_type_code):
+    """
+    Get the display name for a game type code.
+    
+    Args:
+        game_type_code (str): The game type code (E, R, T)
+        
+    Returns:
+        str: The display name for the game type
+    """
+    if not game_type_code or game_type_code not in GAME_TYPES:
+        game_type_code = DEFAULT_GAME_TYPE
+    return GAME_TYPES[game_type_code]['name']
+
+def get_game_type_color(game_type_code):
+    """
+    Get the color for a game type code.
+    
+    Args:
+        game_type_code (str): The game type code (E, R, T)
+        
+    Returns:
+        str: The hex color code for the game type
+    """
+    if not game_type_code or game_type_code not in GAME_TYPES:
+        game_type_code = DEFAULT_GAME_TYPE
+    return GAME_TYPES[game_type_code]['color']
+
+def get_game_type_badge_class(game_type_code):
+    """
+    Get the Bootstrap badge class for a game type code.
+    
+    Args:
+        game_type_code (str): The game type code (E, R, T)
+        
+    Returns:
+        str: The Bootstrap badge class for the game type
+    """
+    if not game_type_code or game_type_code not in GAME_TYPES:
+        game_type_code = DEFAULT_GAME_TYPE
+    return GAME_TYPES[game_type_code]['badge_class']
+
+def get_all_game_types():
+    """
+    Get all available game types.
+    
+    Returns:
+        dict: Dictionary of all game types with their properties
+    """
+    return GAME_TYPES.copy()
+
+def is_valid_game_type(game_type_code):
+    """
+    Check if a game type code is valid.
+    
+    Args:
+        game_type_code (str): The game type code to validate
+        
+    Returns:
+        bool: True if the game type code is valid, False otherwise
+    """
+    return game_type_code in GAME_TYPES

@@ -294,6 +294,14 @@ register_player_callbacks(app, data_service)
 # Note: We pass None for team_context since it will be retrieved dynamically from session
 register_game_callbacks(app, data_service, team_context=None)
 
+# Register team callbacks for game type filtering
+from layouts.team_layout import register_team_callbacks
+register_team_callbacks(app, data_service)
+
+# Register game type filter callbacks
+from components.game_type_filter import register_game_type_filter_callbacks
+register_game_type_filter_callbacks(app, data_service)
+
 
 # Run the app
 if __name__ == '__main__':

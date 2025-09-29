@@ -3,6 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
+from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
 import config
 
 def create_team_layout(data_service, team_context=None):
@@ -58,6 +59,12 @@ def create_team_layout(data_service, team_context=None):
         
         # Title
         html.H1("Team Statistics", className="text-center mt-4"),
+        
+        # Game type filter
+        create_game_type_filter_component(),
+        
+        # Session store for game type selection
+        create_game_type_session_store(),
         
         # Team season summary with loading
         dcc.Loading(
@@ -302,3 +309,281 @@ def create_team_layout(data_service, team_context=None):
             ]
         )
     ])
+
+def register_team_callbacks(app, data_service):
+    """
+    Register callbacks for the team statistics layout to handle game type filtering.
+    
+    Args:
+        app (dash.Dash): The Dash application
+        data_service (DataService): The data service for retrieving team data
+    """
+    @app.callback(
+        [dash.dependencies.Output('team-stats-loading', 'children'),
+         dash.dependencies.Output('team-leaderboards-loading', 'children'),
+         dash.dependencies.Output('team-game-log-loading', 'children')],
+        [dash.dependencies.Input('game-type-filter-tabs', 'active_tab')]
+    )
+    def update_team_stats_by_game_type(active_tab):
+        """Update team statistics based on selected game type."""
+        from flask import session
+        
+        # Get team context from session
+        team_id = session.get('team_id') if session.get('authenticated', False) else None
+        is_coach = session.get('is_coach', False)
+        
+        # Determine game type filter
+        game_type = None if active_tab == "all" else active_tab
+        
+        # Update session with selected game type
+        if game_type:
+            data_service._set_game_type_in_session(game_type)
+        else:
+            data_service._set_game_type_in_session(None)
+        
+        # Calculate team stats with game type filtering
+        team_stats = data_service.calculate_team_stats(team_id)  # Note: Will need to update this method
+        
+        # Get games with game type filtering
+        games = data_service.get_games(team_id, game_type)
+        games = data_service._filter_games_by_date(games, include_future=False)
+        
+        # Get leaderboards with game type filtering (will need to update these methods)
+        if is_coach:
+            forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)
+            defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)
+            goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id)
+            forwards_sort_label = "Points"
+            defense_sort_label = "Plus/Minus"
+            goalies_sort_label = "Save Percentage"
+        else:
+            forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id)
+            defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id)
+            goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id)
+            forwards_sort_label = "Jersey Number"
+            defense_sort_label = "Jersey Number"
+            goalies_sort_label = "Jersey Number"
+        
+        # Create updated team stats component
+        team_stats_component = dbc.Card([
+            dbc.CardHeader(html.H4("Season Summary", className="card-title")),
+            dbc.CardBody([
+                dbc.Row([
+                    # Record
+                    dbc.Col([
+                        html.H5("Record"),
+                        html.Div([
+                            html.Div([
+                                html.Span("Games Played: ", className="fw-bold"),
+                                html.Span(f"{team_stats['games_played']}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Wins: ", className="fw-bold"),
+                                html.Span(f"{team_stats['wins']}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Losses: ", className="fw-bold"),
+                                html.Span(f"{team_stats['losses']}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Ties: ", className="fw-bold"),
+                                html.Span(f"{team_stats['ties']}")
+                            ], className="mb-1"),
+                        ])
+                    ], md=4),
+                    
+                    # Goals
+                    dbc.Col([
+                        html.H5("Goals"),
+                        html.Div([
+                            html.Div([
+                                html.Span("Goals For: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_for']}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Goals Against: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_against']}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Goal Differential: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_for'] - team_stats['goals_against']}")
+                            ], className="mb-1"),
+                        ])
+                    ], md=4),
+                    
+                    # Percentages
+                    dbc.Col([
+                        html.H5("Percentages"),
+                        html.Div([
+                            html.Div([
+                                html.Span("Win Percentage: ", className="fw-bold"),
+                                html.Span(f"{team_stats['win_percentage']:.3f}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Goals For per Game: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_for'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Goals Against per Game: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_against'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                            ], className="mb-1"),
+                        ])
+                    ], md=4),
+                ])
+            ])
+        ], className="mb-4 shadow-sm")
+        
+        # Create updated leaderboards component
+        leaderboards_component = [
+            dbc.Row([
+                # Forwards leaderboard
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader(html.H4(f"Forwards Leaderboard (Sorted by {forwards_sort_label})", className="card-title")),
+                        dbc.CardBody([
+                            html.Table([
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Player", className="text-start"),
+                                        html.Th("G", className="text-center"),
+                                        html.Th("A", className="text-center"),
+                                        html.Th("P", className="text-center"),
+                                        *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                                        html.Td(f"{stats['goals']}", className="text-center"),
+                                        html.Td(f"{stats['assists']}", className="text-center"),
+                                        html.Td(f"{stats['points']}", className="text-center"),
+                                        *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ]) for stats in forwards_points_leaders
+                                ])
+                            ], className="table table-striped table-hover")
+                        ])
+                    ], className="mb-4 shadow-sm")
+                ], md=6),
+                
+                # Defense leaderboard
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader(html.H4(f"Defense Leaderboard (Sorted by {defense_sort_label})", className="card-title")),
+                        dbc.CardBody([
+                            html.Table([
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Player", className="text-start"),
+                                        html.Th("G", className="text-center"),
+                                        html.Th("A", className="text-center"),
+                                        html.Th("P", className="text-center"),
+                                        *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                                        html.Td(f"{stats['goals']}", className="text-center"),
+                                        html.Td(f"{stats['assists']}", className="text-center"),
+                                        html.Td(f"{stats['points']}", className="text-center"),
+                                        *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ]) for stats in defense_leaders
+                                ])
+                            ], className="table table-striped table-hover")
+                        ])
+                    ], className="mb-4 shadow-sm")
+                ], md=6)
+            ]),
+            
+            # Goalies leaderboard - full width row
+            dbc.Row([
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader(html.H4(f"Goalies Leaderboard (Sorted by {goalies_sort_label})", className="card-title")),
+                        dbc.CardBody([
+                            html.Table([
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Player", className="text-start"),
+                                        html.Th("GP", className="text-center"),
+                                        html.Th("W", className="text-center"),
+                                        html.Th("SV%", className="text-center"),
+                                        html.Th("GAA", className="text-center"),
+                                        html.Th("SO", className="text-center")
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
+                                        html.Td(f"{stats['games_played']}", className="text-center"),
+                                        html.Td(f"{stats['wins']}", className="text-center"),
+                                        html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
+                                        html.Td(f"{stats['gaa']:.2f}", className="text-center"),
+                                        html.Td(f"{stats['shutouts']}", className="text-center")
+                                    ]) for stats in goalies_leaders
+                                ])
+                            ], className="table table-striped table-hover")
+                        ])
+                    ], className="mb-4 shadow-sm")
+                ], md=12)
+            ], className="mt-3") if goalies_leaders else html.Div()
+        ]
+        
+        # Create updated game log component
+        game_log_component = dbc.Card([
+            dbc.CardHeader(html.H4("Game Log", className="card-title")),
+            dbc.CardBody([
+                dash_table.DataTable(
+                    id='team-game-log-table-filtered',
+                    columns=[
+                        {'name': 'Date', 'id': 'Date'},
+                        {'name': 'Opponent', 'id': 'Opponent'},
+                        {'name': 'Location', 'id': 'Location'},
+                        {'name': 'Result', 'id': 'Result'},
+                        {'name': 'Score', 'id': 'Score'},
+                        {'name': 'Game Type', 'id': 'GameType'}
+                    ],
+                    data=[{
+                        'Date': game['Date'],
+                        'Opponent': game['Opponent'],
+                        'Location': game['Location'],
+                        'Result': game['Result'],
+                        'Score': f"{game['GoalsFor']} - {game['GoalsAgainst']}",
+                        'GameType': config.get_game_type_name(game.get('GameType', 'E'))
+                    } for _, game in games.iterrows()],
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'center',
+                        'padding': '10px',
+                        'minWidth': '80px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    },
+                    style_data_conditional=[
+                        {
+                            'if': {'row_index': 'odd'},
+                            'backgroundColor': 'rgb(248, 248, 248)'
+                        },
+                        {
+                            'if': {'filter_query': '{Result} = "W"'},
+                            'backgroundColor': 'rgba(0, 255, 0, 0.1)'
+                        },
+                        {
+                            'if': {'filter_query': '{Result} = "L"'},
+                            'backgroundColor': 'rgba(255, 0, 0, 0.1)'
+                        },
+                        {
+                            'if': {'filter_query': '{Result} = "T"'},
+                            'backgroundColor': 'rgba(255, 255, 0, 0.1)'
+                        }
+                    ],
+                    sort_action='native',
+                    sort_mode='single',
+                    sort_by=[{'column_id': 'Date', 'direction': 'desc'}]
+                )
+            ])
+        ], className="shadow-sm")
+        
+        return team_stats_component, leaderboards_component, game_log_component
