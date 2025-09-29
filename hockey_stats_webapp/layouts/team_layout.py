@@ -25,29 +25,33 @@ def create_team_layout(data_service, team_context=None):
     print(f"\n=== TEAM LAYOUT: Using team_id from session: {team_id} ===")
     print(f"TEAM LAYOUT: Coach status: {is_coach}")
     
-    # Calculate team stats with team filtering
-    team_stats = data_service.calculate_team_stats(team_id)
+    # Get current game type from session
+    game_type = data_service._get_game_type_from_session()
+    print(f"TEAM LAYOUT: Using game type from session: {game_type}")
+    
+    # Calculate team stats with team filtering and game type filtering
+    team_stats = data_service.calculate_team_stats(team_id, game_type)
     print(f"TEAM LAYOUT: Team stats calculated: {team_stats}")
     
-    # Get games for the game log with team filtering and date filtering (only completed games)
-    games = data_service.get_games(team_id)
+    # Get games for the game log with team filtering, game type filtering, and date filtering (only completed games)
+    games = data_service.get_games(team_id, game_type)
     games = data_service._filter_games_by_date(games, include_future=False)
     print(f"TEAM LAYOUT: Games retrieved: {len(games)} games (filtered to completed games only)")
     
-    # Get leaderboards with team filtering - use different sorting based on coach status
+    # Get leaderboards with team filtering and game type filtering - use different sorting based on coach status
     if is_coach:
         # Coaches: Forwards by points, Defense by plus/minus, Goalies by save percentage
-        forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)
-        defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)
-        goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id)
+        forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id, game_type=game_type)
+        defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id, game_type=game_type)
+        goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id, game_type=game_type)
         forwards_sort_label = "Points"
         defense_sort_label = "Plus/Minus"
         goalies_sort_label = "Save Percentage"
     else:
         # Non-coaches: All positions by jersey number
-        forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id)
-        defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id)
-        goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id)
+        forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id, game_type=game_type)
+        defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id, game_type=game_type)
+        goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id, game_type=game_type)
         forwards_sort_label = "Jersey Number"
         defense_sort_label = "Jersey Number"
         goalies_sort_label = "Jersey Number"
@@ -73,7 +77,7 @@ def create_team_layout(data_service, team_context=None):
             color="#00205b",
             children=[
                 dbc.Card([
-                    dbc.CardHeader(html.H4("Season Summary", className="card-title")),
+                    dbc.CardHeader(html.H4("Summary", className="card-title")),
                     dbc.CardBody([
                         dbc.Row([
                             # Record
@@ -342,31 +346,31 @@ def register_team_callbacks(app, data_service):
             data_service._set_game_type_in_session(None)
         
         # Calculate team stats with game type filtering
-        team_stats = data_service.calculate_team_stats(team_id)  # Note: Will need to update this method
+        team_stats = data_service.calculate_team_stats(team_id, game_type)
         
         # Get games with game type filtering
         games = data_service.get_games(team_id, game_type)
         games = data_service._filter_games_by_date(games, include_future=False)
         
-        # Get leaderboards with game type filtering (will need to update these methods)
+        # Get leaderboards with game type filtering
         if is_coach:
-            forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id)
-            defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id)
-            goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id)
+            forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id, game_type=game_type)
+            defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id, game_type=game_type)
+            goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id, game_type=game_type)
             forwards_sort_label = "Points"
             defense_sort_label = "Plus/Minus"
             goalies_sort_label = "Save Percentage"
         else:
-            forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id)
-            defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id)
-            goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id)
+            forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id, game_type=game_type)
+            defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id, game_type=game_type)
+            goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id, game_type=game_type)
             forwards_sort_label = "Jersey Number"
             defense_sort_label = "Jersey Number"
             goalies_sort_label = "Jersey Number"
         
         # Create updated team stats component
         team_stats_component = dbc.Card([
-            dbc.CardHeader(html.H4("Season Summary", className="card-title")),
+            dbc.CardHeader(html.H4("Summary", className="card-title")),
             dbc.CardBody([
                 dbc.Row([
                     # Record
