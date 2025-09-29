@@ -1142,10 +1142,8 @@ class DataService:
         Returns:
             dict: Dictionary containing team statistics
         """
-        # Get the current game type from session if not provided
-        if game_type is None:
-            game_type = self._get_game_type_from_session()
-        
+        # Use the provided game_type parameter directly - don't get from session
+        # This ensures consistency between UI selection and actual calculation
         games = self.get_games(team_id, game_type)
         
         # Ensure Result column exists
@@ -1203,6 +1201,14 @@ class DataService:
         Returns:
             list: List of dictionaries containing player statistics
         """
+        # First check if there are any games of the specified type
+        if game_type is not None:
+            games = self.get_games(team_id, game_type)
+            completed_games = self._filter_games_by_date(games, include_future=False)
+            if completed_games.empty:
+                print(f"No completed games found for game type '{game_type}' - returning empty leaderboard")
+                return []
+        
         players = self.get_players(team_id)
         
         # Filter by position if specified
