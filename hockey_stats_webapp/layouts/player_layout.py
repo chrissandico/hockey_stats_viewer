@@ -3,7 +3,7 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
-from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
+# Removed game type filter import - players should show all games
 import config
 
 def create_player_layout(data_service, team_context=None):
@@ -37,11 +37,7 @@ def create_player_layout(data_service, team_context=None):
         # Title
         html.H1("Player Statistics", className="text-center mt-4"),
         
-        # Game type filter
-        create_game_type_filter_component(),
-        
-        # Session store for game type selection
-        create_game_type_session_store(),
+        # Game type filter removed - players show stats for all games
         
         # Player selection
         dbc.Card([
@@ -101,8 +97,8 @@ def register_player_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
         
-        # Get current game type from session
-        game_type = data_service._get_game_type_from_session()
+        # Always use all games for player stats (no game type filtering)
+        game_type = None
         
         print(f"\n=== CALLBACK: update_player_info called with jersey_number={jersey_number} ===")
         print(f"DataService instance in callback: {data_service}")
@@ -153,7 +149,7 @@ def register_player_callbacks(app, data_service):
             # Calculate goalie stats
             print("Calculating goalie stats...")
             try:
-                stats = data_service.calculate_goalie_stats(player['ID'], team_id, game_type)
+                stats = data_service.calculate_goalie_stats(player['ID'], team_id, None)
                 print(f"DEBUG: Goalie stats calculated: {stats}")
                 
                 # Verify stats values
@@ -182,7 +178,7 @@ def register_player_callbacks(app, data_service):
                 print(f"DEBUG: First game log entry: {game_log[0]}")
         else:
             print(f"Calculating player stats for player ID: {player['ID']} with team_id: {team_id}")
-            stats = data_service.calculate_player_stats(player['ID'], team_id, game_type)
+            stats = data_service.calculate_player_stats(player['ID'], team_id, None)
             
         if stats is None:
             return html.Div(dbc.Alert("Could not calculate player statistics", color="danger")), html.Div()

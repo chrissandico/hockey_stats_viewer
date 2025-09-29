@@ -843,6 +843,12 @@ class DataService:
         events = self.get_events()
         games = self.get_player_games(player_id, team_id, game_type=game_type)
         
+        # Filter events to only include games that match the game type filter
+        if not games.empty:
+            game_ids = games['ID'].tolist()
+            events = events[events['GameID'].isin(game_ids)]
+            print(f"Filtered events to {len(events)} events from {len(game_ids)} games (game_type: {game_type})")
+        
         # Get all teams in events
         unique_teams = events['Team'].unique()
         print(f"Unique teams in events: {unique_teams}")
@@ -866,7 +872,7 @@ class DataService:
                 team_identifier = 'your_team'
                 print(f"Using fallback team identifier: '{team_identifier}'")
         
-        # Calculate all stats using centralized functions
+        # Calculate all stats using centralized functions with filtered events
         goals = self.calculate_goals_for_events(player_id, events)
         assists = self.calculate_assists_for_events(player_id, events)
         points = self.calculate_points_for_events(player_id, events)
