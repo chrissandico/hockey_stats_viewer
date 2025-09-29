@@ -2,7 +2,7 @@
 
 ## Test Overview
 **Date**: September 29, 2025  
-**Password Used**: waxersu12aa  
+**Password Used**: [REDACTED]  
 **Team**: Waxers U12 AA (ID: your_team)  
 **Objective**: Verify that the goalie GP fix is working correctly in the web application
 
@@ -13,7 +13,7 @@
 
 ### 1. Authentication Test
 - **Status**: ✅ PASSED
-- **Result**: Successfully authenticated with password "waxersu12aa"
+- **Result**: Successfully authenticated with password "[REDACTED]"
 - **Team Authenticated**: Waxers U12 AA (ID: your_team, Coach: False)
 
 ### 2. Team Statistics - Goalie Leaderboard

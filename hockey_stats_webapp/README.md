@@ -103,7 +103,7 @@ The application expects your Google Sheet to have the following tabs:
 
 ## Authentication
 
-The application uses a simple password-based authentication system. The default password is "waxersu12aa", but you can change it by setting the `HOCKEY_STATS_PASSWORD` environment variable.
+The application uses a simple password-based authentication system. You can set your team password by configuring it in the `HOCKEY_STATS_PASSWORD` environment variable or through your team's configuration in the Google Sheets.
 
 ## Mobile Optimizations
 

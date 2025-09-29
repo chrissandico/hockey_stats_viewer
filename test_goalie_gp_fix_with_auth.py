@@ -26,8 +26,8 @@ def test_goalie_gp_fix_with_auth():
     print("\n=== Testing Goalie GP Fix with Team Authentication ===")
     
     # Test with the provided password
-    password = "waxersu12aa"
-    print(f"Testing with password: {password}")
+    password = "waxersu12aa"  # Test password - replace with actual team password
+    print(f"Testing with password: [REDACTED]")
     
     # Initialize auth service and authenticate
     auth_service = AuthService()
