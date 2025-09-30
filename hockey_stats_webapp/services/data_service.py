@@ -1668,24 +1668,28 @@ class DataService:
     
     def get_period_breakdown(self, game_id, team_id=None):
         """
-        Get period-by-period scoring breakdown for a game.
+        Get period-by-period scoring and shots breakdown for a game.
         
         Args:
             game_id (str): The game ID
             team_id (str, optional): Team ID to filter by
             
         Returns:
-            dict: Dictionary containing period-by-period scoring data with structure:
+            dict: Dictionary containing period-by-period scoring and shots data with structure:
                 {
                     'your_team': {
                         'name': 'Team Name',
-                        'periods': [goals_p1, goals_p2, goals_p3],
-                        'total': total_goals
+                        'goals': [goals_p1, goals_p2, goals_p3],
+                        'shots': [shots_p1, shots_p2, shots_p3],
+                        'total_goals': total_goals,
+                        'total_shots': total_shots
                     },
                     'opponent': {
                         'name': 'Opponent Name', 
-                        'periods': [goals_p1, goals_p2, goals_p3],
-                        'total': total_goals
+                        'goals': [goals_p1, goals_p2, goals_p3],
+                        'shots': [shots_p1, shots_p2, shots_p3],
+                        'total_goals': total_goals,
+                        'total_shots': total_shots
                     }
                 }
         """
@@ -1712,23 +1716,37 @@ class DataService:
         your_team_name = self._get_team_name_from_id(game_team_id) or game_team_id
         opponent_name = game.get('Opponent', 'Opponent')
         
-        # Initialize period data structure
+        # Initialize period data structure with both goals and shots
         period_data = {
             'your_team': {
                 'name': your_team_name,
-                'periods': [0, 0, 0],  # Periods 1, 2, 3
+                'goals': [0, 0, 0],  # Goals in periods 1, 2, 3
+                'shots': [0, 0, 0],  # Shots in periods 1, 2, 3
+                'total_goals': 0,
+                'total_shots': 0,
+                # Keep 'periods' and 'total' for backward compatibility
+                'periods': [0, 0, 0],
                 'total': 0
             },
             'opponent': {
                 'name': opponent_name,
-                'periods': [0, 0, 0],  # Periods 1, 2, 3
+                'goals': [0, 0, 0],  # Goals in periods 1, 2, 3
+                'shots': [0, 0, 0],  # Shots in periods 1, 2, 3
+                'total_goals': 0,
+                'total_shots': 0,
+                # Keep 'periods' and 'total' for backward compatibility
+                'periods': [0, 0, 0],
                 'total': 0
             }
         }
         
-        # Filter to only goal events
+        # Filter to goal events
         goal_events = game_events[game_events['IsGoal'] == True]
         print(f"Found {len(goal_events)} goal events for game {game_id}")
+        
+        # Filter to shot events (including goals as shots)
+        shot_events = game_events[game_events['EventType'].isin(['Shot', 'Goal'])]
+        print(f"Found {len(shot_events)} shot events (including goals) for game {game_id}")
         
         # Count goals by period and team
         for _, goal_event in goal_events.iterrows():
@@ -1746,17 +1764,48 @@ class DataService:
             # Determine which team scored
             if scoring_team == team_identifier:
                 # Your team scored
+                period_data['your_team']['goals'][period_index] += 1
+                period_data['your_team']['total_goals'] += 1
+                # Maintain backward compatibility
                 period_data['your_team']['periods'][period_index] += 1
                 period_data['your_team']['total'] += 1
                 print(f"Your team goal in period {period}")
             else:
                 # Opponent scored
+                period_data['opponent']['goals'][period_index] += 1
+                period_data['opponent']['total_goals'] += 1
+                # Maintain backward compatibility
                 period_data['opponent']['periods'][period_index] += 1
                 period_data['opponent']['total'] += 1
                 print(f"Opponent goal in period {period}")
         
+        # Count shots by period and team
+        for _, shot_event in shot_events.iterrows():
+            period = shot_event.get('Period', 1)
+            shooting_team = shot_event.get('Team', '')
+            
+            # Ensure period is valid (1, 2, or 3)
+            if period not in [1, 2, 3]:
+                print(f"Invalid period {period} found, skipping shot event")
+                continue
+            
+            # Convert period to array index (0, 1, 2)
+            period_index = period - 1
+            
+            # Determine which team took the shot
+            if shooting_team == team_identifier:
+                # Your team shot
+                period_data['your_team']['shots'][period_index] += 1
+                period_data['your_team']['total_shots'] += 1
+            else:
+                # Opponent shot
+                period_data['opponent']['shots'][period_index] += 1
+                period_data['opponent']['total_shots'] += 1
+        
         print(f"Period breakdown for game {game_id}:")
-        print(f"  {your_team_name}: {period_data['your_team']['periods']} (Total: {period_data['your_team']['total']})")
-        print(f"  {opponent_name}: {period_data['opponent']['periods']} (Total: {period_data['opponent']['total']})")
+        print(f"  {your_team_name} Goals: {period_data['your_team']['goals']} (Total: {period_data['your_team']['total_goals']})")
+        print(f"  {your_team_name} Shots: {period_data['your_team']['shots']} (Total: {period_data['your_team']['total_shots']})")
+        print(f"  {opponent_name} Goals: {period_data['opponent']['goals']} (Total: {period_data['opponent']['total_goals']})")
+        print(f"  {opponent_name} Shots: {period_data['opponent']['shots']} (Total: {period_data['opponent']['total_shots']})")
         
         return period_data

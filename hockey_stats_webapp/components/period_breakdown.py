@@ -13,18 +13,28 @@ import pandas as pd
 
 def create_period_breakdown_component(period_data, title="Period Breakdown", show_title=True):
     """
-    Create a period-by-period scoring breakdown component.
+    Create a period-by-period scoring and shots breakdown component.
     
     Args:
         period_data (dict): Dictionary containing period breakdown data with structure:
             {
                 'your_team': {
                     'name': 'Team Name',
+                    'goals': [goals_p1, goals_p2, goals_p3],
+                    'shots': [shots_p1, shots_p2, shots_p3],
+                    'total_goals': total_goals,
+                    'total_shots': total_shots,
+                    # Backward compatibility fields
                     'periods': [goals_p1, goals_p2, goals_p3],
                     'total': total_goals
                 },
                 'opponent': {
                     'name': 'Opponent Name', 
+                    'goals': [goals_p1, goals_p2, goals_p3],
+                    'shots': [shots_p1, shots_p2, shots_p3],
+                    'total_goals': total_goals,
+                    'total_shots': total_shots,
+                    # Backward compatibility fields
                     'periods': [goals_p1, goals_p2, goals_p3],
                     'total': total_goals
                 }
@@ -45,37 +55,89 @@ def create_period_breakdown_component(period_data, title="Period Breakdown", sho
     your_team = period_data['your_team']
     opponent = period_data['opponent']
     
-    # Create the table header
-    header_row = html.Tr([
-        html.Th("Team", className="text-start", style={"width": "40%"}),
-        html.Th("1", className="text-center", style={"width": "15%"}),
-        html.Th("2", className="text-center", style={"width": "15%"}),
-        html.Th("3", className="text-center", style={"width": "15%"}),
-        html.Th("T", className="text-center", style={"width": "15%"})
-    ])
+    # Check if we have the new shots data format
+    has_shots_data = ('shots' in your_team and 'shots' in opponent and 
+                     'total_shots' in your_team and 'total_shots' in opponent)
     
-    # Create team rows
-    your_team_row = html.Tr([
-        html.Td(your_team['name'], className="text-start fw-bold"),
-        html.Td(str(your_team['periods'][0]), className="text-center"),
-        html.Td(str(your_team['periods'][1]), className="text-center"),
-        html.Td(str(your_team['periods'][2]), className="text-center"),
-        html.Td(str(your_team['total']), className="text-center fw-bold")
-    ])
-    
-    opponent_row = html.Tr([
-        html.Td(opponent['name'], className="text-start fw-bold"),
-        html.Td(str(opponent['periods'][0]), className="text-center"),
-        html.Td(str(opponent['periods'][1]), className="text-center"),
-        html.Td(str(opponent['periods'][2]), className="text-center"),
-        html.Td(str(opponent['total']), className="text-center fw-bold")
-    ])
-    
-    # Create the table
-    table = html.Table([
-        html.Thead(header_row, className="table-dark"),
-        html.Tbody([your_team_row, opponent_row])
-    ], className="table table-striped table-hover mb-0")
+    if has_shots_data:
+        # Create enhanced table with goals and shots
+        header_row = html.Tr([
+            html.Th("Team", className="text-start", style={"width": "25%"}),
+            html.Th("1st", className="text-center", style={"width": "15%"}),
+            html.Th("2nd", className="text-center", style={"width": "15%"}),
+            html.Th("3rd", className="text-center", style={"width": "15%"}),
+            html.Th("Total", className="text-center", style={"width": "15%"}),
+            html.Th("SOG", className="text-center", style={"width": "15%"})
+        ])
+        
+        # Create team rows with goals and shots
+        your_team_row = html.Tr([
+            html.Td(your_team['name'], className="text-start fw-bold"),
+            html.Td(f"{your_team['goals'][0]} ({your_team['shots'][0]})", className="text-center"),
+            html.Td(f"{your_team['goals'][1]} ({your_team['shots'][1]})", className="text-center"),
+            html.Td(f"{your_team['goals'][2]} ({your_team['shots'][2]})", className="text-center"),
+            html.Td(str(your_team['total_goals']), className="text-center fw-bold"),
+            html.Td(str(your_team['total_shots']), className="text-center fw-bold")
+        ])
+        
+        opponent_row = html.Tr([
+            html.Td(opponent['name'], className="text-start fw-bold"),
+            html.Td(f"{opponent['goals'][0]} ({opponent['shots'][0]})", className="text-center"),
+            html.Td(f"{opponent['goals'][1]} ({opponent['shots'][1]})", className="text-center"),
+            html.Td(f"{opponent['goals'][2]} ({opponent['shots'][2]})", className="text-center"),
+            html.Td(str(opponent['total_goals']), className="text-center fw-bold"),
+            html.Td(str(opponent['total_shots']), className="text-center fw-bold")
+        ])
+        
+        # Add a legend row to explain the format
+        legend_row = html.Tr([
+            html.Td(html.Small("Goals (Shots)", className="text-muted"), 
+                    className="text-start", colSpan=6)
+        ])
+        
+        # Create the table with legend
+        table = html.Table([
+            html.Thead(header_row, className="table-dark"),
+            html.Tbody([your_team_row, opponent_row, legend_row])
+        ], className="table table-striped table-hover mb-0")
+        
+    else:
+        # Fallback to original format for backward compatibility
+        header_row = html.Tr([
+            html.Th("Team", className="text-start", style={"width": "40%"}),
+            html.Th("1", className="text-center", style={"width": "15%"}),
+            html.Th("2", className="text-center", style={"width": "15%"}),
+            html.Th("3", className="text-center", style={"width": "15%"}),
+            html.Th("T", className="text-center", style={"width": "15%"})
+        ])
+        
+        # Use backward compatibility fields
+        your_team_periods = your_team.get('periods', [0, 0, 0])
+        your_team_total = your_team.get('total', 0)
+        opponent_periods = opponent.get('periods', [0, 0, 0])
+        opponent_total = opponent.get('total', 0)
+        
+        your_team_row = html.Tr([
+            html.Td(your_team['name'], className="text-start fw-bold"),
+            html.Td(str(your_team_periods[0]), className="text-center"),
+            html.Td(str(your_team_periods[1]), className="text-center"),
+            html.Td(str(your_team_periods[2]), className="text-center"),
+            html.Td(str(your_team_total), className="text-center fw-bold")
+        ])
+        
+        opponent_row = html.Tr([
+            html.Td(opponent['name'], className="text-start fw-bold"),
+            html.Td(str(opponent_periods[0]), className="text-center"),
+            html.Td(str(opponent_periods[1]), className="text-center"),
+            html.Td(str(opponent_periods[2]), className="text-center"),
+            html.Td(str(opponent_total), className="text-center fw-bold")
+        ])
+        
+        # Create the table
+        table = html.Table([
+            html.Thead(header_row, className="table-dark"),
+            html.Tbody([your_team_row, opponent_row])
+        ], className="table table-striped table-hover mb-0")
     
     # Create the component with optional title
     component_children = []
