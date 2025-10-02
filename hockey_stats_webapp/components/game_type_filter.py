@@ -8,7 +8,7 @@ def create_game_type_filter_component(selected_game_type=None, show_all_option=T
     Create a reusable game type filter component.
     
     Args:
-        selected_game_type (str, optional): Currently selected game type. Defaults to Exhibition.
+        selected_game_type (str, optional): Currently selected game type. Defaults to "All Games" when show_all_option is True, otherwise Exhibition.
         show_all_option (bool): Whether to show an "All Games" option. Defaults to True.
         
     Returns:
@@ -17,9 +17,8 @@ def create_game_type_filter_component(selected_game_type=None, show_all_option=T
     # Get all available game types
     game_types = get_all_game_types()
     
-    # Set default selection
-    if selected_game_type is None:
-        selected_game_type = DEFAULT_GAME_TYPE
+    # Store the original selected_game_type for later logic
+    original_selected_game_type = selected_game_type
     
     # Create tab options
     tab_options = []
@@ -46,11 +45,11 @@ def create_game_type_filter_component(selected_game_type=None, show_all_option=T
             )
         )
     
-    # Determine active tab
-    if show_all_option and selected_game_type is None:
+    # Determine active tab - default to "all" when show_all_option is True and no specific type is selected
+    if show_all_option and original_selected_game_type is None:
         active_tab = "all"
     else:
-        active_tab = selected_game_type or DEFAULT_GAME_TYPE
+        active_tab = original_selected_game_type or DEFAULT_GAME_TYPE
     
     return dbc.Card([
         dbc.CardHeader([
