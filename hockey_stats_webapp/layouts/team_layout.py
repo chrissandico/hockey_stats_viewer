@@ -230,7 +230,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Th("W", className="text-center"),
                                             html.Th("SV%", className="text-center"),
                                             html.Th("GAA", className="text-center"),
-                                            html.Th("SO", className="text-center")
+                                            html.Th("SO", className="text-center"),
+                                            html.Th("SOG", className="text-center")
                                         ])
                                     ),
                                     html.Tbody([
@@ -240,7 +241,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Td(f"{stats['wins']}", className="text-center"),
                                             html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
                                             html.Td(f"{stats['gaa']:.2f}", className="text-center"),
-                                            html.Td(f"{stats['shutouts']}", className="text-center")
+                                            html.Td(f"{stats['shutouts']}", className="text-center"),
+                                            html.Td(f"{stats['shots_against']}", className="text-center")
                                         ]) for stats in goalies_leaders
                                     ])
                                 ], className="table table-striped table-hover")
@@ -513,7 +515,8 @@ def register_team_callbacks(app, data_service):
                                         html.Th("W", className="text-center"),
                                         html.Th("SV%", className="text-center"),
                                         html.Th("GAA", className="text-center"),
-                                        html.Th("SO", className="text-center")
+                                        html.Th("SO", className="text-center"),
+                                        html.Th("SOG", className="text-center")
                                     ])
                                 ),
                                 html.Tbody([
@@ -523,7 +526,8 @@ def register_team_callbacks(app, data_service):
                                         html.Td(f"{stats['wins']}", className="text-center"),
                                         html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
                                         html.Td(f"{stats['gaa']:.2f}", className="text-center"),
-                                        html.Td(f"{stats['shutouts']}", className="text-center")
+                                        html.Td(f"{stats['shutouts']}", className="text-center"),
+                                        html.Td(f"{stats['shots_against']}", className="text-center")
                                     ]) for stats in goalies_leaders
                                 ])
                             ], className="table table-striped table-hover")
