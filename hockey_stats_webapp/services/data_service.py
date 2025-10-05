@@ -911,11 +911,43 @@ class DataService:
                 # No games of this type exist, so no events should be included
                 events = events[events['GameID'].isin([])]  # Empty filter
                 print(f"No games of type '{game_type}' found - using 0 events for stats calculation")
-        elif not games.empty:
-            # Only filter by player games if no game type filter is specified
-            game_ids = games['ID'].tolist()
-            events = events[events['GameID'].isin(game_ids)]
-            print(f"Filtered events to {len(events)} events from {len(game_ids)} player games (no game_type filter)")
+        else:
+            # When game_type is None (All Games), we need to filter events by ALL player games across all game types
+            # This fixes the "All Games" aggregation issue where Player #25 showed 0 games played
+            if not games.empty:
+                # Only filter by player games if no game type filter is specified
+                game_ids = games['ID'].tolist()
+                events = events[events['GameID'].isin(game_ids)]
+                print(f"Filtered events to {len(events)} events from {len(game_ids)} player games (no game_type filter)")
+            else:
+                # CRITICAL FIX: When no games found with current filtering, 
+                # get ALL player games across ALL game types for proper aggregation
+                print(f"No games found for player {player_id} with current filters, trying all game types...")
+                
+                # Get player games for each game type individually and combine
+                all_player_games = []
+                for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
+                    gt_games = self.get_player_games(player_id, team_id, game_type=gt)
+                    if not gt_games.empty:
+                        all_player_games.append(gt_games)
+                        print(f"Found {len(gt_games)} games for player {player_id} in game type '{gt}'")
+                
+                if all_player_games:
+                    # Combine all games and remove duplicates
+                    combined_games = pd.concat(all_player_games, ignore_index=True)
+                    combined_games = combined_games.drop_duplicates(subset=['ID'], keep='first')
+                    
+                    # Filter events by these combined game IDs
+                    combined_game_ids = combined_games['ID'].tolist()
+                    events = events[events['GameID'].isin(combined_game_ids)]
+                    
+                    # Update games variable for games_played calculation
+                    games = combined_games
+                    
+                    print(f"FIXED: Combined {len(combined_games)} games across all types for player {player_id}")
+                    print(f"Filtered events to {len(events)} events from combined games")
+                else:
+                    print(f"No games found for player {player_id} in any game type")
         
         # Get all teams in events
         unique_teams = events['Team'].unique()
