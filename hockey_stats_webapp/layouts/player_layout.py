@@ -125,9 +125,9 @@ def register_player_callbacks(app, data_service):
         if game_type_data and isinstance(game_type_data, dict):
             game_type = game_type_data.get('game_type')
         
-        # Default to Regular Season if no game type specified
-        if not game_type:
-            game_type = 'R'
+        # Handle "All Games" selection - when active_tab is "all", game_type should be None
+        if game_type == "all":
+            game_type = None
         
         print(f"\n=== CALLBACK: update_player_info called with jersey_number={jersey_number} ===")
         print(f"DataService instance in callback: {data_service}")
