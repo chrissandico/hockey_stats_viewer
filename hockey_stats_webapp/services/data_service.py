@@ -843,11 +843,25 @@ class DataService:
         events = self.get_events()
         games = self.get_player_games(player_id, team_id, game_type=game_type)
         
-        # Filter events to only include games that match the game type filter
-        if not games.empty:
+        # CRITICAL FIX: Always filter events by game type, even if no games are found
+        # This ensures that when filtering by Regular Season but no completed Regular Season games exist,
+        # we don't fall back to using ALL events (which was the bug)
+        if game_type is not None:
+            # Get all games of the specified type for proper event filtering
+            all_games_of_type = self.get_games(team_id, game_type)
+            if not all_games_of_type.empty:
+                game_ids_of_type = all_games_of_type['ID'].tolist()
+                events = events[events['GameID'].isin(game_ids_of_type)]
+                print(f"Filtered events to {len(events)} events from {len(game_ids_of_type)} games of type '{game_type}'")
+            else:
+                # No games of this type exist, so no events should be included
+                events = events[events['GameID'].isin([])]  # Empty filter
+                print(f"No games of type '{game_type}' found - using 0 events for stats calculation")
+        elif not games.empty:
+            # Only filter by player games if no game type filter is specified
             game_ids = games['ID'].tolist()
             events = events[events['GameID'].isin(game_ids)]
-            print(f"Filtered events to {len(events)} events from {len(game_ids)} games (game_type: {game_type})")
+            print(f"Filtered events to {len(events)} events from {len(game_ids)} player games (no game_type filter)")
         
         # Get all teams in events
         unique_teams = events['Team'].unique()
@@ -1111,8 +1125,8 @@ class DataService:
             if game_stats:
                 game_log.append(game_stats)
         
-        # Sort by game date
-        game_log.sort(key=lambda x: x['game']['Date'])
+        # Sort by game date (most recent first)
+        game_log.sort(key=lambda x: x['game']['Date'], reverse=True)
         
         return game_log
     
@@ -1296,6 +1310,20 @@ class DataService:
         games = self.get_player_games(player_id, team_id, game_type=game_type)
         print(f"Goalie games count: {len(games)}")
         
+        # CRITICAL FIX: Apply the same game type filtering logic as for skaters
+        # This ensures goalies are also properly filtered by game type
+        if game_type is not None:
+            # Get all games of the specified type for proper event filtering
+            all_games_of_type = self.get_games(team_id, game_type)
+            if not all_games_of_type.empty:
+                game_ids_of_type = all_games_of_type['ID'].tolist()
+                events = events[events['GameID'].isin(game_ids_of_type)]
+                print(f"Filtered events to {len(events)} events from {len(game_ids_of_type)} games of type '{game_type}' for goalie")
+            else:
+                # No games of this type exist, so no events should be included
+                events = events[events['GameID'].isin([])]  # Empty filter
+                print(f"No games of type '{game_type}' found - using 0 events for goalie stats calculation")
+        
         if games.empty:
             print(f"WARNING: No games found for goalie {player_id}")
             return {
@@ -1340,8 +1368,8 @@ class DataService:
         print(f"Goalie game IDs: {game_ids}")
         
         # Use the new helper method to filter events for this goalie across all their games
-        # Filter events to only include games this goalie played in
-        goalie_game_events = events[events['GameID'].isin(game_ids)]
+        # Filter events to only include games this goalie played in (events are already filtered by game type above)
+        goalie_game_events = events[events['GameID'].isin(game_ids)] if not games.empty else events
         goalie_events = self._filter_goalie_events(goalie_game_events, player_id)
         
         print(f"Filtered to {len(goalie_events)} events for goalie {player_id} across all games")
@@ -1391,12 +1419,16 @@ class DataService:
         # Calculate games played
         games_played = len(games)
         
-        # Calculate wins with error handling
+        # Calculate wins, losses, and ties with error handling
         try:
             wins = len(games[games['Result'] == 'W'])
+            losses = len(games[games['Result'] == 'L'])
+            ties = len(games[games['Result'] == 'T'])
         except KeyError as e:
-            print(f"Error calculating goalie wins: {e}")
+            print(f"Error calculating goalie W-L-T record: {e}")
             wins = 0
+            losses = 0
+            ties = 0
         
         # Special handling for goalies not in game roster
         if games_played == 0:
@@ -1425,6 +1457,8 @@ class DataService:
             'player': player,
             'games_played': games_played,
             'wins': wins,
+            'losses': losses,
+            'ties': ties,
             'shutouts': shutouts,
             'goals_against': goals_against,
             'shots_against': shots_against,

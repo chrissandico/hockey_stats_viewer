@@ -293,6 +293,7 @@ def register_player_callbacks(app, data_service):
                     print(f"DEBUG: Processing goalie game stats: {game_stats}")
                     game_log_entry = {
                         'Date': game_stats['game']['Date'],
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['result'],
                         'SA': game_stats['shots_against'],
@@ -307,6 +308,7 @@ def register_player_callbacks(app, data_service):
                     # Skater game log - conditionally include coaches-only stats
                     entry = {
                         'Date': game_stats['game']['Date'],
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['game']['Result'],
                         'Goals': game_stats['goals'],
@@ -329,6 +331,7 @@ def register_player_callbacks(app, data_service):
             if player['Position'] == 'G':
                 columns = [
                     {'name': 'Date', 'id': 'Date'},
+                    {'name': 'Game Type', 'id': 'Game Type'},
                     {'name': 'Opponent', 'id': 'Opponent'},
                     {'name': 'Result', 'id': 'Result'},
                     {'name': 'Shots Against', 'id': 'SA'},
@@ -341,6 +344,7 @@ def register_player_callbacks(app, data_service):
                 # Skater columns - conditionally include coaches-only columns
                 columns = [
                     {'name': 'Date', 'id': 'Date'},
+                    {'name': 'Game Type', 'id': 'Game Type'},
                     {'name': 'Opponent', 'id': 'Opponent'},
                     {'name': 'Result', 'id': 'Result'},
                     {'name': 'Goals', 'id': 'Goals'},
