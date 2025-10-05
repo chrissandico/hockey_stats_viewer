@@ -378,7 +378,7 @@ def register_team_callbacks(app, data_service):
          dash.dependencies.Output('team-game-log-loading', 'children')],
         [dash.dependencies.Input('game-type-session-store', 'data')]
     )
-    def update_team_stats_by_game_type(active_tab):
+    def update_team_stats_by_game_type(game_type_data):
         """Update team statistics based on selected game type."""
         from flask import session
         
@@ -386,11 +386,17 @@ def register_team_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
         
-        # Determine game type filter - the session store already handles the conversion
-        game_type = None if active_tab == "all" else active_tab
+        # Get game type from callback parameter instead of session
+        game_type = game_type_data if isinstance(game_type_data, str) else None
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type')
         
-        # The session is already updated by the game type filter component callback
-        # No need to update it again here
+        # Default to Regular Season if no game type specified
+        if not game_type:
+            game_type = 'R'
+        
+        print(f"\n=== TEAM CALLBACK: update_team_stats_by_game_type called with game_type_data={game_type_data} ===")
+        print(f"Team ID: {team_id}, Coach status: {is_coach}, Game type: {game_type}")
         
         # Calculate team stats with game type filtering
         team_stats = data_service.calculate_team_stats(team_id, game_type)
