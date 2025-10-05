@@ -44,44 +44,100 @@ app = dash.Dash(
 server = app.server
 server.secret_key = os.environ.get('SECRET_KEY', 'hockey-stats-secret-key')
 
-# Initialize services
+# Initialize services with error handling
 print("=== STARTUP: Initializing services ===")
-sheets_service = SheetsService()
-auth_service = AuthService(sheets_service)  # Pass sheets_service for team-based auth
-data_service = DataService(sheets_service, force_refresh=True)  # Force refresh data on startup
-
-# Verify DataService initialization
-print("=== STARTUP: Verifying DataService initialization ===")
-print(f"DataService instance created: {data_service}")
-print(f"DataService has cache busting attributes: {hasattr(data_service, '_players_cache')}")
-
-# Test goalie detection
-print("=== STARTUP: Testing goalie detection ===")
-players = data_service.get_players()
-goalies = players[players['Position'] == 'G']
-print(f"Found {len(goalies)} goalies in player data")
-if not goalies.empty:
-    goalie = goalies.iloc[0]
-    goalie_id = goalie['ID']
-    jersey_number = goalie.get('JerseyNumber', 'Unknown')
-    print(f"Goalie found: ID={goalie_id}, Jersey={jersey_number}")
+try:
+    sheets_service = SheetsService()
+    auth_service = AuthService(sheets_service)  # Pass sheets_service for team-based auth
+    data_service = DataService(sheets_service, force_refresh=True)  # Force refresh data on startup
     
-    # Test goalie stats calculation
-    print("=== STARTUP: Testing goalie stats calculation ===")
-    goalie_stats = data_service.calculate_goalie_stats(goalie_id)
-    if goalie_stats:
-        print(f"Goalie stats calculated successfully:")
-        print(f"  Games Played: {goalie_stats['games_played']}")
-        print(f"  Wins: {goalie_stats['wins']}")
-        print(f"  Shutouts: {goalie_stats['shutouts']}")
-        print(f"  Goals Against: {goalie_stats['goals_against']}")
-        print(f"  Shots Against: {goalie_stats['shots_against']}")
-        print(f"  Saves: {goalie_stats['saves']}")
-        print(f"  Save Percentage: {goalie_stats['save_percentage']:.3f}")
-    else:
-        print("ERROR: Failed to calculate goalie stats during startup verification!")
+    # Verify DataService initialization
+    print("=== STARTUP: Verifying DataService initialization ===")
+    print(f"DataService instance created: {data_service}")
+    print(f"DataService has cache busting attributes: {hasattr(data_service, '_players_cache')}")
+    
+    services_initialized = True
+    
+except Exception as e:
+    print(f"ERROR: Failed to initialize services: {e}")
+    print("This may be expected in local development without credentials.")
+    print("On Render, credentials should be available via environment variables.")
+    
+    # Create dummy services for local development
+    sheets_service = None
+    auth_service = None
+    data_service = None
+    services_initialized = False
+
+# Test goalie detection with error handling (only if services are initialized)
+print("=== STARTUP: Testing goalie detection ===")
+if services_initialized and data_service is not None:
+    try:
+        players = data_service.get_players()
+        print(f"Players data loaded: {len(players)} players")
+        
+        if not players.empty:
+            print(f"Player columns: {players.columns.tolist()}")
+            
+            # Check for goalies
+            if 'Position' in players.columns:
+                goalies = players[players['Position'] == 'G']
+                print(f"Found {len(goalies)} goalies in player data")
+                
+                if not goalies.empty:
+                    goalie = goalies.iloc[0]
+                    
+                    # Try different possible ID column names
+                    goalie_id = None
+                    possible_id_columns = ['ID', 'PlayerID', 'id', 'player_id']
+                    
+                    for col_name in possible_id_columns:
+                        if col_name in goalie.index:
+                            try:
+                                goalie_id = goalie[col_name]
+                                print(f"Goalie found using column '{col_name}': ID={goalie_id}")
+                                break
+                            except Exception as e:
+                                print(f"Failed to access column '{col_name}': {e}")
+                                continue
+                    
+                    if goalie_id is not None:
+                        jersey_number = goalie.get('JerseyNumber', 'Unknown')
+                        print(f"Goalie details: ID={goalie_id}, Jersey={jersey_number}")
+                        
+                        # Test goalie stats calculation with error handling
+                        print("=== STARTUP: Testing goalie stats calculation ===")
+                        try:
+                            goalie_stats = data_service.calculate_goalie_stats(goalie_id)
+                            if goalie_stats:
+                                print(f"Goalie stats calculated successfully:")
+                                print(f"  Games Played: {goalie_stats['games_played']}")
+                                print(f"  Wins: {goalie_stats['wins']}")
+                                print(f"  Shutouts: {goalie_stats['shutouts']}")
+                                print(f"  Goals Against: {goalie_stats['goals_against']}")
+                                print(f"  Shots Against: {goalie_stats['shots_against']}")
+                                print(f"  Saves: {goalie_stats['saves']}")
+                                print(f"  Save Percentage: {goalie_stats['save_percentage']:.3f}")
+                            else:
+                                print("WARNING: Failed to calculate goalie stats during startup verification")
+                        except Exception as e:
+                            print(f"ERROR calculating goalie stats: {e}")
+                    else:
+                        print("ERROR: Could not find valid ID column for goalie")
+                else:
+                    print("WARNING: No goalies found in player data")
+            else:
+                print("ERROR: No 'Position' column found in players data")
+        else:
+            print("WARNING: Players data is empty")
+            
+    except Exception as e:
+        print(f"ERROR during goalie detection test: {e}")
+        import traceback
+        traceback.print_exc()
+        print("CONTINUING STARTUP despite goalie detection error...")
 else:
-    print("WARNING: No goalies found during startup verification!")
+    print("Skipping goalie detection test - services not initialized")
 
 # Helper functions for team context
 def get_team_context():
@@ -286,21 +342,27 @@ def logout(n_clicks):
     print("User logged out - session cleared")
     return '/login'
 
-# Register callbacks for navigation, player and game views
-register_navigation_callbacks(app)
-register_player_callbacks(app, data_service)
+# Register callbacks for navigation, player and game views (only if services are initialized)
+if services_initialized:
+    register_navigation_callbacks(app)
+    register_player_callbacks(app, data_service)
 
-# Register game callbacks - use the fixed version from game_layout.py
-# Note: We pass None for team_context since it will be retrieved dynamically from session
-register_game_callbacks(app, data_service, team_context=None)
+    # Register game callbacks - use the fixed version from game_layout.py
+    # Note: We pass None for team_context since it will be retrieved dynamically from session
+    register_game_callbacks(app, data_service, team_context=None)
 
-# Register team callbacks for game type filtering
-from layouts.team_layout import register_team_callbacks
-register_team_callbacks(app, data_service)
+    # Register team callbacks for game type filtering
+    from layouts.team_layout import register_team_callbacks
+    register_team_callbacks(app, data_service)
 
-# Register game type filter callbacks
-from components.game_type_filter import register_game_type_filter_callbacks
-register_game_type_filter_callbacks(app, data_service)
+    # Register game type filter callbacks
+    from components.game_type_filter import register_game_type_filter_callbacks
+    register_game_type_filter_callbacks(app, data_service)
+    
+    print("=== STARTUP: All callbacks registered successfully ===")
+else:
+    print("=== STARTUP: Skipping callback registration due to service initialization failure ===")
+    print("This is expected in local development without credentials.")
 
 
 # Run the app
