@@ -28,6 +28,53 @@ class DataService:
         self._events_cache = None
         self._game_roster_cache = None
     
+    def _get_player_id_column(self, players_df):
+        """
+        Centralized helper method to detect the correct player ID column name.
+        Handles backward compatibility for different column naming conventions.
+        
+        Args:
+            players_df (pd.DataFrame): Players DataFrame to examine
+            
+        Returns:
+            str: The name of the ID column, or None if not found
+        """
+        if players_df.empty:
+            return None
+        
+        # Check for ID column variations in order of preference
+        if 'ID' in players_df.columns:
+            return 'ID'
+        elif 'Unnamed: 0' in players_df.columns:
+            return 'Unnamed: 0'
+        elif '' in players_df.columns:
+            return ''
+        else:
+            print(f"ERROR: No player ID column found. Available columns: {players_df.columns.tolist()}")
+            return None
+    
+    def _get_player_id_from_series(self, player_series):
+        """
+        Centralized helper method to extract player ID from a pandas Series.
+        Handles backward compatibility for different column naming conventions.
+        
+        Args:
+            player_series (pd.Series): Player data series
+            
+        Returns:
+            str: The player ID, or None if not found
+        """
+        # Check for ID column variations in order of preference
+        if 'ID' in player_series.index:
+            return player_series['ID']
+        elif 'Unnamed: 0' in player_series.index:
+            return player_series['Unnamed: 0']
+        elif '' in player_series.index:
+            return player_series['']
+        else:
+            print(f"ERROR: No player ID found in series. Available columns: {list(player_series.index)}")
+            return None
+    
     def _filter_by_team(self, df, team_id):
         """
         Filter a DataFrame by TeamID.
@@ -540,7 +587,14 @@ class DataService:
             pd.Series: The player data
         """
         players = self.get_players()
-        return players[players['ID'] == player_id].iloc[0] if not players[players['ID'] == player_id].empty else None
+        
+        # Use centralized helper method for column detection
+        id_column = self._get_player_id_column(players)
+        if id_column is None:
+            return None
+        
+        matching_players = players[players[id_column] == player_id]
+        return matching_players.iloc[0] if not matching_players.empty else None
     
     def get_game_by_id(self, game_id, team_id=None):
         """
@@ -1100,18 +1154,19 @@ class DataService:
         print(f"DEBUG: Returning enhanced goalie game stats for game {game_id}: {result_dict}")
         return result_dict
     
-    def get_player_game_log(self, player_id, team_id=None):
+    def get_player_game_log(self, player_id, team_id=None, game_type=None):
         """
-        Get a game log for a player, optionally filtered by team.
+        Get a game log for a player, optionally filtered by team and game type.
         
         Args:
             player_id (str): The player ID
             team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
             list: List of dictionaries containing game statistics
         """
-        player_games = self.get_player_games(player_id, team_id)
+        player_games = self.get_player_games(player_id, team_id, game_type=game_type)
         player = self.get_player_by_id(player_id)
         
         game_log = []
@@ -1232,9 +1287,15 @@ class DataService:
         # Calculate stats for each player - use appropriate method based on position
         player_stats = []
         for _, player in players.iterrows():
+            # Use centralized helper method for column detection
+            player_id = self._get_player_id_from_series(player)
+            if player_id is None:
+                print(f"ERROR: No player ID found for leaderboard player. Skipping.")
+                continue
+            
             if player['Position'] == 'G':
                 # Use goalie stats calculation for goalies
-                stats = self.calculate_goalie_stats(player['ID'], team_id, game_type)
+                stats = self.calculate_goalie_stats(player_id, team_id, game_type)
                 # Add missing fields for goalies to match skater stats structure
                 if stats:
                     stats['points'] = 0  # Goalies don't have points
@@ -1246,7 +1307,7 @@ class DataService:
                     stats['goals_per_game'] = 0
             else:
                 # Use regular player stats calculation for skaters
-                stats = self.calculate_player_stats(player['ID'], team_id, game_type)
+                stats = self.calculate_player_stats(player_id, team_id, game_type)
                 # Add missing fields for skaters to match goalie stats structure
                 if stats:
                     stats['wins'] = 0  # Skaters don't have wins
@@ -1514,9 +1575,15 @@ class DataService:
         game_players = game_roster[(game_roster['GameID'] == game_id) & 
                                   (game_roster['Status'] == 'Present')]
         
-        # Join with players to get position
-        game_players = pd.merge(game_players, players[['ID', 'Position']], 
-                               left_on='PlayerID', right_on='ID')
+        # Join with players to get position - use centralized helper method for column detection
+        id_column = self._get_player_id_column(players)
+        if id_column is None:
+            print(f"ERROR: No player ID column found in players data for game player stats merge")
+            return []
+        
+        print(f"Using player ID column: '{id_column}' for game player stats merge")
+        game_players = pd.merge(game_players, players[[id_column, 'Position']], 
+                               left_on='PlayerID', right_on=id_column)
         
         # Remove duplicate players (same PlayerID for same game)
         original_count = len(game_players)

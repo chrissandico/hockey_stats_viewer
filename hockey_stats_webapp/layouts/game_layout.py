@@ -366,7 +366,18 @@ def register_game_callbacks(app, data_service, team_context=None):
             # Use the existing goalie game stats calculation from data service
             goalie_game_stats = []
             for stats in player_stats:
-                player_id = stats['player']['ID']
+                # Handle different possible ID column names for backward compatibility
+                player = stats['player']
+                player_id = None
+                if 'ID' in player.index:
+                    player_id = player['ID']
+                elif 'Unnamed: 0' in player.index:
+                    player_id = player['Unnamed: 0']
+                elif '' in player.index:
+                    player_id = player['']
+                else:
+                    print(f"ERROR: No player ID column found in game layout. Available columns: {list(player.index)}")
+                    continue
                 
                 # Use the data service method which has proper team identifier mapping
                 goalie_stats = data_service.calculate_goalie_game_stats(player_id, game_id, effective_team_id)

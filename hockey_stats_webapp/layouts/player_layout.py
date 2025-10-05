@@ -17,18 +17,22 @@ def create_player_layout(data_service, team_context=None):
     Returns:
         dash.html.Div: The player statistics layout
     """
-    # Get team-filtered players for the dropdown
-    team_id = team_context['team_id'] if team_context else None
-    players = data_service.get_players(team_id)
-    
-    # Create enhanced radio options with jersey number and position
-    radio_options = [
-        {'label': f"#{row['JerseyNumber']} - {row['Position']}", 'value': row['JerseyNumber']} 
-        for _, row in players.iterrows()
-    ]
-    
-    # Sort by jersey number (ascending order)
-    radio_options.sort(key=lambda x: x['value'])
+    # Handle case where data service is not available
+    if data_service is None:
+        radio_options = []
+    else:
+        # Get team-filtered players for the dropdown
+        team_id = team_context['team_id'] if team_context else None
+        players = data_service.get_players(team_id)
+        
+        # Create enhanced radio options with jersey number and position
+        radio_options = [
+            {'label': f"#{row['JerseyNumber']} - {row['Position']}", 'value': row['JerseyNumber']} 
+            for _, row in players.iterrows()
+        ]
+        
+        # Sort by jersey number (ascending order)
+        radio_options.sort(key=lambda x: x['value'])
     
     return html.Div([
         # Navigation bar
@@ -97,6 +101,20 @@ def register_player_callbacks(app, data_service):
          dash.dependencies.Input('game-type-session-store', 'data')]
     )
     def update_player_info(jersey_number, game_type_data):
+        # Check if data service is available
+        if data_service is None:
+            print("DataService is None - services not initialized (missing credentials)")
+            if jersey_number is not None:
+                return (
+                    html.Div(dbc.Alert([
+                        html.H5("Service Unavailable", className="alert-heading"),
+                        html.P("Player statistics are not available because the application could not connect to the data source."),
+                        html.P("This typically occurs when credentials are missing in local development.", className="mb-0")
+                    ], color="warning")),
+                    html.Div()
+                )
+            return html.Div(), html.Div()
+        
         # Get team context from session
         from flask import session
         team_id = session.get('team_id') if session.get('authenticated', False) else None
@@ -133,24 +151,30 @@ def register_player_callbacks(app, data_service):
         
         player = matching_players.iloc[0]
         
-        print(f"Found player: ID={player['ID']}, Position={player['Position']}")
+        # Use centralized helper method for column detection
+        player_id = data_service._get_player_id_from_series(player)
+        if player_id is None:
+            print(f"ERROR: No player ID found using centralized method")
+            return html.Div(dbc.Alert("Player ID not found", color="danger")), html.Div()
+        
+        print(f"Found player: ID={player_id}, Position={player['Position']}")
         
         # Check if player is a goalie and calculate appropriate stats
         is_goalie = player['Position'] == 'G'
         print(f"Player position: {player['Position']}, Is goalie: {is_goalie}")
         
         if is_goalie:
-            print(f"=== CALLBACK: Calculating goalie stats for player ID: {player['ID']} with team_id: {team_id} ===")
+            print(f"=== CALLBACK: Calculating goalie stats for player ID: {player_id} with team_id: {team_id} ===")
             
             # Debug: Check game roster for goalie
             print("Getting game roster...")
             game_roster = data_service.get_game_roster()
-            goalie_roster = game_roster[game_roster['PlayerID'] == player['ID']]
+            goalie_roster = game_roster[game_roster['PlayerID'] == player_id]
             print(f"DEBUG: Goalie roster entries: {len(goalie_roster)}")
             
             # Debug: Check games for goalie
             print("Getting player games...")
-            goalie_games = data_service.get_player_games(player['ID'], team_id)
+            goalie_games = data_service.get_player_games(player_id, team_id)
             print(f"DEBUG: Goalie games count: {len(goalie_games)}")
             if not goalie_games.empty:
                 print(f"DEBUG: First game data: {goalie_games.iloc[0].to_dict()}")
@@ -160,7 +184,7 @@ def register_player_callbacks(app, data_service):
             # Calculate goalie stats
             print("Calculating goalie stats...")
             try:
-                stats = data_service.calculate_goalie_stats(player['ID'], team_id, game_type)
+                stats = data_service.calculate_goalie_stats(player_id, team_id, game_type)
                 print(f"DEBUG: Goalie stats calculated: {stats}")
                 
                 # Verify stats values
@@ -183,13 +207,13 @@ def register_player_callbacks(app, data_service):
             
             # Debug: Check game log for goalie
             print("Getting player game log...")
-            game_log = data_service.get_player_game_log(player['ID'], team_id)
+            game_log = data_service.get_player_game_log(player_id, team_id)
             print(f"DEBUG: Goalie game log entries: {len(game_log)}")
             if game_log:
                 print(f"DEBUG: First game log entry: {game_log[0]}")
         else:
-            print(f"Calculating player stats for player ID: {player['ID']} with team_id: {team_id}")
-            stats = data_service.calculate_player_stats(player['ID'], team_id, game_type)
+            print(f"Calculating player stats for player ID: {player_id} with team_id: {team_id}")
+            stats = data_service.calculate_player_stats(player_id, team_id, game_type)
             
         if stats is None:
             return html.Div(dbc.Alert("Could not calculate player statistics", color="danger")), html.Div()
@@ -290,9 +314,9 @@ def register_player_callbacks(app, data_service):
             ])
         ], className="mb-4 shadow-sm")
         
-        # Get player game log
-        game_log = data_service.get_player_game_log(player['ID'], team_id)
-        print(f"DEBUG: Player game log entries: {len(game_log)}")
+        # Get player game log with game type filtering
+        game_log = data_service.get_player_game_log(player_id, team_id, game_type)
+        print(f"DEBUG: Player game log entries: {len(game_log)} (filtered by game_type: {game_type})")
         
         # Create game log table
         if game_log:

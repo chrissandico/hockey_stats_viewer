@@ -280,6 +280,11 @@ def login(n_clicks, password):
         print("n_clicks is None, returning no_update")
         return dash.no_update, dash.no_update
     
+    # Check if services are available
+    if not services_initialized or sheets_service is None or auth_service is None:
+        print("Services not initialized - cannot authenticate (missing credentials)")
+        return dash.no_update, "Authentication service unavailable. This typically occurs when credentials are missing in local development."
+    
     try:
         # Force refresh teams data to get the latest passwords from Google Sheets
         print("Forcing refresh of teams data to get latest passwords...")
@@ -342,11 +347,12 @@ def logout(n_clicks):
     print("User logged out - session cleared")
     return '/login'
 
-# Register callbacks for navigation, player and game views (only if services are initialized)
-if services_initialized:
-    register_navigation_callbacks(app)
-    register_player_callbacks(app, data_service)
+# Register callbacks for navigation, player and game views
+# Always register callbacks, but handle the case where services aren't initialized
+register_navigation_callbacks(app)
+register_player_callbacks(app, data_service)
 
+if services_initialized:
     # Register game callbacks - use the fixed version from game_layout.py
     # Note: We pass None for team_context since it will be retrieved dynamically from session
     register_game_callbacks(app, data_service, team_context=None)
@@ -361,7 +367,7 @@ if services_initialized:
     
     print("=== STARTUP: All callbacks registered successfully ===")
 else:
-    print("=== STARTUP: Skipping callback registration due to service initialization failure ===")
+    print("=== STARTUP: Core callbacks registered, but data-dependent callbacks skipped due to service initialization failure ===")
     print("This is expected in local development without credentials.")
 
 
