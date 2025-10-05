@@ -4,7 +4,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 from layouts.navigation import create_navigation
 from components.period_breakdown import create_period_breakdown_component
-from components.game_type_filter import create_game_type_badge
+from components.game_type_filter import create_game_type_badge, create_game_type_filter_component, create_game_type_session_store
 import config
 
 def create_game_layout(data_service, team_context=None):
@@ -18,9 +18,9 @@ def create_game_layout(data_service, team_context=None):
     Returns:
         dash.html.Div: The game statistics layout
     """
-    # Get team-filtered games for the dropdown
+    # Get team-filtered games for the dropdown - will be filtered by game type in callback
     team_id = team_context['team_id'] if team_context else None
-    games = data_service.get_games(team_id)
+    games = data_service.get_games(team_id, game_type='R')  # Default to Regular Season
     
     # Filter to only show completed games (past dates)
     games = data_service._filter_games_by_date(games, include_future=False)
@@ -53,6 +53,12 @@ def create_game_layout(data_service, team_context=None):
         
         # Title
         html.H1("Game Statistics", className="text-center mt-4"),
+        
+        # Game type filter
+        create_game_type_filter_component(),
+        
+        # Game type session store
+        create_game_type_session_store(),
         
         # Game selection
         dbc.Card([
@@ -113,6 +119,58 @@ def register_game_callbacks(app, data_service, team_context=None):
     """
     # Extract team_id from context for use in callbacks
     team_id = team_context['team_id'] if team_context else None
+    
+    # Callback to update game dropdown based on game type filter
+    @app.callback(
+        dash.dependencies.Output('game-dropdown', 'options'),
+        [dash.dependencies.Input('game-type-session-store', 'data')]
+    )
+    def update_game_dropdown(game_type_data):
+        # Get game type from session store, default to 'R' (Regular Season)
+        game_type = game_type_data.get('game_type', 'R') if game_type_data else 'R'
+        
+        # Get team context from session (import here to avoid circular imports)
+        from flask import session
+        
+        # Get team_id from session for proper filtering
+        session_team_id = None
+        if session.get('authenticated', False):
+            session_team_id = session.get('team_id')
+        
+        # Use session team_id if available, otherwise fall back to passed team_id
+        effective_team_id = session_team_id if session_team_id else team_id
+        
+        # Get team-filtered games with game type filter
+        games = data_service.get_games(effective_team_id, game_type=game_type)
+        
+        # Filter to only show completed games (past dates)
+        games = data_service._filter_games_by_date(games, include_future=False)
+        
+        # Create enhanced radio options with date, opponent, result, and game type
+        radio_options = []
+        for _, game in games.iterrows():
+            try:
+                # Safely access Result column with fallback
+                result = game.get('Result', 'Unknown')
+                goals_for = game.get('GoalsFor', 0)
+                goals_against = game.get('GoalsAgainst', 0)
+                game_type_code = game.get('GameType', 'E')
+                game_type_name = config.get_game_type_name(game_type_code)
+                
+                label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against}) - {game_type_name}"
+                radio_options.append({'label': label, 'value': game['ID']})
+            except Exception as e:
+                # Fallback to basic label if there's any error
+                print(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
+                label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
+                radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
+        
+        # Sort by date (ascending order)
+        if radio_options:
+            radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=False)
+        
+        return radio_options
+    
     # Callback for game summary
     @app.callback(
         dash.dependencies.Output('game-summary-container', 'children'),
