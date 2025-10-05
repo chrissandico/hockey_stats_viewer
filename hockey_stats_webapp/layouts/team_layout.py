@@ -156,30 +156,52 @@ def create_team_layout(data_service, team_context=None):
                     # Forwards leaderboard
                     dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader(html.H4(f"Forwards Leaderboard (Sorted by {forwards_sort_label})", className="card-title")),
+                            dbc.CardHeader(html.H4("Forwards Leaderboard", className="card-title")),
                             dbc.CardBody([
-                                html.Table([
-                                    html.Thead(
-                                        html.Tr([
-                                            html.Th("Player", className="text-start"),
-                                            html.Th("G", className="text-center"),
-                                            html.Th("A", className="text-center"),
-                                            html.Th("P", className="text-center"),
-                                            # Only show plus/minus column for coaches
-                                            *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                        ])
-                                    ),
-                                    html.Tbody([
-                                        html.Tr([
-                                            html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                                            html.Td(f"{stats['goals']}", className="text-center"),
-                                            html.Td(f"{stats['assists']}", className="text-center"),
-                                            html.Td(f"{stats['points']}", className="text-center"),
-                                            # Only show plus/minus cell for coaches
-                                            *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                        ]) for stats in forwards_points_leaders
-                                    ])
-                                ], className="table table-striped table-hover")
+                                dash_table.DataTable(
+                                    id='forwards-leaderboard-table',
+                                    columns=[
+                                        {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                                        {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
+                                        {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
+                                        {'name': 'P', 'id': 'Points', 'type': 'numeric'},
+                                        # Only show plus/minus column for coaches
+                                        *([{'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'}] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ],
+                                    data=[{
+                                        'Player': f"#{stats['player']['JerseyNumber']}",
+                                        'Goals': stats['goals'],
+                                        'Assists': stats['assists'],
+                                        'Points': stats['points'],
+                                        # Only include plus/minus data for coaches
+                                        **({'PlusMinus': stats['plus_minus']} if is_coach or not config.is_coaches_only_stat('plus_minus') else {})
+                                    } for stats in forwards_points_leaders],
+                                    style_table={'overflowX': 'auto'},
+                                    style_cell={
+                                        'textAlign': 'center',
+                                        'padding': '10px',
+                                        'minWidth': '80px'
+                                    },
+                                    style_cell_conditional=[
+                                        {
+                                            'if': {'column_id': 'Player'},
+                                            'textAlign': 'left'
+                                        }
+                                    ],
+                                    style_header={
+                                        'backgroundColor': 'rgb(230, 230, 230)',
+                                        'fontWeight': 'bold'
+                                    },
+                                    style_data_conditional=[
+                                        {
+                                            'if': {'row_index': 'odd'},
+                                            'backgroundColor': 'rgb(248, 248, 248)'
+                                        }
+                                    ],
+                                    sort_action='native',
+                                    sort_mode='single',
+                                    sort_by=[{'column_id': 'Points', 'direction': 'desc'}] if is_coach else [{'column_id': 'Player', 'direction': 'asc'}]
+                                )
                             ])
                         ], className="mb-4 shadow-sm")
                     ], md=6),
@@ -187,30 +209,52 @@ def create_team_layout(data_service, team_context=None):
                     # Defense leaderboard
                     dbc.Col([
                         dbc.Card([
-                            dbc.CardHeader(html.H4(f"Defense Leaderboard (Sorted by {defense_sort_label})", className="card-title")),
+                            dbc.CardHeader(html.H4("Defense Leaderboard", className="card-title")),
                             dbc.CardBody([
-                                html.Table([
-                                    html.Thead(
-                                        html.Tr([
-                                            html.Th("Player", className="text-start"),
-                                            html.Th("G", className="text-center"),
-                                            html.Th("A", className="text-center"),
-                                            html.Th("P", className="text-center"),
-                                            # Only show plus/minus column for coaches
-                                            *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                        ])
-                                    ),
-                                    html.Tbody([
-                                        html.Tr([
-                                            html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                                            html.Td(f"{stats['goals']}", className="text-center"),
-                                            html.Td(f"{stats['assists']}", className="text-center"),
-                                            html.Td(f"{stats['points']}", className="text-center"),
-                                            # Only show plus/minus cell for coaches
-                                            *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                        ]) for stats in defense_leaders
-                                    ])
-                                ], className="table table-striped table-hover")
+                                dash_table.DataTable(
+                                    id='defense-leaderboard-table',
+                                    columns=[
+                                        {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                                        {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
+                                        {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
+                                        {'name': 'P', 'id': 'Points', 'type': 'numeric'},
+                                        # Only show plus/minus column for coaches
+                                        *([{'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'}] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                    ],
+                                    data=[{
+                                        'Player': f"#{stats['player']['JerseyNumber']}",
+                                        'Goals': stats['goals'],
+                                        'Assists': stats['assists'],
+                                        'Points': stats['points'],
+                                        # Only include plus/minus data for coaches
+                                        **({'PlusMinus': stats['plus_minus']} if is_coach or not config.is_coaches_only_stat('plus_minus') else {})
+                                    } for stats in defense_leaders],
+                                    style_table={'overflowX': 'auto'},
+                                    style_cell={
+                                        'textAlign': 'center',
+                                        'padding': '10px',
+                                        'minWidth': '80px'
+                                    },
+                                    style_cell_conditional=[
+                                        {
+                                            'if': {'column_id': 'Player'},
+                                            'textAlign': 'left'
+                                        }
+                                    ],
+                                    style_header={
+                                        'backgroundColor': 'rgb(230, 230, 230)',
+                                        'fontWeight': 'bold'
+                                    },
+                                    style_data_conditional=[
+                                        {
+                                            'if': {'row_index': 'odd'},
+                                            'backgroundColor': 'rgb(248, 248, 248)'
+                                        }
+                                    ],
+                                    sort_action='native',
+                                    sort_mode='single',
+                                    sort_by=[{'column_id': 'PlusMinus', 'direction': 'desc'}] if is_coach and (is_coach or not config.is_coaches_only_stat('plus_minus')) else [{'column_id': 'Player', 'direction': 'asc'}]
+                                )
                             ])
                         ], className="mb-4 shadow-sm")
                     ], md=6)
@@ -228,6 +272,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Th("Player", className="text-start"),
                                             html.Th("GP", className="text-center"),
                                             html.Th("W", className="text-center"),
+                                            html.Th("L", className="text-center"),
+                                            html.Th("T", className="text-center"),
                                             html.Th("SV%", className="text-center"),
                                             html.Th("GAA", className="text-center"),
                                             html.Th("SO", className="text-center"),
@@ -239,6 +285,8 @@ def create_team_layout(data_service, team_context=None):
                                             html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
                                             html.Td(f"{stats['games_played']}", className="text-center"),
                                             html.Td(f"{stats['wins']}", className="text-center"),
+                                            html.Td(f"{stats['losses']}", className="text-center"),
+                                            html.Td(f"{stats['ties']}", className="text-center"),
                                             html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
                                             html.Td(f"{stats['gaa']:.2f}", className="text-center"),
                                             html.Td(f"{stats['shutouts']}", className="text-center"),
@@ -328,7 +376,7 @@ def register_team_callbacks(app, data_service):
         [dash.dependencies.Output('team-stats-loading', 'children'),
          dash.dependencies.Output('team-leaderboards-loading', 'children'),
          dash.dependencies.Output('team-game-log-loading', 'children')],
-        [dash.dependencies.Input('game-type-filter-tabs', 'active_tab')]
+        [dash.dependencies.Input('game-type-session-store', 'data')]
     )
     def update_team_stats_by_game_type(active_tab):
         """Update team statistics based on selected game type."""
@@ -338,14 +386,11 @@ def register_team_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
         
-        # Determine game type filter
+        # Determine game type filter - the session store already handles the conversion
         game_type = None if active_tab == "all" else active_tab
         
-        # Update session with selected game type
-        if game_type:
-            data_service._set_game_type_in_session(game_type)
-        else:
-            data_service._set_game_type_in_session(None)
+        # The session is already updated by the game type filter component callback
+        # No need to update it again here
         
         # Calculate team stats with game type filtering
         team_stats = data_service.calculate_team_stats(team_id, game_type)
@@ -445,28 +490,52 @@ def register_team_callbacks(app, data_service):
                 # Forwards leaderboard
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader(html.H4(f"Forwards Leaderboard (Sorted by {forwards_sort_label})", className="card-title")),
+                        dbc.CardHeader(html.H4("Forwards Leaderboard", className="card-title")),
                         dbc.CardBody([
-                            html.Table([
-                                html.Thead(
-                                    html.Tr([
-                                        html.Th("Player", className="text-start"),
-                                        html.Th("G", className="text-center"),
-                                        html.Th("A", className="text-center"),
-                                        html.Th("P", className="text-center"),
-                                        *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                    ])
-                                ),
-                                html.Tbody([
-                                    html.Tr([
-                                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                                        html.Td(f"{stats['goals']}", className="text-center"),
-                                        html.Td(f"{stats['assists']}", className="text-center"),
-                                        html.Td(f"{stats['points']}", className="text-center"),
-                                        *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                    ]) for stats in forwards_points_leaders
-                                ])
-                            ], className="table table-striped table-hover")
+                            dash_table.DataTable(
+                                id='forwards-leaderboard-table-filtered',
+                                columns=[
+                                    {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                                    {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
+                                    {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
+                                    {'name': 'P', 'id': 'Points', 'type': 'numeric'},
+                                    # Only show plus/minus column for coaches
+                                    *([{'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'}] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                ],
+                                data=[{
+                                    'Player': f"#{stats['player']['JerseyNumber']}",
+                                    'Goals': stats['goals'],
+                                    'Assists': stats['assists'],
+                                    'Points': stats['points'],
+                                    # Only include plus/minus data for coaches
+                                    **({'PlusMinus': stats['plus_minus']} if is_coach or not config.is_coaches_only_stat('plus_minus') else {})
+                                } for stats in forwards_points_leaders],
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'center',
+                                    'padding': '10px',
+                                    'minWidth': '80px'
+                                },
+                                style_cell_conditional=[
+                                    {
+                                        'if': {'column_id': 'Player'},
+                                        'textAlign': 'left'
+                                    }
+                                ],
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                },
+                                style_data_conditional=[
+                                    {
+                                        'if': {'row_index': 'odd'},
+                                        'backgroundColor': 'rgb(248, 248, 248)'
+                                    }
+                                ],
+                                sort_action='native',
+                                sort_mode='single',
+                                sort_by=[{'column_id': 'Points', 'direction': 'desc'}] if is_coach else [{'column_id': 'Player', 'direction': 'asc'}]
+                            )
                         ])
                     ], className="mb-4 shadow-sm")
                 ], md=6),
@@ -474,28 +543,52 @@ def register_team_callbacks(app, data_service):
                 # Defense leaderboard
                 dbc.Col([
                     dbc.Card([
-                        dbc.CardHeader(html.H4(f"Defense Leaderboard (Sorted by {defense_sort_label})", className="card-title")),
+                        dbc.CardHeader(html.H4("Defense Leaderboard", className="card-title")),
                         dbc.CardBody([
-                            html.Table([
-                                html.Thead(
-                                    html.Tr([
-                                        html.Th("Player", className="text-start"),
-                                        html.Th("G", className="text-center"),
-                                        html.Th("A", className="text-center"),
-                                        html.Th("P", className="text-center"),
-                                        *([html.Th("+/-", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                    ])
-                                ),
-                                html.Tbody([
-                                    html.Tr([
-                                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                                        html.Td(f"{stats['goals']}", className="text-center"),
-                                        html.Td(f"{stats['assists']}", className="text-center"),
-                                        html.Td(f"{stats['points']}", className="text-center"),
-                                        *([html.Td(f"{stats['plus_minus']}", className="text-center")] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
-                                    ]) for stats in defense_leaders
-                                ])
-                            ], className="table table-striped table-hover")
+                            dash_table.DataTable(
+                                id='defense-leaderboard-table-filtered',
+                                columns=[
+                                    {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                                    {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
+                                    {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
+                                    {'name': 'P', 'id': 'Points', 'type': 'numeric'},
+                                    # Only show plus/minus column for coaches
+                                    *([{'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'}] if is_coach or not config.is_coaches_only_stat('plus_minus') else [])
+                                ],
+                                data=[{
+                                    'Player': f"#{stats['player']['JerseyNumber']}",
+                                    'Goals': stats['goals'],
+                                    'Assists': stats['assists'],
+                                    'Points': stats['points'],
+                                    # Only include plus/minus data for coaches
+                                    **({'PlusMinus': stats['plus_minus']} if is_coach or not config.is_coaches_only_stat('plus_minus') else {})
+                                } for stats in defense_leaders],
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'center',
+                                    'padding': '10px',
+                                    'minWidth': '80px'
+                                },
+                                style_cell_conditional=[
+                                    {
+                                        'if': {'column_id': 'Player'},
+                                        'textAlign': 'left'
+                                    }
+                                ],
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                },
+                                style_data_conditional=[
+                                    {
+                                        'if': {'row_index': 'odd'},
+                                        'backgroundColor': 'rgb(248, 248, 248)'
+                                    }
+                                ],
+                                sort_action='native',
+                                sort_mode='single',
+                                sort_by=[{'column_id': 'PlusMinus', 'direction': 'desc'}] if is_coach and (is_coach or not config.is_coaches_only_stat('plus_minus')) else [{'column_id': 'Player', 'direction': 'asc'}]
+                            )
                         ])
                     ], className="mb-4 shadow-sm")
                 ], md=6)
@@ -513,6 +606,8 @@ def register_team_callbacks(app, data_service):
                                         html.Th("Player", className="text-start"),
                                         html.Th("GP", className="text-center"),
                                         html.Th("W", className="text-center"),
+                                        html.Th("L", className="text-center"),
+                                        html.Th("T", className="text-center"),
                                         html.Th("SV%", className="text-center"),
                                         html.Th("GAA", className="text-center"),
                                         html.Th("SO", className="text-center"),
@@ -524,6 +619,8 @@ def register_team_callbacks(app, data_service):
                                         html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
                                         html.Td(f"{stats['games_played']}", className="text-center"),
                                         html.Td(f"{stats['wins']}", className="text-center"),
+                                        html.Td(f"{stats['losses']}", className="text-center"),
+                                        html.Td(f"{stats['ties']}", className="text-center"),
                                         html.Td(f"{stats['save_percentage']:.3f}", className="text-center"),
                                         html.Td(f"{stats['gaa']:.2f}", className="text-center"),
                                         html.Td(f"{stats['shutouts']}", className="text-center"),
