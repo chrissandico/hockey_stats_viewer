@@ -96,14 +96,20 @@ def register_player_callbacks(app, data_service):
         [dash.dependencies.Input('player-dropdown', 'value'),
          dash.dependencies.Input('game-type-session-store', 'data')]
     )
-    def update_player_info(jersey_number):
+    def update_player_info(jersey_number, game_type_data):
         # Get team context from session
         from flask import session
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
         
-        # Get game type from session for proper filtering
-        game_type = data_service._get_game_type_from_session()
+        # Get game type from callback parameter instead of session
+        game_type = game_type_data if isinstance(game_type_data, str) else None
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type')
+        
+        # Default to Regular Season if no game type specified
+        if not game_type:
+            game_type = 'R'
         
         print(f"\n=== CALLBACK: update_player_info called with jersey_number={jersey_number} ===")
         print(f"DataService instance in callback: {data_service}")
