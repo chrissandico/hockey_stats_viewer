@@ -44,8 +44,8 @@ def create_game_layout(data_service, team_context=None):
             label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
             radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
     
-    # Sort by date (ascending order)
-    radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=False)
+    # Sort by date (descending order - most recent first)
+    radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=True)
     
     return html.Div([
         # Navigation bar
@@ -176,9 +176,9 @@ def register_game_callbacks(app, data_service, team_context=None):
                 label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
                 radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
         
-        # Sort by date (ascending order)
+        # Sort by date (descending order - most recent first)
         if radio_options:
-            radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=False)
+            radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=True)
         
         return radio_options
     

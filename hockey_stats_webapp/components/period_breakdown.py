@@ -89,16 +89,10 @@ def create_period_breakdown_component(period_data, title="Period Breakdown", sho
             html.Td(str(opponent['total_shots']), className="text-center fw-bold")
         ])
         
-        # Add a legend row to explain the format
-        legend_row = html.Tr([
-            html.Td(html.Small("Goals (Shots)", className="text-muted"), 
-                    className="text-start", colSpan=6)
-        ])
-        
-        # Create the table with legend
+        # Create the table without legend
         table = html.Table([
             html.Thead(header_row, className="table-dark"),
-            html.Tbody([your_team_row, opponent_row, legend_row])
+            html.Tbody([your_team_row, opponent_row])
         ], className="table table-striped table-hover mb-0")
         
     else:
