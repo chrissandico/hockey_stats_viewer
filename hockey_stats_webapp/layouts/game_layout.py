@@ -126,8 +126,19 @@ def register_game_callbacks(app, data_service, team_context=None):
         [dash.dependencies.Input('game-type-session-store', 'data')]
     )
     def update_game_dropdown(game_type_data):
-        # Get game type from session store, default to 'R' (Regular Season)
-        game_type = game_type_data.get('game_type', 'R') if game_type_data else 'R'
+        # Get game type from callback parameter (same pattern as player/team layouts)
+        game_type = game_type_data if isinstance(game_type_data, str) else None
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type')
+        
+        # Handle "All Games" selection - when active_tab is "all", game_type should be None
+        if game_type == "all":
+            game_type = None
+        
+        # Only default to Regular Season if game_type is explicitly undefined, not when it's None (All Games)
+        # None means "All Games", empty string or False means no selection made
+        if game_type == "" or game_type is False:
+            game_type = 'R'
         
         # Get team context from session (import here to avoid circular imports)
         from flask import session

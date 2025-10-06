@@ -391,8 +391,13 @@ def register_team_callbacks(app, data_service):
         if game_type_data and isinstance(game_type_data, dict):
             game_type = game_type_data.get('game_type')
         
-        # Default to Regular Season if no game type specified
-        if not game_type:
+        # Handle "All Games" selection - when active_tab is "all", game_type should be None
+        if game_type == "all":
+            game_type = None
+        
+        # Only default to Regular Season if game_type is explicitly undefined, not when it's None (All Games)
+        # None means "All Games", empty string or False means no selection made
+        if game_type == "" or game_type is False:
             game_type = 'R'
         
         print(f"\n=== TEAM CALLBACK: update_team_stats_by_game_type called with game_type_data={game_type_data} ===")
