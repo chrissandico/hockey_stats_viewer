@@ -1,0 +1,148 @@
+{
+  "alert_rules": [
+    {
+      "name": "response_time_warning",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "response_time",
+        "warning_threshold": 5.0,
+        "critical_threshold": 10.0,
+        "time_window_minutes": 10,
+        "min_samples": 5,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email"],
+      "cooldown_minutes": 30
+    },
+    {
+      "name": "response_time_critical",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "response_time",
+        "warning_threshold": 10.0,
+        "critical_threshold": 10.0,
+        "time_window_minutes": 5,
+        "min_samples": 3,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email", "slack"],
+      "cooldown_minutes": 15
+    },
+    {
+      "name": "error_rate_warning",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "error_rate",
+        "warning_threshold": 0.05,
+        "critical_threshold": 0.10,
+        "time_window_minutes": 10,
+        "min_samples": 10,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email"],
+      "cooldown_minutes": 20
+    },
+    {
+      "name": "error_rate_critical",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "error_rate",
+        "warning_threshold": 0.10,
+        "critical_threshold": 0.10,
+        "time_window_minutes": 5,
+        "min_samples": 5,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email", "slack"],
+      "cooldown_minutes": 10
+    },
+    {
+      "name": "cache_miss_rate_warning",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "cache_miss_rate",
+        "warning_threshold": 0.30,
+        "critical_threshold": 0.50,
+        "time_window_minutes": 15,
+        "min_samples": 20,
+        "enabled": true
+      },
+      "notification_channels": ["console"],
+      "cooldown_minutes": 60
+    },
+    {
+      "name": "memory_usage_warning",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "memory_usage",
+        "warning_threshold": 0.80,
+        "critical_threshold": 0.90,
+        "time_window_minutes": 5,
+        "min_samples": 3,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email"],
+      "cooldown_minutes": 30
+    },
+    {
+      "name": "api_quota_usage_critical",
+      "condition": "greater_than",
+      "threshold": {
+        "metric_name": "api_quota_usage",
+        "warning_threshold": 0.80,
+        "critical_threshold": 0.95,
+        "time_window_minutes": 60,
+        "min_samples": 1,
+        "enabled": true
+      },
+      "notification_channels": ["console", "email", "slack"],
+      "cooldown_minutes": 120
+    }
+  ],
+  "notification_channels": [
+    {
+      "name": "console",
+      "type": "console",
+      "config": {
+        "enabled": true
+      }
+    },
+    {
+      "name": "email",
+      "type": "email",
+      "config": {
+        "enabled": false,
+        "smtp_server": "smtp.gmail.com",
+        "smtp_port": 587,
+        "use_tls": true,
+        "username": "${EMAIL_USERNAME}",
+        "password": "${EMAIL_PASSWORD}",
+        "from_email": "${FROM_EMAIL}",
+        "to_emails": ["${ALERT_EMAIL_RECIPIENTS}"]
+      }
+    },
+    {
+      "name": "slack",
+      "type": "slack",
+      "config": {
+        "enabled": false,
+        "webhook_url": "${SLACK_WEBHOOK_URL}",
+        "channel": "#hockey-stats-alerts",
+        "username": "Hockey Stats Monitor"
+      }
+    },
+    {
+      "name": "webhook",
+      "type": "webhook",
+      "config": {
+        "enabled": false,
+        "webhook_url": "${WEBHOOK_URL}",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${WEBHOOK_TOKEN}"
+        },
+        "timeout": 10
+      }
+    }
+  ]
+}
