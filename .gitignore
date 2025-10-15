@@ -36,6 +36,16 @@ credentials.json
 *.pem
 *.key
 .env
+**/credentials.json
+**/config/credentials.json
+
+# Test files with potential secrets
+test_*_with_secrets.py
+**/test_data_with_secrets/
+
+# Kiro IDE configuration (may contain sensitive data)
+.kiro/settings/
+.kiro/cache/
 
 # OS specific files
 .DS_Store
@@ -43,3 +53,13 @@ Thumbs.db
 
 # Logs
 *.log
+test_*.log
+debug_*.log
+
+# Screenshots from tests
+*.png
+screenshots/
+
+# Temporary test files
+temp_test_*
+*_temp.py
