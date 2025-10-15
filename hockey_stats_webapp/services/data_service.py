@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import logging
 from datetime import datetime, date
 
 class DataService:
@@ -18,7 +19,18 @@ class DataService:
         """
         self.sheets_service = sheets_service
         
+        # Set up logging for this service
+        self.logger = logging.getLogger(__name__)
+        if not self.logger.handlers:
+            # Configure logging if not already configured
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
+        
         # Always force refresh all data to avoid caching issues
+        self.logger.info("Forcing refresh of all data...")
         print("Forcing refresh of all data...")
         self.sheets_service.refresh_all_data()
         
@@ -27,6 +39,9 @@ class DataService:
         self._games_cache = None
         self._events_cache = None
         self._game_roster_cache = None
+        
+        # Initialize games calculated cache
+        self._games_calculated_cache = {}
     
     def _get_player_id_column(self, players_df):
         """
@@ -184,88 +199,159 @@ class DataService:
     def _get_team_identifier_for_events(self, team_id):
         """
         Get the correct team identifier to use when filtering events.
-        Enhanced version with better matching logic and fallback handling.
+        Enhanced version with comprehensive error handling, logging, and fallback handling.
         
         Args:
             team_id (str): Team ID from games/teams data
             
         Returns:
-            str: Team identifier used in events data
+            str: Team identifier used in events data, or fallback identifier if mapping fails
         """
-        if team_id is None:
-            return None
-            
-        # Get all unique teams from events to understand the mapping
-        events = self.sheets_service.get_events()
-        unique_event_teams = events['Team'].unique() if not events.empty and 'Team' in events.columns else []
-        
-        print(f"=== TEAM IDENTIFIER MAPPING ===")
-        print(f"Available teams in events: {unique_event_teams}")
-        print(f"Looking for team_id: '{team_id}'")
-        
-        # Method 1: Try direct match first
-        if team_id in unique_event_teams:
-            print(f"✅ Direct match found: {team_id}")
-            return team_id
-        
-        # Method 2: Try normalized TeamID matching
-        normalized_team_id = self._normalize_team_name(team_id)
-        for event_team in unique_event_teams:
-            normalized_event_team = self._normalize_team_name(event_team)
-            if normalized_team_id == normalized_event_team:
-                print(f"✅ Normalized TeamID match found: '{team_id}' -> '{event_team}'")
-                print(f"   (normalized: '{normalized_team_id}' == '{normalized_event_team}')")
-                return event_team
-        
-        # Method 3: Try to find a mapping based on team names
         try:
-            teams = self.sheets_service.get_teams()
-            team_row = teams[teams['TeamID'] == team_id]
+            # Validate input
+            if team_id is None or team_id == '':
+                self.logger.error("Invalid team_id provided: None or empty string")
+                return 'your_team'  # Fallback to prevent calculation errors
             
-            if not team_row.empty:
-                team_name = team_row.iloc[0]['TeamName']
-                print(f"Team name from Teams sheet: '{team_name}'")
+            self.logger.info(f"Starting team identifier mapping for team_id: '{team_id}'")
+            
+            # Get all unique teams from events to understand the mapping
+            try:
+                events = self.sheets_service.get_events()
+                if events is None or events.empty:
+                    self.logger.error("No events data available for team identifier mapping")
+                    return 'your_team'
                 
-                # Method 3a: Check if team name appears in events (original logic)
-                for event_team in unique_event_teams:
-                    if team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower():
-                        print(f"✅ Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
-                        return event_team
+                if 'Team' not in events.columns:
+                    self.logger.error(f"Team column not found in events data. Available columns: {list(events.columns)}")
+                    return 'your_team'
                 
-                # Method 3b: Try normalized team name matching
-                normalized_team_name = self._normalize_team_name(team_name)
+                unique_event_teams = events['Team'].unique()
+                self.logger.debug(f"Available teams in events: {unique_event_teams}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to retrieve events data for team mapping: {str(e)}")
+                return 'your_team'
+            
+            print(f"=== TEAM IDENTIFIER MAPPING ===")
+            print(f"Available teams in events: {unique_event_teams}")
+            print(f"Looking for team_id: '{team_id}'")
+            
+            # Method 1: Try direct match first
+            if team_id in unique_event_teams:
+                self.logger.info(f"Direct match found for team_id '{team_id}'")
+                print(f"✅ Direct match found: {team_id}")
+                return team_id
+            
+            # Method 2: Try normalized TeamID matching
+            try:
+                normalized_team_id = self._normalize_team_name(team_id)
                 for event_team in unique_event_teams:
                     normalized_event_team = self._normalize_team_name(event_team)
-                    if normalized_team_name == normalized_event_team:
-                        print(f"✅ Normalized team name match found: '{team_id}' -> '{event_team}'")
-                        print(f"   (team name '{team_name}' normalized: '{normalized_team_name}' == '{normalized_event_team}')")
+                    if normalized_team_id == normalized_event_team:
+                        self.logger.info(f"Normalized TeamID match found: '{team_id}' -> '{event_team}'")
+                        print(f"✅ Normalized TeamID match found: '{team_id}' -> '{event_team}'")
+                        print(f"   (normalized: '{normalized_team_id}' == '{normalized_event_team}')")
                         return event_team
-                
-                # Method 3c: Try partial normalized matching (team name contains event team or vice versa)
-                for event_team in unique_event_teams:
-                    normalized_event_team = self._normalize_team_name(event_team)
-                    if (normalized_team_name in normalized_event_team or 
-                        normalized_event_team in normalized_team_name) and len(normalized_event_team) > 2:
-                        print(f"✅ Partial normalized match found: '{team_id}' -> '{event_team}'")
-                        print(f"   ('{normalized_team_name}' <-> '{normalized_event_team}')")
-                        return event_team
-                
-                # Special handling for common patterns
+            except Exception as e:
+                self.logger.warning(f"Error in normalized team ID matching: {str(e)}")
+            
+            # Method 3: Try to find a mapping based on team names
+            try:
+                teams = self.sheets_service.get_teams()
+                if teams is None or teams.empty:
+                    self.logger.warning("No teams data available for name-based mapping")
+                else:
+                    team_row = teams[teams['TeamID'] == team_id]
+                    
+                    if not team_row.empty:
+                        team_name = team_row.iloc[0]['TeamName']
+                        self.logger.debug(f"Team name from Teams sheet: '{team_name}'")
+                        print(f"Team name from Teams sheet: '{team_name}'")
+                        
+                        # Method 3a: Check if team name appears in events (original logic)
+                        try:
+                            for event_team in unique_event_teams:
+                                if (team_name and event_team and 
+                                    (team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower())):
+                                    self.logger.info(f"Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
+                                    print(f"✅ Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
+                                    return event_team
+                        except Exception as e:
+                            self.logger.warning(f"Error in team name substring matching: {str(e)}")
+                        
+                        # Method 3b: Try normalized team name matching
+                        try:
+                            normalized_team_name = self._normalize_team_name(team_name)
+                            for event_team in unique_event_teams:
+                                normalized_event_team = self._normalize_team_name(event_team)
+                                if normalized_team_name == normalized_event_team:
+                                    self.logger.info(f"Normalized team name match found: '{team_id}' -> '{event_team}'")
+                                    print(f"✅ Normalized team name match found: '{team_id}' -> '{event_team}'")
+                                    print(f"   (team name '{team_name}' normalized: '{normalized_team_name}' == '{normalized_event_team}')")
+                                    return event_team
+                        except Exception as e:
+                            self.logger.warning(f"Error in normalized team name matching: {str(e)}")
+                        
+                        # Method 3c: Try partial normalized matching (team name contains event team or vice versa)
+                        try:
+                            for event_team in unique_event_teams:
+                                normalized_event_team = self._normalize_team_name(event_team)
+                                if (normalized_team_name in normalized_event_team or 
+                                    normalized_event_team in normalized_team_name) and len(normalized_event_team) > 2:
+                                    self.logger.info(f"Partial normalized match found: '{team_id}' -> '{event_team}'")
+                                    print(f"✅ Partial normalized match found: '{team_id}' -> '{event_team}'")
+                                    print(f"   ('{normalized_team_name}' <-> '{normalized_event_team}')")
+                                    return event_team
+                        except Exception as e:
+                            self.logger.warning(f"Error in partial normalized matching: {str(e)}")
+                    else:
+                        self.logger.warning(f"Team ID '{team_id}' not found in Teams sheet")
+                        
+            except Exception as e:
+                self.logger.error(f"Error accessing teams data for mapping: {str(e)}")
+            
+            # Special handling for common patterns
+            try:
                 if 'your_team' == team_id and len(unique_event_teams) > 0:
                     # Find the team that's not 'opponent'
                     non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
                     if non_opponent_teams:
                         mapped_team = non_opponent_teams[0]
+                        self.logger.info(f"Special 'your_team' mapping applied: {mapped_team}")
                         print(f"✅ Special 'your_team' mapping: {mapped_team}")
                         return mapped_team
+            except Exception as e:
+                self.logger.warning(f"Error in special pattern matching: {str(e)}")
+            
+            # Enhanced fallback handling
+            self.logger.warning(f"No mapping found for team_id '{team_id}' in events data")
+            print(f"⚠️  No mapping found for '{team_id}' in events data")
+            
+            # Try to use the most common team in events as fallback
+            fallback_team = 'your_team'  # Default fallback
+            try:
+                if len(unique_event_teams) > 0:
+                    # Use the first non-opponent team as fallback
+                    non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
+                    if non_opponent_teams:
+                        fallback_team = non_opponent_teams[0]
+                        self.logger.info(f"Using first available team as fallback: '{fallback_team}'")
+                    else:
+                        fallback_team = unique_event_teams[0]
+                        self.logger.info(f"Using first team in events as fallback: '{fallback_team}'")
+            except Exception as e:
+                self.logger.warning(f"Error determining fallback team: {str(e)}")
+            
+            self.logger.warning(f"Using fallback team identifier '{fallback_team}' for team_id '{team_id}'")
+            print(f"   Using '{fallback_team}' as fallback to prevent stats calculation errors")
+            print(f"   Note: This team may need events added to the Events sheet")
+            
+            return fallback_team
+            
         except Exception as e:
-            print(f"❌ Error in team mapping: {e}")
-        
-        # Enhanced fallback - if no events found, use 'your_team' as default for stats consistency
-        print(f"⚠️  No mapping found for '{team_id}' in events data")
-        print(f"   Using 'your_team' as fallback to prevent stats calculation errors")
-        print(f"   Note: This team may need events added to the Events sheet")
-        return 'your_team'  # Use a known team identifier as fallback
+            self.logger.error(f"Unexpected error in _get_team_identifier_for_events for team_id '{team_id}': {str(e)}")
+            return 'your_team'  # Ultimate fallback
     
     def _filter_games_by_date(self, games, include_future=False):
         """
@@ -357,6 +443,216 @@ class DataService:
         
         return filtered_games
     
+    def _calculate_game_scores(self, game_id, events_df, team_identifier, game_type_filter=None):
+        """
+        Calculate goals for and against for a specific game with proper event filtering.
+        Enhanced with comprehensive error handling and logging.
+        
+        Args:
+            game_id (str): The game ID to calculate scores for
+            events_df (pd.DataFrame): DataFrame containing all events
+            team_identifier (str): Team identifier used in events data
+            game_type_filter (str, optional): Game type to filter events by (E, R, T). 
+                                            If None, includes all events regardless of game type.
+            
+        Returns:
+            tuple: (goals_for, goals_against) as integers
+        """
+        try:
+            # Log calculation context
+            self.logger.info(f"Calculating scores for game {game_id} with team '{team_identifier}' and filter '{game_type_filter}'")
+            
+            # Validate inputs
+            if game_id is None or game_id == '':
+                self.logger.error(f"Invalid game_id provided: '{game_id}'")
+                return 0, 0
+            
+            if events_df is None or events_df.empty:
+                self.logger.warning(f"No events data provided for game {game_id}")
+                return 0, 0
+            
+            if team_identifier is None or team_identifier == '':
+                self.logger.error(f"Invalid team_identifier provided: '{team_identifier}' for game {game_id}")
+                return 0, 0
+            
+            # Validate required columns exist
+            required_columns = ['GameID', 'IsGoal', 'Team']
+            missing_columns = [col for col in required_columns if col not in events_df.columns]
+            if missing_columns:
+                self.logger.error(f"Missing required columns in events data: {missing_columns}")
+                return 0, 0
+            
+            # Get events for this specific game
+            try:
+                game_events = events_df[events_df['GameID'] == game_id]
+                self.logger.debug(f"Found {len(game_events)} total events for game {game_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to filter events by GameID for game {game_id}: {str(e)}")
+                return 0, 0
+            
+            # Apply game type filtering if specified
+            if game_type_filter is not None:
+                try:
+                    # Validate game type filter
+                    valid_game_types = ['E', 'R', 'T']
+                    if game_type_filter not in valid_game_types:
+                        self.logger.warning(f"Invalid game type filter '{game_type_filter}' for game {game_id}. Valid types: {valid_game_types}")
+                        # Continue with unfiltered events as fallback
+                    else:
+                        # Filter events to only include those matching the game type filter
+                        if 'GameType' in game_events.columns:
+                            original_count = len(game_events)
+                            game_events = game_events[game_events['GameType'] == game_type_filter]
+                            filtered_count = len(game_events)
+                            self.logger.info(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events (from {original_count})")
+                            print(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events")
+                        else:
+                            self.logger.warning(f"GameType column not found in events for game {game_id}. Using all events as fallback")
+                            print(f"WARNING: GameType column not found in events. Using all events for game {game_id}")
+                except Exception as e:
+                    self.logger.error(f"Error applying game type filter '{game_type_filter}' for game {game_id}: {str(e)}")
+                    # Continue with unfiltered events as fallback
+            else:
+                # "All Games" case - include all events regardless of game type
+                self.logger.info(f"Using all events for game {game_id} (All Games filter): {len(game_events)} events")
+                print(f"Using all events for game {game_id} (All Games filter): {len(game_events)} events")
+            
+            # Calculate goals using filtered events with error handling
+            try:
+                # Validate team identifier exists in events
+                unique_teams = game_events['Team'].unique() if not game_events.empty else []
+                if team_identifier not in unique_teams and len(unique_teams) > 0:
+                    self.logger.warning(f"Team identifier '{team_identifier}' not found in game {game_id} events. Available teams: {unique_teams}")
+                    # Continue with calculation - may result in 0 goals for this team
+                
+                # Calculate goals for the team
+                goals_for_mask = (game_events['IsGoal'] == True) & (game_events['Team'] == team_identifier)
+                goals_for = len(game_events[goals_for_mask])
+                
+                # Calculate goals against the team
+                goals_against_mask = (game_events['IsGoal'] == True) & (game_events['Team'] != team_identifier)
+                goals_against = len(game_events[goals_against_mask])
+                
+                # Log calculation results
+                self.logger.info(f"Game {game_id} score calculation complete: {goals_for}-{goals_against} (team: {team_identifier}, filter: {game_type_filter})")
+                print(f"Game {game_id} scores (filter: {game_type_filter}): {goals_for}-{goals_against}")
+                
+                # Validate results are reasonable
+                if goals_for < 0 or goals_against < 0:
+                    self.logger.error(f"Invalid negative scores calculated for game {game_id}: {goals_for}-{goals_against}")
+                    return 0, 0
+                
+                if goals_for > 50 or goals_against > 50:
+                    self.logger.warning(f"Unusually high scores calculated for game {game_id}: {goals_for}-{goals_against}")
+                
+                return goals_for, goals_against
+                
+            except Exception as e:
+                self.logger.error(f"Error calculating goals for game {game_id}: {str(e)}")
+                return 0, 0
+                
+        except Exception as e:
+            self.logger.error(f"Unexpected error in _calculate_game_scores for game {game_id}: {str(e)}")
+            return 0, 0
+    
+    def _filter_events_by_game_type(self, events_df, game_type_filter=None):
+        """
+        Filter events by game type with proper handling of "All Games" case.
+        Enhanced with comprehensive error handling and logging.
+        
+        This method provides centralized event filtering logic that handles:
+        - "All Games" case (None filter) - returns all events regardless of game type
+        - Specific game type filtering (E, R, T) - returns only matching events
+        - Validation of game type values with fallback behavior
+        - Graceful handling of missing GameType column or empty data
+        - Comprehensive error handling and logging
+        
+        Args:
+            events_df (pd.DataFrame): DataFrame containing events to filter
+            game_type_filter (str, optional): Game type to filter by:
+                                            - 'E': Exhibition games
+                                            - 'R': Regular Season games  
+                                            - 'T': Tournament games
+                                            - None: All Games (no filtering)
+            
+        Returns:
+            pd.DataFrame: Filtered events DataFrame. Returns original DataFrame if:
+                         - events_df is empty
+                         - game_type_filter is None (All Games)
+                         - game_type_filter is invalid (fallback behavior)
+                         - GameType column is missing (fallback behavior)
+                         - Any error occurs during filtering
+        
+        Raises:
+            None: Method uses fallback behavior instead of raising exceptions
+        """
+        try:
+            # Handle empty DataFrame
+            if events_df is None or events_df.empty:
+                self.logger.warning("Event filtering: Empty or None events DataFrame provided")
+                print("Event filtering: Empty events DataFrame provided, returning as-is")
+                return events_df if events_df is not None else pd.DataFrame()
+            
+            # Handle "All Games" case (None game_type)
+            if game_type_filter is None:
+                self.logger.info(f"Event filtering: All Games selected - including all {len(events_df)} events regardless of game type")
+                print("Event filtering: All Games selected - including all events regardless of game type")
+                return events_df
+            
+            # Validate game type parameter
+            valid_game_types = ['E', 'R', 'T']  # Exhibition, Regular Season, Tournament
+            if game_type_filter not in valid_game_types:
+                self.logger.warning(f"Invalid game type filter '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
+                print(f"WARNING: Invalid game type '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
+                return events_df
+            
+            # Check for GameType column existence
+            if 'GameType' not in events_df.columns:
+                self.logger.warning(f"GameType column not found in events data. Available columns: {list(events_df.columns)}. Returning all events.")
+                print("WARNING: GameType column not found in events data. Returning all events.")
+                print(f"Available columns: {list(events_df.columns)}")
+                return events_df
+            
+            # Filter by specific game type
+            try:
+                original_count = len(events_df)
+                filtered_events = events_df[events_df['GameType'] == game_type_filter]
+                filtered_count = len(filtered_events)
+                
+                self.logger.info(f"Event filtering: {filtered_count} events out of {original_count} match game type '{game_type_filter}'")
+                print(f"Event filtering: {filtered_count} events out of {original_count} match game type '{game_type_filter}'")
+                
+                # Additional validation - warn if no events found for valid game type
+                if filtered_count == 0:
+                    self.logger.info(f"No events found for game type '{game_type_filter}'. This may be expected if no games of this type have been played.")
+                    print(f"INFO: No events found for game type '{game_type_filter}'. This may be expected if no games of this type have been played.")
+                
+                # Validate filtered DataFrame structure
+                if not filtered_events.empty and 'GameType' in filtered_events.columns:
+                    unique_game_types = filtered_events['GameType'].unique()
+                    if len(unique_game_types) > 1:
+                        self.logger.warning(f"Filtered events contain multiple game types: {unique_game_types}. Expected only '{game_type_filter}'")
+                
+                return filtered_events
+                
+            except KeyError as e:
+                self.logger.error(f"KeyError when filtering events by game type '{game_type_filter}': {str(e)}")
+                print(f"ERROR: KeyError when filtering events by game type '{game_type_filter}': {str(e)}")
+                print("Falling back to returning all events")
+                return events_df
+                
+            except Exception as e:
+                self.logger.error(f"Unexpected error filtering events by game type '{game_type_filter}': {str(e)}")
+                print(f"ERROR: Failed to filter events by game type '{game_type_filter}': {str(e)}")
+                print("Falling back to returning all events")
+                return events_df
+                
+        except Exception as e:
+            self.logger.error(f"Critical error in _filter_events_by_game_type: {str(e)}")
+            print(f"CRITICAL ERROR in event filtering: {str(e)}")
+            # Return empty DataFrame as ultimate fallback to prevent further errors
+            return pd.DataFrame() if events_df is None else events_df
+    
     def _get_game_type_from_session(self):
         """
         Get the currently selected game type from the Flask session.
@@ -409,6 +705,7 @@ class DataService:
     def get_games(self, team_id=None, game_type=None):
         """
         Get all games with calculated goal statistics, optionally filtered by team and game type.
+        Enhanced with comprehensive error handling and logging.
         
         Args:
             team_id (str, optional): Team ID to filter by
@@ -417,88 +714,352 @@ class DataService:
         Returns:
             pd.DataFrame: DataFrame containing game data with calculated columns
         """
-        # Create a cache key based on team_id and game_type
-        cache_key = f"games_{team_id}_{game_type}" if team_id or game_type else "games_all"
-        
-        # Check if we have cached results
-        if not hasattr(self, '_games_calculated_cache'):
-            self._games_calculated_cache = {}
-        
-        if cache_key in self._games_calculated_cache:
-            print(f"Using cached games data for {cache_key}")
-            return self._games_calculated_cache[cache_key].copy()
-        
-        games = self.sheets_service.get_games()
-        events = self.sheets_service.get_events()
-        
-        # Filter games by team if specified
-        if team_id is not None:
-            games = self._filter_by_team(games, team_id)
-        
-        # Filter games by game type if specified
-        if game_type is not None:
-            games = self._filter_games_by_type(games, game_type)
-        
-        # Print columns for debugging
-        print("Games columns:", games.columns.tolist())
-        
-        # Get team identifier for event filtering using the new mapping method
-        if team_id is not None:
-            team_identifier = self._get_team_identifier_for_events(team_id)
-            print(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
-        else:
-            # For backward compatibility, try to get the first team or use fallback
+        try:
+            self.logger.info(f"Getting games with team_id='{team_id}', game_type='{game_type}'")
+            
+            # Validate input parameters
+            if team_id is not None and (not isinstance(team_id, str) or team_id.strip() == ''):
+                self.logger.error(f"Invalid team_id parameter: '{team_id}'. Must be a non-empty string or None.")
+                return pd.DataFrame()
+            
+            if game_type is not None and game_type not in ['E', 'R', 'T']:
+                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'E', 'R', 'T', or None.")
+                return pd.DataFrame()
+            
+            # Create a cache key based on team_id and game_type
+            cache_key = f"games_{team_id}_{game_type}" if team_id or game_type else "games_all"
+            
+            # Check if we have cached results
+            if not hasattr(self, '_games_calculated_cache'):
+                self._games_calculated_cache = {}
+            
+            if cache_key in self._games_calculated_cache:
+                self.logger.debug(f"Using cached games data for {cache_key}")
+                print(f"Using cached games data for {cache_key}")
+                return self._games_calculated_cache[cache_key].copy()
+            
+            # Get data from sheets service with error handling
             try:
-                teams = self.sheets_service.get_teams()
-                if not teams.empty:
-                    first_team_id = teams.iloc[0]['TeamID']
-                    team_identifier = self._get_team_identifier_for_events(first_team_id)
-                    print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
-                else:
+                games = self.sheets_service.get_games()
+                events = self.sheets_service.get_events()
+                
+                if games is None:
+                    self.logger.error("Failed to retrieve games data from sheets service - received None")
+                    return pd.DataFrame()
+                
+                if events is None:
+                    self.logger.error("Failed to retrieve events data from sheets service - received None")
+                    return pd.DataFrame()
+                
+                if games.empty:
+                    self.logger.warning("Games data is empty - no games available")
+                    return pd.DataFrame()
+                
+                if events.empty:
+                    self.logger.warning("Events data is empty - no events available for score calculation")
+                    # Continue with empty events - games will have 0-0 scores
+                    
+            except Exception as e:
+                self.logger.error(f"Error retrieving data from sheets service: {str(e)}")
+                return pd.DataFrame()
+            
+            # Filter games by team if specified
+            if team_id is not None:
+                try:
+                    original_count = len(games)
+                    games = self._filter_by_team(games, team_id)
+                    self.logger.info(f"Filtered games by team '{team_id}': {len(games)} games (from {original_count})")
+                except Exception as e:
+                    self.logger.error(f"Error filtering games by team '{team_id}': {str(e)}")
+                    return pd.DataFrame()
+            
+            # Filter games by game type if specified
+            if game_type is not None:
+                try:
+                    original_count = len(games)
+                    games = self._filter_games_by_type(games, game_type)
+                    self.logger.info(f"Filtered games by type '{game_type}': {len(games)} games (from {original_count})")
+                except Exception as e:
+                    self.logger.error(f"Error filtering games by type '{game_type}': {str(e)}")
+                    return pd.DataFrame()
+            
+            # Print columns for debugging
+            self.logger.debug(f"Games columns: {games.columns.tolist()}")
+            print("Games columns:", games.columns.tolist())
+            
+            # Get team identifier for event filtering using the new mapping method
+            team_identifier = None
+            if team_id is not None:
+                try:
+                    team_identifier = self._get_team_identifier_for_events(team_id)
+                    self.logger.info(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
+                    print(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
+                except Exception as e:
+                    self.logger.error(f"Error mapping team identifier for team_id '{team_id}': {str(e)}")
+                    team_identifier = 'your_team'  # Fallback
+            else:
+                # For backward compatibility, try to get the first team or use fallback
+                try:
+                    teams = self.sheets_service.get_teams()
+                    if teams is not None and not teams.empty:
+                        first_team_id = teams.iloc[0]['TeamID']
+                        team_identifier = self._get_team_identifier_for_events(first_team_id)
+                        self.logger.info(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
+                        print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
+                    else:
+                        team_identifier = 'your_team'
+                        self.logger.warning("No teams data available, using fallback team identifier")
+                        print(f"Using fallback team identifier: '{team_identifier}'")
+                except Exception as e:
+                    self.logger.error(f"Error getting fallback team identifier: {str(e)}")
                     team_identifier = 'your_team'
                     print(f"Using fallback team identifier: '{team_identifier}'")
-            except:
+            
+            # Validate team identifier
+            if team_identifier is None or team_identifier == '':
+                self.logger.error("Failed to determine valid team identifier")
                 team_identifier = 'your_team'
-                print(f"Using fallback team identifier: '{team_identifier}'")
-        
-        # Add GoalsFor and GoalsAgainst columns
-        if not games.empty:
-            # Create a copy to avoid pandas warnings
-            games = games.copy()
-            # Initialize columns with zeros
-            games['GoalsFor'] = 0
-            games['GoalsAgainst'] = 0
             
-            # Calculate goals for each game - but only do this expensive operation once
-            print(f"Calculating goals for {len(games)} games (team: {team_identifier}, game_type: {game_type})")
-            for idx, game in games.iterrows():
-                game_events = events[events['GameID'] == game['ID']]
-                
-                # Use IsGoal column for goal determination with proper team identification
-                goals_for = len(game_events[(game_events['IsGoal'] == True) & 
-                                          (game_events['Team'] == team_identifier)])
-                goals_against = len(game_events[(game_events['IsGoal'] == True) & 
-                                              (game_events['Team'] != team_identifier)])
-                
-                games.at[idx, 'GoalsFor'] = goals_for
-                games.at[idx, 'GoalsAgainst'] = goals_against
-            
-            print(f"Completed goal calculations for {len(games)} games")
+            # Add GoalsFor and GoalsAgainst columns
             if not games.empty:
-                print("Sample game data:", games.iloc[0].to_dict())
+                try:
+                    # Create a copy to avoid pandas warnings
+                    games = games.copy()
+                    # Initialize columns with zeros
+                    games['GoalsFor'] = 0
+                    games['GoalsAgainst'] = 0
+                    
+                    # Validate required columns exist in games
+                    required_game_columns = ['ID']
+                    missing_columns = [col for col in required_game_columns if col not in games.columns]
+                    if missing_columns:
+                        self.logger.error(f"Required columns missing from games data: {missing_columns}. Available columns: {list(games.columns)}")
+                        return pd.DataFrame()
+                    
+                    # Validate team identifier before proceeding
+                    if team_identifier is None or team_identifier == '':
+                        self.logger.error("Invalid team identifier for score calculation - cannot proceed")
+                        # Use fallback but log the issue
+                        team_identifier = 'your_team'
+                        self.logger.warning(f"Using fallback team identifier: '{team_identifier}'")
+                    
+                    # Calculate goals for each game using the new centralized method
+                    self.logger.info(f"Calculating goals for {len(games)} games (team: {team_identifier}, game_type: {game_type})")
+                    print(f"Calculating goals for {len(games)} games (team: {team_identifier}, game_type: {game_type})")
+                    
+                    successful_calculations = 0
+                    failed_calculations = 0
+                    calculation_errors = []
+                    
+                    for idx, game in games.iterrows():
+                        try:
+                            game_id = game.get('ID')
+                            if game_id is None or game_id == '':
+                                self.logger.error(f"Invalid game ID at index {idx}: '{game_id}'")
+                                failed_calculations += 1
+                                calculation_errors.append(f"Invalid game ID: '{game_id}'")
+                                continue
+                            
+                            goals_for, goals_against = self._calculate_game_scores(
+                                game_id, events, team_identifier, game_type
+                            )
+                            
+                            # Validate calculated scores
+                            if not isinstance(goals_for, (int, float)) or not isinstance(goals_against, (int, float)):
+                                self.logger.error(f"Invalid score types returned for game {game_id}: goals_for={type(goals_for)}, goals_against={type(goals_against)}")
+                                goals_for, goals_against = 0, 0
+                                failed_calculations += 1
+                                calculation_errors.append(f"Invalid score types for game {game_id}")
+                            elif goals_for < 0 or goals_against < 0:
+                                self.logger.error(f"Negative scores calculated for game {game_id}: {goals_for}-{goals_against}")
+                                goals_for, goals_against = 0, 0
+                                failed_calculations += 1
+                                calculation_errors.append(f"Negative scores for game {game_id}")
+                            else:
+                                successful_calculations += 1
+                            
+                            games.at[idx, 'GoalsFor'] = int(goals_for)
+                            games.at[idx, 'GoalsAgainst'] = int(goals_against)
+                            
+                        except Exception as e:
+                            self.logger.error(f"Error calculating scores for game {game.get('ID', 'unknown')}: {str(e)}")
+                            # Keep default values (0, 0) for failed calculations
+                            games.at[idx, 'GoalsFor'] = 0
+                            games.at[idx, 'GoalsAgainst'] = 0
+                            failed_calculations += 1
+                            calculation_errors.append(f"Exception for game {game.get('ID', 'unknown')}: {str(e)}")
+                    
+                    # Log comprehensive calculation summary
+                    self.logger.info(f"Goal calculation summary: {successful_calculations} successful, {failed_calculations} failed out of {len(games)} total games")
+                    if failed_calculations > 0:
+                        self.logger.warning(f"Failed calculations details: {calculation_errors[:5]}")  # Log first 5 errors
+                        if len(calculation_errors) > 5:
+                            self.logger.warning(f"... and {len(calculation_errors) - 5} more errors")
+                    
+                    print(f"Completed goal calculations for {len(games)} games")
+                    
+                    if not games.empty:
+                        # Log sample of calculated data for verification
+                        sample_game = games.iloc[0]
+                        self.logger.debug(f"Sample calculated game data: ID={sample_game.get('ID')}, GoalsFor={sample_game.get('GoalsFor')}, GoalsAgainst={sample_game.get('GoalsAgainst')}")
+                        print("Sample game data:", games.iloc[0].to_dict())
+                        
+                except Exception as e:
+                    self.logger.error(f"Critical error during goal calculations: {str(e)}")
+                    # Return games without calculated scores rather than failing completely
+                    if 'GoalsFor' not in games.columns:
+                        games['GoalsFor'] = 0
+                        self.logger.warning("Added default GoalsFor column with zeros due to calculation failure")
+                    if 'GoalsAgainst' not in games.columns:
+                        games['GoalsAgainst'] = 0
+                        self.logger.warning("Added default GoalsAgainst column with zeros due to calculation failure")
+            else:
+                self.logger.info("No games to process (empty games DataFrame)")
+            
+            # Always ensure Result column exists (after GoalsFor/GoalsAgainst are calculated)
+            try:
+                games = self._ensure_result_column(games)
+            except Exception as e:
+                self.logger.error(f"Error ensuring Result column: {str(e)}")
+                # Add basic Result column as fallback
+                if not games.empty and 'Result' not in games.columns:
+                    games['Result'] = 'Unknown'
+                    self.logger.warning("Added fallback Result column due to calculation error")
+            
+            # Cache the results with enhanced error handling
+            try:
+                # Validate games DataFrame before caching
+                if games is not None and not games.empty:
+                    # Ensure cache dictionary exists
+                    if not hasattr(self, '_games_calculated_cache'):
+                        self._games_calculated_cache = {}
+                    
+                    # Create a deep copy for caching to prevent reference issues
+                    cached_games = games.copy()
+                    
+                    # Validate cache key
+                    if cache_key and isinstance(cache_key, str):
+                        self._games_calculated_cache[cache_key] = cached_games
+                        self.logger.info(f"Successfully cached {len(cached_games)} games for key '{cache_key}'")
+                        print(f"Cached games data for {cache_key}")
+                    else:
+                        self.logger.error(f"Invalid cache key for games caching: '{cache_key}'")
+                else:
+                    self.logger.warning(f"Cannot cache empty or None games DataFrame for key '{cache_key}'")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to cache games data for {cache_key}: {str(e)}")
+                # Continue without caching - not a critical failure
+            
+            return games
+            
+        except Exception as e:
+            self.logger.error(f"Unexpected error in get_games: {str(e)}")
+            return pd.DataFrame()  # Return empty DataFrame as ultimate fallback
+    
+    def clear_games_cache(self, team_id=None, game_type=None):
+        """
+        Clear cached games data with enhanced error handling and logging.
         
-        # Always ensure Result column exists (after GoalsFor/GoalsAgainst are calculated)
-        games = self._ensure_result_column(games)
+        Args:
+            team_id (str, optional): If specified, only clear cache for this team
+            game_type (str, optional): If specified, only clear cache for this game type
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache'):
+                self.logger.info("No games cache to clear - cache not initialized")
+                return
+            
+            if not self._games_calculated_cache:
+                self.logger.info("Games cache is already empty")
+                return
+            
+            original_cache_size = len(self._games_calculated_cache)
+            
+            if team_id is None and game_type is None:
+                # Clear all cache
+                self._games_calculated_cache.clear()
+                self.logger.info(f"Cleared all games cache ({original_cache_size} entries)")
+                print("Cleared all games cache")
+            else:
+                # Clear specific cache entries
+                keys_to_remove = []
+                
+                for cache_key in self._games_calculated_cache.keys():
+                    should_remove = False
+                    
+                    # Parse cache key format: "games_{team_id}_{game_type}" or "games_all"
+                    if cache_key.startswith("games_"):
+                        parts = cache_key.split("_")
+                        if len(parts) >= 3:
+                            cached_team_id = parts[1] if parts[1] != 'None' else None
+                            cached_game_type = parts[2] if parts[2] != 'None' else None
+                            
+                            # Check if this entry should be removed
+                            if team_id is not None and cached_team_id == team_id:
+                                should_remove = True
+                            if game_type is not None and cached_game_type == game_type:
+                                should_remove = True
+                        elif cache_key == "games_all" and team_id is None and game_type is None:
+                            should_remove = True
+                    
+                    if should_remove:
+                        keys_to_remove.append(cache_key)
+                
+                # Remove identified keys
+                for key in keys_to_remove:
+                    try:
+                        del self._games_calculated_cache[key]
+                        self.logger.debug(f"Removed cache entry: {key}")
+                    except KeyError:
+                        self.logger.warning(f"Cache key {key} not found during removal")
+                
+                removed_count = len(keys_to_remove)
+                self.logger.info(f"Cleared {removed_count} games cache entries (team_id={team_id}, game_type={game_type})")
+                print(f"Cleared {removed_count} games cache entries")
+                
+        except Exception as e:
+            self.logger.error(f"Error clearing games cache: {str(e)}")
+            # Try to clear all cache as fallback
+            try:
+                if hasattr(self, '_games_calculated_cache'):
+                    self._games_calculated_cache.clear()
+                    self.logger.warning("Cleared all games cache as fallback due to error")
+            except Exception as fallback_error:
+                self.logger.error(f"Failed to clear cache even as fallback: {str(fallback_error)}")
+    
+    def get_cache_info(self):
+        """
+        Get information about the current cache state for debugging and monitoring.
         
-        # Cache the results (cache all games, not just completed ones)
-        self._games_calculated_cache[cache_key] = games.copy()
-        print(f"Cached games data for {cache_key}")
-        
-        return games
+        Returns:
+            dict: Dictionary containing cache information
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache'):
+                return {"cache_initialized": False, "cache_size": 0, "cache_keys": []}
+            
+            cache_info = {
+                "cache_initialized": True,
+                "cache_size": len(self._games_calculated_cache),
+                "cache_keys": list(self._games_calculated_cache.keys()),
+                "cache_memory_usage": sum(
+                    df.memory_usage(deep=True).sum() 
+                    for df in self._games_calculated_cache.values() 
+                    if df is not None and not df.empty
+                )
+            }
+            
+            self.logger.debug(f"Cache info: {cache_info}")
+            return cache_info
+            
+        except Exception as e:
+            self.logger.error(f"Error getting cache info: {str(e)}")
+            return {"error": str(e), "cache_initialized": False, "cache_size": 0, "cache_keys": []}
     
     def _ensure_result_column(self, games):
         """
-        Ensure the Result column exists in the games DataFrame.
+        Ensure the Result column exists in the games DataFrame with comprehensive error handling.
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
@@ -506,26 +1067,112 @@ class DataService:
         Returns:
             pd.DataFrame: DataFrame with Result column added if needed
         """
-        # Always work with a copy to avoid pandas warnings
-        games = games.copy()
-        
-        # Check if Result column already exists
-        if 'Result' not in games.columns:
+        try:
+            # Validate input
+            if games is None:
+                self.logger.error("Cannot ensure Result column: games DataFrame is None")
+                return pd.DataFrame()
+            
+            if games.empty:
+                self.logger.info("Cannot ensure Result column: games DataFrame is empty")
+                return games
+            
+            # Always work with a copy to avoid pandas warnings
+            games = games.copy()
+            
+            # Check if Result column already exists
+            if 'Result' in games.columns:
+                self.logger.debug("Result column already exists in games DataFrame")
+                return games
+            
             # Check if we can calculate it
-            if not games.empty and 'GoalsFor' in games.columns and 'GoalsAgainst' in games.columns:
-                # Create a new Result column
-                games['Result'] = games.apply(
-                    lambda row: 'W' if row['GoalsFor'] > row['GoalsAgainst'] else 
-                               'L' if row['GoalsFor'] < row['GoalsAgainst'] else 'T', 
-                    axis=1
-                )
-                print(f"Added Result column to {len(games)} games")
-            else:
-                # If we can't calculate it, add a placeholder
+            required_columns = ['GoalsFor', 'GoalsAgainst']
+            missing_columns = [col for col in required_columns if col not in games.columns]
+            
+            if missing_columns:
+                self.logger.warning(f"Cannot calculate Result column: missing columns {missing_columns}. Available columns: {list(games.columns)}")
+                # Add placeholder Result column
                 games['Result'] = 'Unknown'
+                self.logger.info(f"Added placeholder Result column to {len(games)} games")
                 print("Warning: Could not calculate Result column. Using placeholder values.")
-        
-        return games
+                return games
+            
+            # Validate data types and values
+            try:
+                # Check for non-numeric values in score columns
+                if not pd.api.types.is_numeric_dtype(games['GoalsFor']):
+                    self.logger.warning("GoalsFor column contains non-numeric values, attempting conversion")
+                    games['GoalsFor'] = pd.to_numeric(games['GoalsFor'], errors='coerce').fillna(0)
+                
+                if not pd.api.types.is_numeric_dtype(games['GoalsAgainst']):
+                    self.logger.warning("GoalsAgainst column contains non-numeric values, attempting conversion")
+                    games['GoalsAgainst'] = pd.to_numeric(games['GoalsAgainst'], errors='coerce').fillna(0)
+                
+                # Check for negative values
+                negative_goals_for = games['GoalsFor'] < 0
+                negative_goals_against = games['GoalsAgainst'] < 0
+                
+                if negative_goals_for.any():
+                    self.logger.warning(f"Found {negative_goals_for.sum()} games with negative GoalsFor values, setting to 0")
+                    games.loc[negative_goals_for, 'GoalsFor'] = 0
+                
+                if negative_goals_against.any():
+                    self.logger.warning(f"Found {negative_goals_against.sum()} games with negative GoalsAgainst values, setting to 0")
+                    games.loc[negative_goals_against, 'GoalsAgainst'] = 0
+                
+                # Create a new Result column with error handling for each row
+                def calculate_result(row):
+                    try:
+                        goals_for = row['GoalsFor']
+                        goals_against = row['GoalsAgainst']
+                        
+                        # Handle NaN values
+                        if pd.isna(goals_for) or pd.isna(goals_against):
+                            return 'Unknown'
+                        
+                        if goals_for > goals_against:
+                            return 'W'
+                        elif goals_for < goals_against:
+                            return 'L'
+                        else:
+                            return 'T'
+                    except Exception as e:
+                        self.logger.error(f"Error calculating result for row: {str(e)}")
+                        return 'Unknown'
+                
+                games['Result'] = games.apply(calculate_result, axis=1)
+                
+                # Validate results
+                valid_results = ['W', 'L', 'T', 'Unknown']
+                invalid_results = ~games['Result'].isin(valid_results)
+                if invalid_results.any():
+                    self.logger.warning(f"Found {invalid_results.sum()} games with invalid Result values, setting to 'Unknown'")
+                    games.loc[invalid_results, 'Result'] = 'Unknown'
+                
+                # Log summary
+                result_counts = games['Result'].value_counts()
+                self.logger.info(f"Added Result column to {len(games)} games: {result_counts.to_dict()}")
+                print(f"Added Result column to {len(games)} games")
+                
+                return games
+                
+            except Exception as e:
+                self.logger.error(f"Error during Result column calculation: {str(e)}")
+                # Fallback to placeholder values
+                games['Result'] = 'Unknown'
+                self.logger.warning(f"Used fallback Result values for {len(games)} games due to calculation error")
+                print("Warning: Error calculating Result column. Using placeholder values.")
+                return games
+                
+        except Exception as e:
+            self.logger.error(f"Critical error in _ensure_result_column: {str(e)}")
+            # Return original games or empty DataFrame as ultimate fallback
+            if games is not None and not games.empty:
+                if 'Result' not in games.columns:
+                    games['Result'] = 'Unknown'
+                return games
+            else:
+                return pd.DataFrame()
     
     def get_events(self):
         """
@@ -797,7 +1444,7 @@ class DataService:
 
     def calculate_goals_for_events(self, player_id, events):
         """
-        Calculate goals for a player based on events.
+        Calculate goals for a player based on events with enhanced error handling.
         
         Args:
             player_id (str): The player ID
@@ -806,14 +1453,56 @@ class DataService:
         Returns:
             int: Number of goals scored
         """
-        player_events = events[events['PrimaryPlayerID'] == player_id]
-        goals = len(player_events[(player_events['IsGoal'] == True)])
-        print(f"Calculated {goals} goals for player {player_id}")
-        return goals
+        try:
+            # Validate inputs
+            if player_id is None or player_id == '':
+                self.logger.error(f"Invalid player_id for goals calculation: '{player_id}'")
+                return 0
+            
+            if events is None or events.empty:
+                self.logger.warning(f"No events data provided for goals calculation for player '{player_id}'")
+                return 0
+            
+            # Check required columns
+            required_columns = ['PrimaryPlayerID', 'IsGoal']
+            missing_columns = [col for col in required_columns if col not in events.columns]
+            if missing_columns:
+                self.logger.error(f"Missing required columns for goals calculation: {missing_columns}. Available: {list(events.columns)}")
+                return 0
+            
+            # Filter events for this player
+            try:
+                player_events = events[events['PrimaryPlayerID'] == player_id]
+                self.logger.debug(f"Found {len(player_events)} events for player '{player_id}' in goals calculation")
+            except Exception as e:
+                self.logger.error(f"Error filtering events by PrimaryPlayerID for player '{player_id}': {str(e)}")
+                return 0
+            
+            # Calculate goals
+            try:
+                goal_events = player_events[player_events['IsGoal'] == True]
+                goals = len(goal_events)
+                
+                # Validate result
+                if goals < 0:
+                    self.logger.error(f"Negative goals calculated for player '{player_id}': {goals}")
+                    return 0
+                
+                self.logger.debug(f"Calculated {goals} goals for player '{player_id}'")
+                print(f"Calculated {goals} goals for player {player_id}")
+                return goals
+                
+            except Exception as e:
+                self.logger.error(f"Error calculating goals from events for player '{player_id}': {str(e)}")
+                return 0
+                
+        except Exception as e:
+            self.logger.error(f"Unexpected error in calculate_goals_for_events for player '{player_id}': {str(e)}")
+            return 0
 
     def calculate_assists_for_events(self, player_id, events):
         """
-        Calculate assists for a player based on events.
+        Calculate assists for a player based on events with enhanced error handling.
         
         Args:
             player_id (str): The player ID
@@ -822,11 +1511,49 @@ class DataService:
         Returns:
             int: Number of assists
         """
-        assist1_events = events[events['AssistPlayer1ID'] == player_id]
-        assist2_events = events[events['AssistPlayer2ID'] == player_id]
-        assists = len(assist1_events) + len(assist2_events)
-        print(f"Calculated {assists} assists for player {player_id} ({len(assist1_events)} primary + {len(assist2_events)} secondary)")
-        return assists
+        try:
+            # Validate inputs
+            if player_id is None or player_id == '':
+                self.logger.error(f"Invalid player_id for assists calculation: '{player_id}'")
+                return 0
+            
+            if events is None or events.empty:
+                self.logger.warning(f"No events data provided for assists calculation for player '{player_id}'")
+                return 0
+            
+            # Check required columns
+            required_columns = ['AssistPlayer1ID', 'AssistPlayer2ID']
+            missing_columns = [col for col in required_columns if col not in events.columns]
+            if missing_columns:
+                self.logger.error(f"Missing required columns for assists calculation: {missing_columns}. Available: {list(events.columns)}")
+                return 0
+            
+            # Calculate assists with error handling
+            try:
+                assist1_events = events[events['AssistPlayer1ID'] == player_id]
+                primary_assists = len(assist1_events)
+                
+                assist2_events = events[events['AssistPlayer2ID'] == player_id]
+                secondary_assists = len(assist2_events)
+                
+                total_assists = primary_assists + secondary_assists
+                
+                # Validate results
+                if primary_assists < 0 or secondary_assists < 0 or total_assists < 0:
+                    self.logger.error(f"Negative assists calculated for player '{player_id}': primary={primary_assists}, secondary={secondary_assists}, total={total_assists}")
+                    return 0
+                
+                self.logger.debug(f"Calculated {total_assists} assists for player '{player_id}' ({primary_assists} primary + {secondary_assists} secondary)")
+                print(f"Calculated {total_assists} assists for player {player_id} ({primary_assists} primary + {secondary_assists} secondary)")
+                return total_assists
+                
+            except Exception as e:
+                self.logger.error(f"Error calculating assists from events for player '{player_id}': {str(e)}")
+                return 0
+                
+        except Exception as e:
+            self.logger.error(f"Unexpected error in calculate_assists_for_events for player '{player_id}': {str(e)}")
+            return 0
 
     def calculate_points_for_events(self, player_id, events):
         """
@@ -863,7 +1590,7 @@ class DataService:
 
     def calculate_penalty_minutes_for_events(self, player_id, events):
         """
-        Calculate penalty minutes for a player based on events.
+        Calculate penalty minutes for a player based on events with enhanced error handling.
         
         Args:
             player_id (str): The player ID
@@ -872,15 +1599,74 @@ class DataService:
         Returns:
             int: Number of penalty minutes
         """
-        player_events = events[events['PrimaryPlayerID'] == player_id]
-        penalty_events = player_events[player_events['EventType'] == 'Penalty']
-        penalty_minutes = penalty_events['PenaltyDuration'].sum() if not penalty_events.empty else 0
-        print(f"Calculated {penalty_minutes} penalty minutes for player {player_id}")
-        return penalty_minutes
+        try:
+            # Validate inputs
+            if player_id is None or player_id == '':
+                self.logger.error(f"Invalid player_id for penalty minutes calculation: '{player_id}'")
+                return 0
+            
+            if events is None or events.empty:
+                self.logger.warning(f"No events data provided for penalty minutes calculation for player '{player_id}'")
+                return 0
+            
+            # Check required columns
+            required_columns = ['PrimaryPlayerID', 'EventType']
+            missing_columns = [col for col in required_columns if col not in events.columns]
+            if missing_columns:
+                self.logger.error(f"Missing required columns for penalty minutes calculation: {missing_columns}. Available: {list(events.columns)}")
+                return 0
+            
+            # Calculate penalty minutes with error handling
+            try:
+                player_events = events[events['PrimaryPlayerID'] == player_id]
+                penalty_events = player_events[player_events['EventType'] == 'Penalty']
+                
+                if penalty_events.empty:
+                    self.logger.debug(f"No penalty events found for player '{player_id}'")
+                    print(f"Calculated 0 penalty minutes for player {player_id}")
+                    return 0
+                
+                # Check if PenaltyDuration column exists
+                if 'PenaltyDuration' not in penalty_events.columns:
+                    self.logger.warning(f"PenaltyDuration column not found for penalty calculation for player '{player_id}'. Available columns: {list(penalty_events.columns)}")
+                    # Assume standard 2-minute penalties as fallback
+                    penalty_minutes = len(penalty_events) * 2
+                    self.logger.warning(f"Using fallback calculation: {len(penalty_events)} penalties × 2 minutes = {penalty_minutes} minutes")
+                else:
+                    # Calculate using actual penalty durations
+                    try:
+                        penalty_minutes = penalty_events['PenaltyDuration'].sum()
+                        
+                        # Validate penalty duration values
+                        if pd.isna(penalty_minutes):
+                            self.logger.warning(f"NaN penalty minutes calculated for player '{player_id}', using fallback")
+                            penalty_minutes = len(penalty_events) * 2  # Fallback to 2-minute penalties
+                        elif penalty_minutes < 0:
+                            self.logger.error(f"Negative penalty minutes calculated for player '{player_id}': {penalty_minutes}")
+                            return 0
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error summing penalty durations for player '{player_id}': {str(e)}")
+                        # Fallback calculation
+                        penalty_minutes = len(penalty_events) * 2
+                        self.logger.warning(f"Using fallback calculation due to error: {penalty_minutes} minutes")
+                
+                penalty_minutes = int(penalty_minutes)  # Ensure integer result
+                self.logger.debug(f"Calculated {penalty_minutes} penalty minutes for player '{player_id}' from {len(penalty_events)} penalty events")
+                print(f"Calculated {penalty_minutes} penalty minutes for player {player_id}")
+                return penalty_minutes
+                
+            except Exception as e:
+                self.logger.error(f"Error calculating penalty minutes from events for player '{player_id}': {str(e)}")
+                return 0
+                
+        except Exception as e:
+            self.logger.error(f"Unexpected error in calculate_penalty_minutes_for_events for player '{player_id}': {str(e)}")
+            return 0
 
     def calculate_player_stats(self, player_id, team_id=None, game_type=None):
         """
-        Calculate statistics for a player.
+        Calculate statistics for a player with comprehensive error handling and logging.
         
         Args:
             player_id (str): The player ID
@@ -888,115 +1674,233 @@ class DataService:
             game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             
         Returns:
-            dict: Dictionary containing player statistics
+            dict: Dictionary containing player statistics, or None if calculation fails
         """
-        player = self.get_player_by_id(player_id)
-        if player is None:
-            return None
-        
-        events = self.get_events()
-        games = self.get_player_games(player_id, team_id, game_type=game_type)
-        
-        # CRITICAL FIX: Always filter events by game type, even if no games are found
-        # This ensures that when filtering by Regular Season but no completed Regular Season games exist,
-        # we don't fall back to using ALL events (which was the bug)
-        if game_type is not None:
-            # Get all games of the specified type for proper event filtering
-            all_games_of_type = self.get_games(team_id, game_type)
-            if not all_games_of_type.empty:
-                game_ids_of_type = all_games_of_type['ID'].tolist()
-                events = events[events['GameID'].isin(game_ids_of_type)]
-                print(f"Filtered events to {len(events)} events from {len(game_ids_of_type)} games of type '{game_type}'")
-            else:
-                # No games of this type exist, so no events should be included
-                events = events[events['GameID'].isin([])]  # Empty filter
-                print(f"No games of type '{game_type}' found - using 0 events for stats calculation")
-        else:
-            # When game_type is None (All Games), we need to filter events by ALL player games across all game types
-            # This fixes the "All Games" aggregation issue where Player #25 showed 0 games played
-            if not games.empty:
-                # Only filter by player games if no game type filter is specified
-                game_ids = games['ID'].tolist()
-                events = events[events['GameID'].isin(game_ids)]
-                print(f"Filtered events to {len(events)} events from {len(game_ids)} player games (no game_type filter)")
-            else:
-                # CRITICAL FIX: When no games found with current filtering, 
-                # get ALL player games across ALL game types for proper aggregation
-                print(f"No games found for player {player_id} with current filters, trying all game types...")
-                
-                # Get player games for each game type individually and combine
-                all_player_games = []
-                for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
-                    gt_games = self.get_player_games(player_id, team_id, game_type=gt)
-                    if not gt_games.empty:
-                        all_player_games.append(gt_games)
-                        print(f"Found {len(gt_games)} games for player {player_id} in game type '{gt}'")
-                
-                if all_player_games:
-                    # Combine all games and remove duplicates
-                    combined_games = pd.concat(all_player_games, ignore_index=True)
-                    combined_games = combined_games.drop_duplicates(subset=['ID'], keep='first')
-                    
-                    # Filter events by these combined game IDs
-                    combined_game_ids = combined_games['ID'].tolist()
-                    events = events[events['GameID'].isin(combined_game_ids)]
-                    
-                    # Update games variable for games_played calculation
-                    games = combined_games
-                    
-                    print(f"FIXED: Combined {len(combined_games)} games across all types for player {player_id}")
-                    print(f"Filtered events to {len(events)} events from combined games")
-                else:
-                    print(f"No games found for player {player_id} in any game type")
-        
-        # Get all teams in events
-        unique_teams = events['Team'].unique()
-        print(f"Unique teams in events: {unique_teams}")
-        
-        # Get team identifier for event filtering (same as game stats method)
-        if team_id is not None:
-            team_identifier = self._get_team_identifier_for_events(team_id)
-            print(f"Using team identifier: '{team_identifier}' for team ID: '{team_id}'")
-        else:
-            # For backward compatibility, try to get the first team or use fallback
+        try:
+            # Validate input parameters
+            if player_id is None or player_id == '':
+                self.logger.error(f"Invalid player_id provided: '{player_id}'")
+                return None
+            
+            if team_id is not None and (not isinstance(team_id, str) or team_id.strip() == ''):
+                self.logger.error(f"Invalid team_id provided: '{team_id}'")
+                return None
+            
+            if game_type is not None and game_type not in ['E', 'R', 'T']:
+                self.logger.error(f"Invalid game_type provided: '{game_type}'. Must be 'E', 'R', 'T', or None")
+                return None
+            
+            self.logger.info(f"Calculating player stats for player_id='{player_id}', team_id='{team_id}', game_type='{game_type}'")
+            
+            # Get player data with error handling
             try:
-                teams = self.sheets_service.get_teams()
-                if not teams.empty:
-                    first_team_id = teams.iloc[0]['TeamID']
-                    team_identifier = self._get_team_identifier_for_events(first_team_id)
-                    print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
+                player = self.get_player_by_id(player_id)
+                if player is None:
+                    self.logger.error(f"Player not found with ID: '{player_id}'")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error retrieving player data for ID '{player_id}': {str(e)}")
+                return None
+            
+            # Get events and games data with error handling
+            try:
+                events = self.get_events()
+                if events is None:
+                    self.logger.error("Failed to retrieve events data for player stats calculation")
+                    return None
+                
+                games = self.get_player_games(player_id, team_id, game_type=game_type)
+                if games is None:
+                    self.logger.warning(f"No games data returned for player '{player_id}' - using empty DataFrame")
+                    games = pd.DataFrame()
+                    
+            except Exception as e:
+                self.logger.error(f"Error retrieving events/games data for player '{player_id}': {str(e)}")
+                return None
+            
+            # CRITICAL FIX: Always filter events by game type, even if no games are found
+            # This ensures that when filtering by Regular Season but no completed Regular Season games exist,
+            # we don't fall back to using ALL events (which was the bug)
+            if game_type is not None:
+                # Get all games of the specified type for proper event filtering
+                all_games_of_type = self.get_games(team_id, game_type)
+                if not all_games_of_type.empty:
+                    game_ids_of_type = all_games_of_type['ID'].tolist()
+                    events = events[events['GameID'].isin(game_ids_of_type)]
+                    print(f"Filtered events to {len(events)} events from {len(game_ids_of_type)} games of type '{game_type}'")
                 else:
+                    # No games of this type exist, so no events should be included
+                    events = events[events['GameID'].isin([])]  # Empty filter
+                    print(f"No games of type '{game_type}' found - using 0 events for stats calculation")
+            else:
+                # When game_type is None (All Games), we need to filter events by ALL player games across all game types
+                # This fixes the "All Games" aggregation issue where Player #25 showed 0 games played
+                if not games.empty:
+                    # Only filter by player games if no game type filter is specified
+                    game_ids = games['ID'].tolist()
+                    events = events[events['GameID'].isin(game_ids)]
+                    print(f"Filtered events to {len(events)} events from {len(game_ids)} player games (no game_type filter)")
+                else:
+                    # CRITICAL FIX: When no games found with current filtering, 
+                    # get ALL player games across ALL game types for proper aggregation
+                    print(f"No games found for player {player_id} with current filters, trying all game types...")
+                    
+                    # Get player games for each game type individually and combine
+                    all_player_games = []
+                    for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
+                        gt_games = self.get_player_games(player_id, team_id, game_type=gt)
+                        if not gt_games.empty:
+                            all_player_games.append(gt_games)
+                            print(f"Found {len(gt_games)} games for player {player_id} in game type '{gt}'")
+                    
+                    if all_player_games:
+                        # Combine all games and remove duplicates
+                        combined_games = pd.concat(all_player_games, ignore_index=True)
+                        combined_games = combined_games.drop_duplicates(subset=['ID'], keep='first')
+                        
+                        # Filter events by these combined game IDs
+                        combined_game_ids = combined_games['ID'].tolist()
+                        events = events[events['GameID'].isin(combined_game_ids)]
+                        
+                        # Update games variable for games_played calculation
+                        games = combined_games
+                        
+                        print(f"FIXED: Combined {len(combined_games)} games across all types for player {player_id}")
+                        print(f"Filtered events to {len(events)} events from combined games")
+                    else:
+                        print(f"No games found for player {player_id} in any game type")
+            
+            # Get all teams in events
+            unique_teams = events['Team'].unique()
+            print(f"Unique teams in events: {unique_teams}")
+            
+            # Get team identifier for event filtering (same as game stats method)
+            if team_id is not None:
+                team_identifier = self._get_team_identifier_for_events(team_id)
+                print(f"Using team identifier: '{team_identifier}' for team ID: '{team_id}'")
+            else:
+                # For backward compatibility, try to get the first team or use fallback
+                try:
+                    teams = self.sheets_service.get_teams()
+                    if not teams.empty:
+                        first_team_id = teams.iloc[0]['TeamID']
+                        team_identifier = self._get_team_identifier_for_events(first_team_id)
+                        print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
+                    else:
+                        team_identifier = 'your_team'
+                        print(f"Using fallback team identifier: '{team_identifier}'")
+                except:
                     team_identifier = 'your_team'
                     print(f"Using fallback team identifier: '{team_identifier}'")
-            except:
-                team_identifier = 'your_team'
-                print(f"Using fallback team identifier: '{team_identifier}'")
-        
-        # Calculate all stats using centralized functions with filtered events
-        goals = self.calculate_goals_for_events(player_id, events)
-        assists = self.calculate_assists_for_events(player_id, events)
-        points = self.calculate_points_for_events(player_id, events)
-        plus_minus = self.calculate_plus_minus_for_events(player_id, events, team_identifier)
-        shots = self.calculate_shots_for_events(player_id, events)
-        penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, events)
-        
-        # Calculate games played
-        games_played = len(games)
-        
-        # Calculate goals per game
-        goals_per_game = goals / games_played if games_played > 0 else 0
-        
-        return {
-            'player': player,
-            'goals': goals,
-            'assists': assists,
-            'points': points,
-            'plus_minus': plus_minus,
-            'shots': shots,
-            'penalty_minutes': penalty_minutes,
-            'games_played': games_played,
-            'goals_per_game': goals_per_game
-        }
+            
+            # Calculate all stats using centralized functions with filtered events and error handling
+            try:
+                goals = self.calculate_goals_for_events(player_id, events)
+                if not isinstance(goals, (int, float)) or goals < 0:
+                    self.logger.warning(f"Invalid goals calculated for player '{player_id}': {goals}. Using 0.")
+                    goals = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating goals for player '{player_id}': {str(e)}")
+                goals = 0
+            
+            try:
+                assists = self.calculate_assists_for_events(player_id, events)
+                if not isinstance(assists, (int, float)) or assists < 0:
+                    self.logger.warning(f"Invalid assists calculated for player '{player_id}': {assists}. Using 0.")
+                    assists = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating assists for player '{player_id}': {str(e)}")
+                assists = 0
+            
+            try:
+                points = self.calculate_points_for_events(player_id, events)
+                if not isinstance(points, (int, float)) or points < 0:
+                    self.logger.warning(f"Invalid points calculated for player '{player_id}': {points}. Using 0.")
+                    points = 0
+                
+                # Validate points consistency
+                expected_points = goals + assists
+                if points != expected_points:
+                    self.logger.warning(f"Points inconsistency for player '{player_id}': calculated={points}, expected={expected_points}. Using expected value.")
+                    points = expected_points
+            except Exception as e:
+                self.logger.error(f"Error calculating points for player '{player_id}': {str(e)}")
+                points = goals + assists  # Fallback calculation
+            
+            try:
+                plus_minus = self.calculate_plus_minus_for_events(player_id, events, team_identifier)
+                if not isinstance(plus_minus, (int, float)):
+                    self.logger.warning(f"Invalid plus_minus calculated for player '{player_id}': {plus_minus}. Using 0.")
+                    plus_minus = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating plus_minus for player '{player_id}': {str(e)}")
+                plus_minus = 0
+            
+            try:
+                shots = self.calculate_shots_for_events(player_id, events)
+                if not isinstance(shots, (int, float)) or shots < 0:
+                    self.logger.warning(f"Invalid shots calculated for player '{player_id}': {shots}. Using 0.")
+                    shots = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating shots for player '{player_id}': {str(e)}")
+                shots = 0
+            
+            try:
+                penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, events)
+                if not isinstance(penalty_minutes, (int, float)) or penalty_minutes < 0:
+                    self.logger.warning(f"Invalid penalty_minutes calculated for player '{player_id}': {penalty_minutes}. Using 0.")
+                    penalty_minutes = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating penalty_minutes for player '{player_id}': {str(e)}")
+                penalty_minutes = 0
+            
+            # Calculate games played with validation
+            try:
+                games_played = len(games) if games is not None else 0
+                if games_played < 0:
+                    self.logger.warning(f"Invalid games_played for player '{player_id}': {games_played}. Using 0.")
+                    games_played = 0
+            except Exception as e:
+                self.logger.error(f"Error calculating games_played for player '{player_id}': {str(e)}")
+                games_played = 0
+            
+            # Calculate goals per game with division by zero protection
+            try:
+                goals_per_game = goals / games_played if games_played > 0 else 0.0
+                if not isinstance(goals_per_game, (int, float)) or goals_per_game < 0:
+                    self.logger.warning(f"Invalid goals_per_game calculated for player '{player_id}': {goals_per_game}. Using 0.")
+                    goals_per_game = 0.0
+            except Exception as e:
+                self.logger.error(f"Error calculating goals_per_game for player '{player_id}': {str(e)}")
+                goals_per_game = 0.0
+            
+            # Log calculation summary
+            self.logger.info(f"Player stats calculated for '{player_id}': G={goals}, A={assists}, P={points}, +/-={plus_minus}, S={shots}, PIM={penalty_minutes}, GP={games_played}")
+            
+            # Return comprehensive stats dictionary
+            try:
+                stats_dict = {
+                    'player': player,
+                    'goals': int(goals),
+                    'assists': int(assists),
+                    'points': int(points),
+                    'plus_minus': int(plus_minus),
+                    'shots': int(shots),
+                    'penalty_minutes': int(penalty_minutes),
+                    'games_played': int(games_played),
+                    'goals_per_game': float(goals_per_game)
+                }
+                
+                self.logger.debug(f"Returning stats dictionary for player '{player_id}': {stats_dict}")
+                return stats_dict
+                
+            except Exception as e:
+                self.logger.error(f"Error creating stats dictionary for player '{player_id}': {str(e)}")
+                return None
+            
+        except Exception as e:
+            self.logger.error(f"Unexpected error in calculate_player_stats for player '{player_id}': {str(e)}")
+            return None
     
     def calculate_player_game_stats(self, player_id, game_id, team_id=None):
         """
