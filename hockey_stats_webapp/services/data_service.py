@@ -939,9 +939,15 @@ class DataService:
                     
                     # Validate cache key
                     if cache_key and isinstance(cache_key, str):
+                        # Check cache size before adding new entry
+                        self._manage_cache_size_before_add()
+                        
                         self._games_calculated_cache[cache_key] = cached_games
                         self.logger.info(f"Successfully cached {len(cached_games)} games for key '{cache_key}'")
                         print(f"Cached games data for {cache_key}")
+                        
+                        # Check if cache management is needed after adding
+                        self._manage_cache_size_after_add()
                     else:
                         self.logger.error(f"Invalid cache key for games caching: '{cache_key}'")
                 else:
@@ -1028,34 +1034,437 @@ class DataService:
             except Exception as fallback_error:
                 self.logger.error(f"Failed to clear cache even as fallback: {str(fallback_error)}")
     
-    def get_cache_info(self):
+    def clear_games_cache_optimized(self, team_id=None, game_type=None, force_clear=False):
         """
-        Get information about the current cache state for debugging and monitoring.
+        Optimized cache clearing strategy that minimizes performance impact.
+        Only clears cache when necessary and implements selective clearing with size management.
         
+        Args:
+            team_id (str, optional): If specified, only clear cache for this team
+            game_type (str, optional): If specified, only clear cache for this game type
+            force_clear (bool): If True, forces cache clearing regardless of optimization checks
+            
         Returns:
-            dict: Dictionary containing cache information
+            dict: Information about the cache clearing operation including:
+                - cleared: Whether any cache was actually cleared
+                - entries_removed: Number of cache entries removed
+                - memory_freed: Amount of memory freed in bytes
+                - reason: Reason for clearing or not clearing
         """
         try:
             if not hasattr(self, '_games_calculated_cache'):
-                return {"cache_initialized": False, "cache_size": 0, "cache_keys": []}
+                self.logger.debug("Optimized cache clear: No cache to clear - not initialized")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_not_initialized"}
+            
+            if not self._games_calculated_cache:
+                self.logger.debug("Optimized cache clear: Cache is already empty")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_already_empty"}
+            
+            # Get current cache info for optimization decisions
+            cache_info = self.get_cache_info()
+            current_size = cache_info.get('cache_size', 0)
+            current_memory = cache_info.get('cache_memory_usage', 0)
+            performance_metrics = cache_info.get('cache_performance_metrics', {})
+            
+            # Define cache size thresholds for optimization
+            MAX_CACHE_ENTRIES = 50  # Maximum number of cache entries before forced cleanup
+            MAX_CACHE_MEMORY = 100 * 1024 * 1024  # 100MB maximum cache memory
+            MIN_EFFICIENCY_THRESHOLD = 70  # Minimum cache efficiency percentage
+            
+            # Check if cache clearing is necessary (unless forced)
+            if not force_clear:
+                # Skip clearing if cache is small and efficient
+                if (current_size <= 10 and 
+                    current_memory <= 10 * 1024 * 1024 and  # 10MB
+                    performance_metrics.get('memory_efficiency', 100) >= MIN_EFFICIENCY_THRESHOLD):
+                    self.logger.debug(f"Optimized cache clear: Skipping - cache is small and efficient "
+                                    f"(size={current_size}, memory={current_memory:,.0f}B, "
+                                    f"efficiency={performance_metrics.get('memory_efficiency', 100):.1f}%)")
+                    return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_small_and_efficient"}
+                
+                # Check if we're clearing the same cache key that was recently cleared
+                cache_key = f"games_{team_id}_{game_type}"
+                if hasattr(self, '_last_cleared_keys'):
+                    if cache_key in self._last_cleared_keys:
+                        self.logger.debug(f"Optimized cache clear: Skipping - key '{cache_key}' was recently cleared")
+                        return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "recently_cleared"}
+                else:
+                    self._last_cleared_keys = set()
+            
+            # Determine clearing strategy based on cache state
+            original_cache_size = len(self._games_calculated_cache)
+            memory_before = current_memory
+            
+            if (current_size >= MAX_CACHE_ENTRIES or 
+                current_memory >= MAX_CACHE_MEMORY or 
+                performance_metrics.get('memory_efficiency', 100) < MIN_EFFICIENCY_THRESHOLD or
+                force_clear):
+                
+                # Aggressive clearing needed
+                if team_id is None and game_type is None:
+                    # Clear all cache
+                    self._games_calculated_cache.clear()
+                    self._last_cleared_keys.clear() if hasattr(self, '_last_cleared_keys') else None
+                    entries_removed = original_cache_size
+                    reason = "full_clear_due_to_limits" if not force_clear else "full_clear_forced"
+                    self.logger.info(f"Optimized cache clear: Cleared all {entries_removed} entries "
+                                   f"(reason: {reason}, memory: {memory_before:,.0f}B)")
+                else:
+                    # Selective clearing with optimization
+                    entries_removed = self._selective_cache_clear_optimized(team_id, game_type)
+                    reason = "selective_clear_optimized"
+                    self.logger.info(f"Optimized cache clear: Selectively cleared {entries_removed} entries "
+                                   f"for team_id={team_id}, game_type={game_type}")
+            else:
+                # Minimal selective clearing
+                entries_removed = self._selective_cache_clear_optimized(team_id, game_type)
+                reason = "minimal_selective_clear"
+                self.logger.debug(f"Optimized cache clear: Minimal selective clearing - {entries_removed} entries removed")
+            
+            # Calculate memory freed
+            post_cache_info = self.get_cache_info()
+            memory_after = post_cache_info.get('cache_memory_usage', 0)
+            memory_freed = memory_before - memory_after
+            
+            # Track cleared keys to avoid redundant clearing
+            if team_id is not None or game_type is not None:
+                cache_key = f"games_{team_id}_{game_type}"
+                if not hasattr(self, '_last_cleared_keys'):
+                    self._last_cleared_keys = set()
+                self._last_cleared_keys.add(cache_key)
+                
+                # Limit the size of tracked keys to prevent memory growth
+                if len(self._last_cleared_keys) > 20:
+                    # Remove oldest entries (simple FIFO by converting to list and back)
+                    keys_list = list(self._last_cleared_keys)
+                    self._last_cleared_keys = set(keys_list[-15:])  # Keep last 15 entries
+            
+            return {
+                "cleared": entries_removed > 0,
+                "entries_removed": entries_removed,
+                "memory_freed": memory_freed,
+                "reason": reason,
+                "cache_size_before": original_cache_size,
+                "cache_size_after": post_cache_info.get('cache_size', 0),
+                "memory_before": memory_before,
+                "memory_after": memory_after
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in optimized cache clearing: {str(e)}")
+            # Fallback to regular cache clearing
+            try:
+                self.clear_games_cache(team_id, game_type)
+                return {"cleared": True, "entries_removed": -1, "memory_freed": -1, "reason": "fallback_to_regular_clear", "error": str(e)}
+            except Exception as fallback_error:
+                self.logger.error(f"Fallback cache clearing also failed: {str(fallback_error)}")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "clearing_failed", "error": str(e)}
+    
+    def _selective_cache_clear_optimized(self, team_id=None, game_type=None):
+        """
+        Helper method for optimized selective cache clearing.
+        
+        Args:
+            team_id (str, optional): Team ID to clear cache for
+            game_type (str, optional): Game type to clear cache for
+            
+        Returns:
+            int: Number of cache entries removed
+        """
+        try:
+            keys_to_remove = []
+            
+            for cache_key in self._games_calculated_cache.keys():
+                should_remove = False
+                
+                # Parse cache key format: "games_{team_id}_{game_type}"
+                if cache_key.startswith("games_"):
+                    parts = cache_key.split("_")
+                    if len(parts) >= 3:
+                        cached_team_id = parts[1] if parts[1] != 'None' else None
+                        cached_game_type = parts[2] if parts[2] != 'None' else None
+                        
+                        # More precise matching logic
+                        team_match = (team_id is None or cached_team_id == team_id)
+                        game_type_match = (game_type is None or cached_game_type == game_type)
+                        
+                        # Only remove if both conditions match (when specified)
+                        if team_id is not None and game_type is not None:
+                            should_remove = (cached_team_id == team_id and cached_game_type == game_type)
+                        elif team_id is not None:
+                            should_remove = (cached_team_id == team_id)
+                        elif game_type is not None:
+                            should_remove = (cached_game_type == game_type)
+                
+                if should_remove:
+                    keys_to_remove.append(cache_key)
+            
+            # Remove identified keys
+            for key in keys_to_remove:
+                try:
+                    del self._games_calculated_cache[key]
+                    self.logger.debug(f"Optimized selective clear: Removed cache entry {key}")
+                except KeyError:
+                    self.logger.warning(f"Optimized selective clear: Cache key {key} not found during removal")
+            
+            return len(keys_to_remove)
+            
+        except Exception as e:
+            self.logger.error(f"Error in selective cache clearing: {str(e)}")
+            return 0
+    
+    def _manage_cache_size_before_add(self):
+        """
+        Manage cache size before adding a new entry to prevent excessive memory usage.
+        Implements proactive cache management with size and memory limits.
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache') or not self._games_calculated_cache:
+                return
+            
+            cache_info = self.get_cache_info()
+            current_size = cache_info.get('cache_size', 0)
+            current_memory = cache_info.get('cache_memory_usage', 0)
+            
+            # Define thresholds
+            MAX_ENTRIES_BEFORE_CLEANUP = 40  # Start cleanup before hitting the hard limit
+            MAX_MEMORY_BEFORE_CLEANUP = 80 * 1024 * 1024  # 80MB
+            
+            # Check if proactive cleanup is needed
+            if current_size >= MAX_ENTRIES_BEFORE_CLEANUP or current_memory >= MAX_MEMORY_BEFORE_CLEANUP:
+                self.logger.info(f"Cache size management: Proactive cleanup triggered - "
+                               f"size={current_size}, memory={current_memory:,.0f}B")
+                
+                # Remove oldest or least efficient cache entries
+                self._cleanup_cache_entries(target_reduction=0.3)  # Remove 30% of entries
+                
+        except Exception as e:
+            self.logger.warning(f"Error in proactive cache size management: {str(e)}")
+    
+    def _manage_cache_size_after_add(self):
+        """
+        Manage cache size after adding a new entry to ensure limits are maintained.
+        Implements reactive cache management for hard limits.
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache') or not self._games_calculated_cache:
+                return
+            
+            cache_info = self.get_cache_info()
+            current_size = cache_info.get('cache_size', 0)
+            current_memory = cache_info.get('cache_memory_usage', 0)
+            
+            # Define hard limits
+            MAX_ENTRIES_HARD_LIMIT = 50
+            MAX_MEMORY_HARD_LIMIT = 100 * 1024 * 1024  # 100MB
+            
+            # Check if hard cleanup is needed
+            if current_size >= MAX_ENTRIES_HARD_LIMIT or current_memory >= MAX_MEMORY_HARD_LIMIT:
+                self.logger.warning(f"Cache size management: Hard limit reached - "
+                                  f"size={current_size}, memory={current_memory:,.0f}B")
+                
+                # More aggressive cleanup
+                self._cleanup_cache_entries(target_reduction=0.5)  # Remove 50% of entries
+                
+        except Exception as e:
+            self.logger.warning(f"Error in reactive cache size management: {str(e)}")
+    
+    def _cleanup_cache_entries(self, target_reduction=0.3):
+        """
+        Clean up cache entries based on usage patterns and memory efficiency.
+        
+        Args:
+            target_reduction (float): Target percentage of entries to remove (0.0 to 1.0)
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache') or not self._games_calculated_cache:
+                return
+            
+            current_size = len(self._games_calculated_cache)
+            target_removals = max(1, int(current_size * target_reduction))
+            
+            # Analyze cache entries for cleanup priority
+            entry_analysis = []
+            
+            for key, df in self._games_calculated_cache.items():
+                if df is not None and not df.empty:
+                    memory_usage = df.memory_usage(deep=True).sum()
+                    row_count = len(df)
+                    memory_per_row = memory_usage / row_count if row_count > 0 else 0
+                    
+                    # Calculate cleanup priority (higher = more likely to be removed)
+                    # Factors: large memory usage, low efficiency, generic keys
+                    priority = 0
+                    
+                    # Memory factor (larger entries get higher priority for removal)
+                    if memory_usage > 5 * 1024 * 1024:  # 5MB
+                        priority += 3
+                    elif memory_usage > 1 * 1024 * 1024:  # 1MB
+                        priority += 2
+                    elif memory_usage > 500 * 1024:  # 500KB
+                        priority += 1
+                    
+                    # Efficiency factor (inefficient entries get higher priority)
+                    if memory_per_row > 10000:  # High memory per row
+                        priority += 2
+                    
+                    # Key specificity factor (generic keys get higher priority)
+                    if 'None' in key or 'all' in key:
+                        priority += 1
+                    
+                    entry_analysis.append({
+                        'key': key,
+                        'memory_usage': memory_usage,
+                        'row_count': row_count,
+                        'priority': priority
+                    })
+                else:
+                    # Empty or None entries get highest priority for removal
+                    entry_analysis.append({
+                        'key': key,
+                        'memory_usage': 0,
+                        'row_count': 0,
+                        'priority': 10
+                    })
+            
+            # Sort by priority (highest first) and remove entries
+            entry_analysis.sort(key=lambda x: x['priority'], reverse=True)
+            
+            removed_count = 0
+            total_memory_freed = 0
+            
+            for entry in entry_analysis[:target_removals]:
+                try:
+                    key = entry['key']
+                    memory_freed = entry['memory_usage']
+                    
+                    del self._games_calculated_cache[key]
+                    removed_count += 1
+                    total_memory_freed += memory_freed
+                    
+                    self.logger.debug(f"Cache cleanup: Removed entry '{key}' "
+                                    f"(priority={entry['priority']}, memory={memory_freed:,.0f}B)")
+                    
+                except KeyError:
+                    self.logger.warning(f"Cache cleanup: Entry '{key}' not found during removal")
+            
+            self.logger.info(f"Cache cleanup completed: Removed {removed_count} entries, "
+                           f"freed {total_memory_freed:,.0f} bytes")
+            print(f"Cache cleanup: Removed {removed_count} entries, freed {total_memory_freed:,.0f}B")
+            
+        except Exception as e:
+            self.logger.error(f"Error in cache cleanup: {str(e)}")
+            # Fallback to simple cleanup
+            try:
+                if hasattr(self, '_games_calculated_cache') and self._games_calculated_cache:
+                    # Remove half the cache entries as emergency cleanup
+                    keys_to_remove = list(self._games_calculated_cache.keys())[:len(self._games_calculated_cache)//2]
+                    for key in keys_to_remove:
+                        try:
+                            del self._games_calculated_cache[key]
+                        except KeyError:
+                            pass
+                    self.logger.warning(f"Emergency cache cleanup: Removed {len(keys_to_remove)} entries")
+            except Exception as emergency_error:
+                self.logger.error(f"Emergency cache cleanup also failed: {str(emergency_error)}")
+    def get_cache_info(self):
+        """
+        Get comprehensive information about the current cache state for debugging and monitoring.
+        Enhanced with detailed performance metrics and memory usage analysis.
+        
+        Returns:
+            dict: Dictionary containing detailed cache information including:
+                - cache_initialized: Whether cache is properly initialized
+                - cache_size: Number of cache entries
+                - cache_keys: List of all cache keys
+                - cache_memory_usage: Total memory usage in bytes
+                - cache_entries_detail: Detailed info about each cache entry
+                - cache_performance_metrics: Performance-related metrics
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache'):
+                return {
+                    "cache_initialized": False, 
+                    "cache_size": 0, 
+                    "cache_keys": [],
+                    "cache_memory_usage": 0,
+                    "cache_entries_detail": {},
+                    "cache_performance_metrics": {
+                        "total_entries": 0,
+                        "empty_entries": 0,
+                        "valid_entries": 0,
+                        "average_entry_size": 0,
+                        "largest_entry_size": 0,
+                        "smallest_entry_size": 0
+                    }
+                }
+            
+            # Calculate detailed cache metrics
+            cache_entries_detail = {}
+            total_memory = 0
+            valid_entries = 0
+            empty_entries = 0
+            entry_sizes = []
+            
+            for key, df in self._games_calculated_cache.items():
+                if df is not None and not df.empty:
+                    entry_memory = df.memory_usage(deep=True).sum()
+                    entry_rows = len(df)
+                    cache_entries_detail[key] = {
+                        "memory_usage": entry_memory,
+                        "row_count": entry_rows,
+                        "columns": list(df.columns) if hasattr(df, 'columns') else [],
+                        "memory_per_row": entry_memory / entry_rows if entry_rows > 0 else 0
+                    }
+                    total_memory += entry_memory
+                    entry_sizes.append(entry_memory)
+                    valid_entries += 1
+                else:
+                    cache_entries_detail[key] = {
+                        "memory_usage": 0,
+                        "row_count": 0,
+                        "columns": [],
+                        "memory_per_row": 0,
+                        "status": "empty_or_none"
+                    }
+                    empty_entries += 1
+            
+            # Calculate performance metrics
+            performance_metrics = {
+                "total_entries": len(self._games_calculated_cache),
+                "empty_entries": empty_entries,
+                "valid_entries": valid_entries,
+                "average_entry_size": sum(entry_sizes) / len(entry_sizes) if entry_sizes else 0,
+                "largest_entry_size": max(entry_sizes) if entry_sizes else 0,
+                "smallest_entry_size": min(entry_sizes) if entry_sizes else 0,
+                "memory_efficiency": (valid_entries / len(self._games_calculated_cache)) * 100 if self._games_calculated_cache else 0
+            }
             
             cache_info = {
                 "cache_initialized": True,
                 "cache_size": len(self._games_calculated_cache),
                 "cache_keys": list(self._games_calculated_cache.keys()),
-                "cache_memory_usage": sum(
-                    df.memory_usage(deep=True).sum() 
-                    for df in self._games_calculated_cache.values() 
-                    if df is not None and not df.empty
-                )
+                "cache_memory_usage": total_memory,
+                "cache_entries_detail": cache_entries_detail,
+                "cache_performance_metrics": performance_metrics,
+                "timestamp": datetime.now().isoformat()
             }
             
-            self.logger.debug(f"Cache info: {cache_info}")
+            self.logger.debug(f"Enhanced cache info: Size={cache_info['cache_size']}, "
+                            f"Memory={total_memory:,.0f}B, Valid={valid_entries}, Empty={empty_entries}")
             return cache_info
             
         except Exception as e:
-            self.logger.error(f"Error getting cache info: {str(e)}")
-            return {"error": str(e), "cache_initialized": False, "cache_size": 0, "cache_keys": []}
+            self.logger.error(f"Error getting enhanced cache info: {str(e)}")
+            return {
+                "error": str(e), 
+                "cache_initialized": False, 
+                "cache_size": 0, 
+                "cache_keys": [],
+                "cache_memory_usage": 0,
+                "cache_entries_detail": {},
+                "cache_performance_metrics": {"error": str(e)}
+            }
     
     def _ensure_result_column(self, games):
         """

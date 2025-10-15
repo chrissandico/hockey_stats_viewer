@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
+import logging
 from layouts.navigation import create_navigation
 from components.period_breakdown import create_period_breakdown_component
 from components.game_type_filter import create_game_type_badge, create_game_type_filter_component, create_game_type_session_store
@@ -40,7 +41,8 @@ def create_game_layout(data_service, team_context=None):
             radio_options.append({'label': label, 'value': game['ID']})
         except Exception as e:
             # Fallback to basic label if there's any error
-            print(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
             label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
             radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
     
@@ -143,10 +145,71 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         
-        # Get team_id from session for proper filtering
+        # Get team_id and coach status from session for proper filtering
         session_team_id = None
+        is_coach = False
         if session.get('authenticated', False):
             session_team_id = session.get('team_id')
+            is_coach = session.get('is_coach', False)
+        
+        # Cache management: Track previous game type to detect changes
+        previous_game_type = session.get('game_previous_game_type')
+        logger = logging.getLogger(__name__)
+        
+        # Clear cache if game type has changed
+        if previous_game_type != game_type:
+            try:
+                logger.info(f"Game layout: Game type changed from {previous_game_type} to {game_type}, clearing cache for team {session_team_id}")
+                print(f"GAME CALLBACK: Game type changed from {previous_game_type} to {game_type}, clearing cache")
+                
+                # Clear cache for the previous game type to ensure fresh data
+                if previous_game_type is not None:
+                    try:
+                        data_service.clear_games_cache(team_id=session_team_id, game_type=previous_game_type)
+                        logger.debug(f"Game layout: Successfully cleared cache for previous game type {previous_game_type}")
+                        print(f"GAME CALLBACK: Cleared cache for previous game type {previous_game_type}")
+                    except Exception as prev_cache_error:
+                        logger.warning(f"Game layout: Failed to clear cache for previous game type {previous_game_type}: {str(prev_cache_error)}")
+                        print(f"GAME CALLBACK: Warning - Failed to clear cache for previous game type {previous_game_type}: {str(prev_cache_error)}")
+                        # Continue with clearing current game type cache
+                
+                # Clear cache for the new game type to ensure consistency
+                try:
+                    data_service.clear_games_cache(team_id=session_team_id, game_type=game_type)
+                    logger.debug(f"Game layout: Successfully cleared cache for current game type {game_type}")
+                    print(f"GAME CALLBACK: Cleared cache for current game type {game_type}")
+                except Exception as curr_cache_error:
+                    logger.warning(f"Game layout: Failed to clear cache for current game type {game_type}: {str(curr_cache_error)}")
+                    print(f"GAME CALLBACK: Warning - Failed to clear cache for current game type {game_type}: {str(curr_cache_error)}")
+                    # Continue execution - cache clearing failure shouldn't break the UI
+                
+                # Update session with new game type (do this even if cache clearing partially failed)
+                session['game_previous_game_type'] = game_type
+                logger.info(f"Game layout: Cache management completed successfully for team {session_team_id}")
+                print(f"GAME CALLBACK: Cache management completed for team {session_team_id}")
+                
+            except Exception as cache_error:
+                logger.error(f"Game layout: Unexpected error in cache management for team {session_team_id}: {str(cache_error)}")
+                print(f"GAME CALLBACK: Error in cache management: {str(cache_error)}")
+                
+                # Add cache diagnostic information for debugging
+                try:
+                    cache_info = data_service.get_cache_info()
+                    logger.debug(f"Game layout: Cache diagnostic info after error: {cache_info}")
+                except Exception as diag_error:
+                    logger.warning(f"Game layout: Failed to get cache diagnostic info: {str(diag_error)}")
+                
+                # Ensure session is still updated to prevent repeated cache clearing attempts
+                try:
+                    session['game_previous_game_type'] = game_type
+                    logger.debug(f"Game layout: Session updated despite cache error")
+                except Exception as session_error:
+                    logger.error(f"Game layout: Failed to update session after cache error: {str(session_error)}")
+                    print(f"GAME CALLBACK: Warning - Failed to update session: {str(session_error)}")
+                # Continue execution - cache errors should not break the user interface
+        else:
+            logger.debug(f"Game layout: Game type unchanged ({game_type}), no cache clearing needed")
+            print(f"GAME CALLBACK: Game type unchanged ({game_type}), no cache clearing needed")
         
         # Use session team_id if available, otherwise fall back to passed team_id
         effective_team_id = session_team_id if session_team_id else team_id
@@ -172,7 +235,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                 radio_options.append({'label': label, 'value': game['ID']})
             except Exception as e:
                 # Fallback to basic label if there's any error
-                print(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
+                logger.warning(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
                 label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
                 radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
         
@@ -387,7 +450,8 @@ def register_game_callbacks(app, data_service, team_context=None):
                 elif '' in player.index:
                     player_id = player['']
                 else:
-                    print(f"ERROR: No player ID column found in game layout. Available columns: {list(player.index)}")
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"No player ID column found in game layout. Available columns: {list(player.index)}")
                     continue
                 
                 # Use the data service method which has proper team identifier mapping
