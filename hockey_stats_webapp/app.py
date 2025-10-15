@@ -26,6 +26,7 @@ from layouts.player_layout import create_player_layout, register_player_callback
 from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.navigation import create_navigation, register_navigation_callbacks
+from layouts.performance_layout import create_performance_layout, register_performance_callbacks
 
 # Initialize the Dash app with Bootstrap theme
 app = dash.Dash(
@@ -209,6 +210,9 @@ def display_page(pathname):
     elif pathname == '/game':
         team_context = get_team_context()
         return create_game_layout(data_service, team_context)
+    elif pathname == '/performance':
+        # App Performance dashboard - only for coaches
+        return create_performance_layout(auth_service)
     else:
         team_context = get_team_context()
         return create_main_layout(team_context)
@@ -369,6 +373,9 @@ if services_initialized:
 else:
     print("=== STARTUP: Core callbacks registered, but data-dependent callbacks skipped due to service initialization failure ===")
     print("This is expected in local development without credentials.")
+
+# Register performance monitoring callbacks (always register, even if services not initialized)
+register_performance_callbacks(app, auth_service)
 
 
 # Run the app
