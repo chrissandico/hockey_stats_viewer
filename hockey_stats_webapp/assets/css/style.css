@@ -604,12 +604,154 @@ footer {
     width: 80%;
 }
 
+/* Enhanced Skeleton Components */
+.skeleton-card {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.skeleton-card .card-header {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.skeleton-card .card-body {
+    padding: 1.5rem;
+}
+
+.skeleton-line {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: 4px;
+    display: block;
+}
+
+.skeleton-title {
+    height: 1.5rem;
+    width: 60%;
+    margin-bottom: 0.75rem;
+}
+
+.skeleton-subtitle {
+    height: 1.25rem;
+    width: 40%;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-text {
+    height: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-text.short {
+    width: 80%;
+}
+
+.skeleton-text.medium {
+    width: 90%;
+}
+
+.skeleton-text.long {
+    width: 100%;
+}
+
+.skeleton-button {
+    height: 38px;
+    width: 80px;
+    border-radius: 0.375rem;
+    display: inline-block;
+    margin-right: 0.5rem;
+}
+
+.skeleton-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.skeleton-table th,
+.skeleton-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.skeleton-table th .skeleton-line {
+    height: 1rem;
+    width: 80px;
+}
+
+.skeleton-table td .skeleton-line {
+    height: 0.875rem;
+    width: 60px;
+}
+
+/* Skeleton Animation Variants */
+.skeleton-pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-wave {
+    animation: loading 1.5s infinite;
+}
+
+.skeleton-fade {
+    animation: fade 1.5s ease-in-out infinite;
+}
+
 @keyframes loading {
     0% {
         background-position: 200% 0;
     }
     100% {
         background-position: -200% 0;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes fade {
+    0%, 100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+/* Responsive Skeleton Adjustments */
+@media (max-width: 768px) {
+    .skeleton-card .card-body {
+        padding: 1rem;
+    }
+    
+    .skeleton-title {
+        height: 1.25rem;
+        width: 70%;
+    }
+    
+    .skeleton-subtitle {
+        height: 1rem;
+        width: 50%;
+    }
+    
+    .skeleton-text {
+        height: 0.875rem;
+    }
+    
+    .skeleton-button {
+        height: 44px; /* Larger touch targets on mobile */
+        width: 100px;
     }
 }
 
