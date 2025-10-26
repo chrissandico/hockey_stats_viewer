@@ -63,3 +63,14 @@ screenshots/
 # Temporary test files
 temp_test_*
 *_temp.py
+
+# Investigation and debugging files
+investigate_*.py
+investigate_*.md
+*_investigation_*.md
+test_*_fix.py
+verify_*_fix.py
+analyze_*.py
+FINAL_*.md
+COMPLETE_*.md
+*_ISSUE_*.md
