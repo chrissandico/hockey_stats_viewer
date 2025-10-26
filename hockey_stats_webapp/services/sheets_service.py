@@ -182,35 +182,84 @@ class SheetsService:
         key = 'events'
         
         if force_refresh or self._should_refresh_cache(key):
+            print(f"Loading Events data from Google Sheets (force_refresh={force_refresh})")
             worksheet = self._get_worksheet('Events')
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
+            print(f"Loaded {len(df)} events from Google Sheets")
             
-            # Convert string boolean values to Python boolean values
+            # Convert string boolean values to Python boolean values with enhanced error handling
             boolean_columns = ['IsGoal', 'IsPowerPlay', 'IsShortHanded']
+            print(f"Starting boolean conversion for Events sheet. Available columns: {list(df.columns)}")
+            
             for col in boolean_columns:
                 if col in df.columns:
+                    print(f"Converting {col} column...")
+                    original_values = df[col].unique()
+                    original_dtype = df[col].dtype
+                    print(f"  Original {col} values: {original_values} (dtype: {original_dtype})")
+                    
                     # Enhanced boolean conversion to handle more formats
                     def convert_to_bool(val):
-                        if isinstance(val, bool):
-                            return val
-                        if isinstance(val, str):
-                            val_lower = val.lower().strip()
-                            if val_lower in ('true', 'yes', 'y', '1', 't'):
-                                return True
-                            if val_lower in ('false', 'no', 'n', '0', 'f'):
-                                return False
-                        if isinstance(val, (int, float)):
-                            return bool(val)
-                        return False  # Default to False for None or other values
+                        try:
+                            if isinstance(val, bool):
+                                return val
+                            if isinstance(val, str):
+                                val_lower = val.lower().strip()
+                                if val_lower in ('true', 'yes', 'y', '1', 't'):
+                                    return True
+                                if val_lower in ('false', 'no', 'n', '0', 'f'):
+                                    return False
+                            if isinstance(val, (int, float)):
+                                return bool(val)
+                            # Log unexpected values
+                            print(f"  Warning: Unexpected value for {col}: '{val}' ({type(val)}), defaulting to False")
+                            return False  # Default to False for None or other values
+                        except Exception as e:
+                            print(f"  Error converting {col} value '{val}': {e}, defaulting to False")
+                            return False
                     
-                    df[col] = df[col].apply(convert_to_bool)
-                    print(f"Enhanced conversion for {col} column values: {df[col].unique()}")
+                    try:
+                        df[col] = df[col].apply(convert_to_bool)
+                        converted_values = df[col].unique()
+                        converted_dtype = df[col].dtype
+                        print(f"  Successfully converted {col}: {converted_values} (dtype: {converted_dtype})")
+                        
+                        # Verify conversion worked
+                        if converted_dtype == 'bool':
+                            true_count = (df[col] == True).sum()
+                            false_count = (df[col] == False).sum()
+                            print(f"  {col} conversion verified: {true_count} True, {false_count} False")
+                        else:
+                            print(f"  WARNING: {col} conversion may have failed - dtype is {converted_dtype}, not bool")
+                            
+                    except Exception as e:
+                        print(f"  ERROR: Failed to convert {col} column: {e}")
+                        # Keep original values if conversion fails
+                        
+                else:
+                    print(f"  Column {col} not found in Events sheet")
             
             self.cache[key] = df
             self.last_refresh[key] = time.time()
+            print(f"Events data cached successfully with {len(df)} records")
+        else:
+            print(f"Using cached Events data ({len(self.cache[key])} records)")
         
-        return self.cache[key]
+        # Final verification of IsGoal column before returning
+        result_df = self.cache[key]
+        if 'IsGoal' in result_df.columns:
+            isgoal_dtype = result_df['IsGoal'].dtype
+            isgoal_values = result_df['IsGoal'].unique()
+            print(f"Returning Events data - IsGoal dtype: {isgoal_dtype}, values: {isgoal_values}")
+            
+            # Count True/False values if boolean
+            if isgoal_dtype == 'bool':
+                true_count = (result_df['IsGoal'] == True).sum()
+                false_count = (result_df['IsGoal'] == False).sum()
+                print(f"IsGoal boolean counts: {true_count} True, {false_count} False")
+        
+        return result_df
     
     def get_game_roster(self, force_refresh=False):
         """

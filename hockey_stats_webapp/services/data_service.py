@@ -42,6 +42,82 @@ class DataService:
         
         # Initialize games calculated cache
         self._games_calculated_cache = {}
+        
+        # Force refresh events data to ensure boolean conversion happens
+        self.force_refresh_events_data()
+    
+    def force_refresh_events_data(self):
+        """
+        Force refresh events data to ensure boolean conversion happens properly.
+        This method specifically addresses the IsGoal column conversion issue.
+        """
+        try:
+            self.logger.info("Force refreshing events data to ensure boolean conversion...")
+            print("Force refreshing events data to ensure boolean conversion...")
+            
+            # Force refresh events data
+            events = self.sheets_service.get_events(force_refresh=True)
+            
+            # Verify IsGoal column conversion
+            if 'IsGoal' in events.columns:
+                isgoal_dtype = events['IsGoal'].dtype
+                isgoal_values = events['IsGoal'].unique()
+                self.logger.info(f"Events data loaded - IsGoal dtype: {isgoal_dtype}, unique values: {isgoal_values}")
+                print(f"Events data loaded - IsGoal dtype: {isgoal_dtype}, unique values: {isgoal_values}")
+                
+                # If IsGoal is still not boolean, try manual conversion
+                if isgoal_dtype != 'bool':
+                    self.logger.warning("IsGoal column is not boolean type, attempting manual conversion...")
+                    print("WARNING: IsGoal column is not boolean type, attempting manual conversion...")
+                    
+                    def manual_convert_to_bool(val):
+                        if isinstance(val, bool):
+                            return val
+                        if isinstance(val, str):
+                            val_lower = val.lower().strip()
+                            if val_lower in ('true', 'yes', 'y', '1', 't'):
+                                return True
+                            if val_lower in ('false', 'no', 'n', '0', 'f'):
+                                return False
+                        if isinstance(val, (int, float)):
+                            return bool(val)
+                        return False
+                    
+                    # Apply manual conversion
+                    original_values = events['IsGoal'].unique()
+                    events['IsGoal'] = events['IsGoal'].apply(manual_convert_to_bool)
+                    converted_values = events['IsGoal'].unique()
+                    
+                    self.logger.info(f"Manual conversion: {original_values} -> {converted_values}")
+                    print(f"Manual conversion: {original_values} -> {converted_values}")
+                    
+                    # Update the cache with converted data
+                    self.sheets_service.cache['events'] = events
+                    
+                # Count goals for verification
+                if events['IsGoal'].dtype == 'bool':
+                    goal_count = (events['IsGoal'] == True).sum()
+                    total_events = len(events)
+                    self.logger.info(f"Boolean conversion verified: {goal_count} goals out of {total_events} total events")
+                    print(f"Boolean conversion verified: {goal_count} goals out of {total_events} total events")
+                    
+                    # Clear games cache to force recalculation with corrected boolean data
+                    self.logger.info("Clearing games cache to force recalculation with corrected boolean data...")
+                    print("Clearing games cache to force recalculation with corrected boolean data...")
+                    self.clear_games_cache()
+                    
+                else:
+                    self.logger.error("Failed to convert IsGoal column to boolean type")
+                    print("ERROR: Failed to convert IsGoal column to boolean type")
+            else:
+                self.logger.error("IsGoal column not found in events data")
+                print("ERROR: IsGoal column not found in events data")
+                
+        except Exception as e:
+            self.logger.error(f"Error in force_refresh_events_data: {e}")
+            print(f"ERROR in force_refresh_events_data: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _get_player_id_column(self, players_df):
         """
@@ -525,6 +601,25 @@ class DataService:
                     self.logger.warning(f"Team identifier '{team_identifier}' not found in game {game_id} events. Available teams: {unique_teams}")
                     # Continue with calculation - may result in 0 goals for this team
                 
+                # Debug IsGoal column before calculation
+                if 'IsGoal' in game_events.columns:
+                    isgoal_dtype = game_events['IsGoal'].dtype
+                    isgoal_values = game_events['IsGoal'].unique()
+                    print(f"DEBUG: Game {game_id} IsGoal column - dtype: {isgoal_dtype}, values: {isgoal_values}")
+                    
+                    # Count events by IsGoal value
+                    if len(game_events) > 0:
+                        isgoal_counts = game_events['IsGoal'].value_counts()
+                        print(f"DEBUG: Game {game_id} IsGoal distribution: {isgoal_counts.to_dict()}")
+                        
+                        # Show sample events for debugging
+                        print(f"DEBUG: Sample events for game {game_id}:")
+                        for i, (_, event) in enumerate(game_events.head(3).iterrows()):
+                            event_type = event.get('EventType', 'Unknown')
+                            is_goal = event.get('IsGoal', 'Missing')
+                            team = event.get('Team', 'Unknown')
+                            print(f"  Event {i+1}: {event_type} by {team}, IsGoal={is_goal} ({type(is_goal).__name__})")
+                
                 # Calculate goals for the team
                 goals_for_mask = (game_events['IsGoal'] == True) & (game_events['Team'] == team_identifier)
                 goals_for = len(game_events[goals_for_mask])
@@ -532,6 +627,9 @@ class DataService:
                 # Calculate goals against the team
                 goals_against_mask = (game_events['IsGoal'] == True) & (game_events['Team'] != team_identifier)
                 goals_against = len(game_events[goals_against_mask])
+                
+                # Debug the mask results
+                print(f"DEBUG: Game {game_id} goal masks - goals_for_mask: {goals_for_mask.sum()}, goals_against_mask: {goals_against_mask.sum()}")
                 
                 # Log calculation results
                 self.logger.info(f"Game {game_id} score calculation complete: {goals_for}-{goals_against} (team: {team_identifier}, filter: {game_type_filter})")
