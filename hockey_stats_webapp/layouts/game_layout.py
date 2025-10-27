@@ -21,7 +21,7 @@ def create_game_layout(data_service, team_context=None):
     """
     # Get team-filtered games for the dropdown - will be filtered by game type in callback
     team_id = team_context['team_id'] if team_context else None
-    games = data_service.get_games(team_id, game_type='R')  # Default to Regular Season
+    games = data_service.get_games(team_id, game_type=None)  # Default to All Games
     
     # Show all games (past and future) - users want to see upcoming games too
     games = data_service._filter_games_by_date(games, include_future=True)
@@ -135,10 +135,10 @@ def register_game_callbacks(app, data_service, team_context=None):
         if game_type == "all":
             game_type = None
         
-        # Only default to Regular Season if game_type is explicitly undefined, not when it's None (All Games)
+        # Only default to All Games if game_type is explicitly undefined, not when it's None (All Games)
         # None means "All Games", empty string or False means no selection made
         if game_type == "" or game_type is False:
-            game_type = 'R'
+            game_type = None  # Default to All Games instead of Regular Season
         
         # Get team context from session (import here to avoid circular imports)
         from flask import session
@@ -278,72 +278,65 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Sort future games (earliest first)
         future_games.sort(key=lambda x: x['date_obj'] if x['date_obj'] else date.max)
         
-        # Create radio options for past games (with scores)
-        past_options = []
-        for game in past_games:
-            if game['result'] != 'Unknown' and (game['goals_for'] > 0 or game['goals_against'] > 0):
-                # Show actual scores for completed games
-                label = f"{game['date']} vs {game['opponent']} ({game['result']} {game['goals_for']}-{game['goals_against']}) - {game['game_type_name']}"
-            else:
-                # Show without scores for games without results
-                label = f"{game['date']} vs {game['opponent']} - {game['game_type_name']}"
-            past_options.append({'label': label, 'value': game['id']})
+        # Combine all games into a single list with section headers
+        all_options = []
         
-        # Create radio options for future games (without scores)
-        future_options = []
-        for game in future_games:
-            label = f"{game['date']} vs {game['opponent']} - {game['game_type_name']}"
-            future_options.append({'label': label, 'value': game['id']})
+        # Add completed games with section header
+        if past_games:
+            # Add a disabled option as section header
+            all_options.append({
+                'label': f"📅 Completed Games ({len(past_games)})",
+                'value': 'header-past',
+                'disabled': True
+            })
+            
+            # Add past games with scores
+            for game in past_games:
+                if game['result'] != 'Unknown' and (game['goals_for'] > 0 or game['goals_against'] > 0):
+                    # Show actual scores for completed games
+                    label = f"  {game['date']} vs {game['opponent']} ({game['result']} {game['goals_for']}-{game['goals_against']}) - {game['game_type_name']}"
+                else:
+                    # Show without scores for games without results
+                    label = f"  {game['date']} vs {game['opponent']} - {game['game_type_name']}"
+                all_options.append({'label': label, 'value': game['id']})
         
-        # Create the sectioned HTML structure
-        sections = []
+        # Add upcoming games with section header
+        if future_games:
+            # Add a disabled option as section header
+            all_options.append({
+                'label': f"🗓️ Upcoming Games ({len(future_games)})",
+                'value': 'header-future',
+                'disabled': True
+            })
+            
+            # Add future games without scores
+            for game in future_games:
+                label = f"  {game['date']} vs {game['opponent']} - {game['game_type_name']}"
+                all_options.append({'label': label, 'value': game['id']})
         
-        # Add completed games section if there are any
-        if past_options:
-            sections.extend([
-                html.H5([
-                    html.I(className="fas fa-check-circle me-2", style={"color": "#28a745"}),
-                    f"Completed Games ({len(past_options)})"
-                ], className="mt-3 mb-2 text-success"),
-                dbc.RadioItems(
-                    id='game-dropdown-past',
-                    options=past_options,
-                    name='game-selection',  # Same name for single selection across sections
-                    className="mb-3"
-                )
-            ])
-        
-        # Add upcoming games section if there are any
-        if future_options:
-            sections.extend([
-                html.H5([
-                    html.I(className="fas fa-calendar-alt me-2", style={"color": "#007bff"}),
-                    f"Upcoming Games ({len(future_options)})"
-                ], className="mt-3 mb-2 text-primary"),
-                dbc.RadioItems(
-                    id='game-dropdown-future',
-                    options=future_options,
-                    name='game-selection',  # Same name for single selection across sections
-                    className="mb-3"
-                )
-            ])
-        
-        # If no games in either section, show a message
-        if not sections:
+        # If no games, show a message
+        if not all_options:
             return html.P("No games found for the selected filters.", className="text-muted")
         
-        return html.Div(sections)
+        # Create a single radio button group
+        return dbc.RadioItems(
+            id='game-dropdown',
+            options=all_options,
+            className="mb-3"
+        )
     
     # Callback for game summary
     @app.callback(
         dash.dependencies.Output('game-summary-container', 'children'),
-        [dash.dependencies.Input('game-dropdown-past', 'value'),
-         dash.dependencies.Input('game-dropdown-future', 'value')]
+        [dash.dependencies.Input('game-dropdown', 'value')]
     )
-    def update_game_summary(past_game_id, future_game_id):
-        # Get the selected game ID from either section
-        game_id = past_game_id or future_game_id
-        if game_id is None:
+    def update_game_summary(game_id):
+        # DEBUG: Log the callback inputs
+        print(f"DEBUG CALLBACK: update_game_summary called with game_id={game_id}")
+        
+        # Skip header values
+        if game_id is None or str(game_id).startswith('header-'):
+            print(f"DEBUG CALLBACK: game_id is None or header, returning empty div")
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
@@ -489,17 +482,19 @@ def register_game_callbacks(app, data_service, team_context=None):
     # Callback for player stats
     @app.callback(
         dash.dependencies.Output('game-player-stats-container', 'children'),
-        [dash.dependencies.Input('game-dropdown-past', 'value'),
-         dash.dependencies.Input('game-dropdown-future', 'value'),
+        [dash.dependencies.Input('game-dropdown', 'value'),
          dash.dependencies.Input('btn-all', 'active'),
          dash.dependencies.Input('btn-forwards', 'active'),
          dash.dependencies.Input('btn-defense', 'active'),
          dash.dependencies.Input('btn-goalies', 'active')]
     )
-    def update_player_stats(past_game_id, future_game_id, all_active, forwards_active, defense_active, goalies_active):
-        # Get the selected game ID from either section
-        game_id = past_game_id or future_game_id
-        if game_id is None:
+    def update_player_stats(game_id, all_active, forwards_active, defense_active, goalies_active):
+        # DEBUG: Log the callback inputs
+        print(f"DEBUG CALLBACK: update_player_stats called with game_id={game_id}")
+        
+        # Skip header values
+        if game_id is None or str(game_id).startswith('header-'):
+            print(f"DEBUG CALLBACK: game_id is None or header, returning empty div")
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
