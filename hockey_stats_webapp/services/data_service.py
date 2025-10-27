@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import logging
 from datetime import datetime, date
+import config
 
 class DataService:
     """
@@ -283,20 +284,20 @@ class DataService:
             str: Team identifier used in events data
         """
         try:
-            # Import config here to avoid circular imports
-            from ..config import get_team_identifier_mapping, get_primary_team_identifier
+            # Import config to ensure it's available in this method scope
+            import config
             
             # Validate input
             if team_id is None or team_id == '':
                 self.logger.error("Invalid team_id provided: None or empty string")
-                return get_primary_team_identifier()
+                return config.get_primary_team_identifier()
             
             self.logger.info(f"Starting enhanced team identifier mapping for team_id: '{team_id}'")
             print(f"=== ENHANCED TEAM IDENTIFIER MAPPING ===")
             print(f"Looking for team_id: '{team_id}'")
             
             # Phase 1: Check configuration mappings
-            mapped_id = get_team_identifier_mapping(team_id)
+            mapped_id = config.get_team_identifier_mapping(team_id)
             if mapped_id is not None:
                 if mapped_id == 'auto_detect':
                     self.logger.info(f"Configuration specifies auto-detection for '{team_id}'")
@@ -313,23 +314,23 @@ class DataService:
             
         except Exception as e:
             self.logger.error(f"Unexpected error in _get_team_identifier_for_events for team_id '{team_id}': {str(e)}")
-            from ..config import get_primary_team_identifier
-            return get_primary_team_identifier()
+            import config
+            return config.get_primary_team_identifier()
     
     def _auto_detect_team_identifier(self):
         """Auto-detect the primary team identifier from events data."""
         try:
             events = self.sheets_service.get_events()
             if events is None or events.empty:
-                from ..config import get_primary_team_identifier
-                fallback = get_primary_team_identifier()
+                # Fixed: using config.get_primary_team_identifier
+                fallback = config.get_primary_team_identifier()
                 self.logger.warning(f"No events data available for auto-detection, using fallback: {fallback}")
                 print(f"⚠️  No events data, using fallback: {fallback}")
                 return fallback
             
             if 'Team' not in events.columns:
-                from ..config import get_primary_team_identifier
-                fallback = get_primary_team_identifier()
+                # Fixed: using config.get_primary_team_identifier
+                fallback = config.get_primary_team_identifier()
                 self.logger.error(f"Team column not found in events data, using fallback: {fallback}")
                 print(f"❌ Team column missing, using fallback: {fallback}")
                 return fallback
@@ -344,16 +345,16 @@ class DataService:
                 print(f"🎯 Auto-detected primary team: {primary_team} ({non_opponent_teams.iloc[0]} events)")
                 return primary_team
             
-            from ..config import get_primary_team_identifier
-            fallback = get_primary_team_identifier()
+            # Fixed: using config.get_primary_team_identifier
+            fallback = config.get_primary_team_identifier()
             self.logger.warning(f"No non-opponent teams found, using fallback: {fallback}")
             print(f"⚠️  No non-opponent teams found, using fallback: {fallback}")
             return fallback
             
         except Exception as e:
             self.logger.error(f"Error in auto-detection: {str(e)}")
-            from ..config import get_primary_team_identifier
-            return get_primary_team_identifier()
+            # Fixed: using config.get_primary_team_identifier
+            return config.get_primary_team_identifier()
     
     def _dynamic_team_mapping(self, team_id):
         """Dynamic team mapping using the existing comprehensive logic."""
@@ -361,15 +362,15 @@ class DataService:
             # Get all unique teams from events to understand the mapping
             events = self.sheets_service.get_events()
             if events is None or events.empty:
-                from ..config import get_primary_team_identifier
-                fallback = get_primary_team_identifier()
+                # Fixed: using config.get_primary_team_identifier
+                fallback = config.get_primary_team_identifier()
                 self.logger.error(f"No events data available for dynamic mapping, using fallback: {fallback}")
                 print(f"❌ No events data, using fallback: {fallback}")
                 return fallback
             
             if 'Team' not in events.columns:
-                from ..config import get_primary_team_identifier
-                fallback = get_primary_team_identifier()
+                # Fixed: using config.get_primary_team_identifier
+                fallback = config.get_primary_team_identifier()
                 self.logger.error(f"Team column not found in events data, using fallback: {fallback}")
                 print(f"❌ Team column missing, using fallback: {fallback}")
                 return fallback
@@ -444,8 +445,8 @@ class DataService:
                     return mapped_team
             
             # Fallback to primary team identifier
-            from ..config import get_primary_team_identifier
-            fallback = get_primary_team_identifier()
+            # Fixed: using config.get_primary_team_identifier
+            fallback = config.get_primary_team_identifier()
             
             # Try to use the most common non-opponent team as fallback
             try:
@@ -464,8 +465,8 @@ class DataService:
             
         except Exception as e:
             self.logger.error(f"Error in dynamic team mapping: {str(e)}")
-            from ..config import get_primary_team_identifier
-            return get_primary_team_identifier()
+            # Fixed: using config.get_primary_team_identifier
+            return config.get_primary_team_identifier()
     
     def validate_team_mappings(self):
         """Validate that team identifier mappings work correctly."""
@@ -990,8 +991,8 @@ class DataService:
                     print(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
                 except Exception as e:
                     self.logger.error(f"Error mapping team identifier for team_id '{team_id}': {str(e)}")
-                    from ..config import get_primary_team_identifier
-                    team_identifier = get_primary_team_identifier()  # Enhanced fallback
+                    # Fixed: using config.get_primary_team_identifier
+                    team_identifier = config.get_primary_team_identifier()  # Enhanced fallback
             else:
                 # For backward compatibility, try to get the first team or use fallback
                 try:
@@ -1002,21 +1003,21 @@ class DataService:
                         self.logger.info(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                         print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                     else:
-                        from ..config import get_primary_team_identifier
-                        team_identifier = get_primary_team_identifier()
+                        # Fixed: using config.get_primary_team_identifier
+                        team_identifier = config.get_primary_team_identifier()
                         self.logger.warning("No teams data available, using enhanced fallback team identifier")
                         print(f"Using enhanced fallback team identifier: '{team_identifier}'")
                 except Exception as e:
                     self.logger.error(f"Error getting fallback team identifier: {str(e)}")
-                    from ..config import get_primary_team_identifier
-                    team_identifier = get_primary_team_identifier()
+                    # Fixed: using config.get_primary_team_identifier
+                    team_identifier = config.get_primary_team_identifier()
                     print(f"Using enhanced fallback team identifier: '{team_identifier}'")
             
             # Validate team identifier
             if team_identifier is None or team_identifier == '':
                 self.logger.error("Failed to determine valid team identifier")
-                from ..config import get_primary_team_identifier
-                team_identifier = get_primary_team_identifier()
+                # Fixed: using config.get_primary_team_identifier
+                team_identifier = config.get_primary_team_identifier()
             
             # Add GoalsFor and GoalsAgainst columns
             if not games.empty:
@@ -1038,8 +1039,8 @@ class DataService:
                     if team_identifier is None or team_identifier == '':
                         self.logger.error("Invalid team identifier for score calculation - cannot proceed")
                         # Use enhanced fallback but log the issue
-                        from ..config import get_primary_team_identifier
-                        team_identifier = get_primary_team_identifier()
+                        # Fixed: using config.get_primary_team_identifier
+                        team_identifier = config.get_primary_team_identifier()
                         self.logger.warning(f"Using enhanced fallback team identifier: '{team_identifier}'")
                     
                     # Calculate goals for each game using the new centralized method
@@ -1932,11 +1933,11 @@ class DataService:
                         first_team_id = teams.iloc[0]['TeamID']
                         team_identifier = self._get_team_identifier_for_events(first_team_id)
                     else:
-                        from ..config import get_primary_team_identifier
-                        team_identifier = get_primary_team_identifier()
+                        # Fixed: using config.get_primary_team_identifier
+                        team_identifier = config.get_primary_team_identifier()
                 except:
-                    from ..config import get_primary_team_identifier
-                    team_identifier = get_primary_team_identifier()
+                    # Fixed: using config.get_primary_team_identifier
+                    team_identifier = config.get_primary_team_identifier()
             
             # Filter games to only include those where the goalie faced shots
             valid_game_ids = []
@@ -2401,12 +2402,12 @@ class DataService:
                         team_identifier = self._get_team_identifier_for_events(first_team_id)
                         print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                     else:
-                        from ..config import get_primary_team_identifier
-                        team_identifier = get_primary_team_identifier()
+                        # Fixed: using config.get_primary_team_identifier
+                        team_identifier = config.get_primary_team_identifier()
                         print(f"Using enhanced fallback team identifier: '{team_identifier}'")
                 except:
-                    from ..config import get_primary_team_identifier
-                    team_identifier = get_primary_team_identifier()
+                    # Fixed: using config.get_primary_team_identifier
+                    team_identifier = config.get_primary_team_identifier()
                     print(f"Using enhanced fallback team identifier: '{team_identifier}'")
             
             # Calculate all stats using centralized functions with filtered events and error handling
