@@ -105,3 +105,38 @@ def is_valid_game_type(game_type_code):
         bool: True if the game type code is valid, False otherwise
     """
     return game_type_code in GAME_TYPES
+
+# Team identifier mappings for events data
+TEAM_IDENTIFIER_MAPPINGS = {
+    # Known team identifiers and their canonical forms
+    'starsu11a': 'starsu11a',
+    'waxersu12select': 'waxersu12select', 
+    'test_team': 'test_team',
+    
+    # Special handling for generic identifier
+    'your_team': 'auto_detect',  # Will auto-detect from events
+}
+
+# Primary team identifier (used as fallback)
+PRIMARY_TEAM_IDENTIFIER = 'starsu11a'
+
+def get_team_identifier_mapping(team_id):
+    """
+    Get the mapped team identifier for events data.
+    
+    Args:
+        team_id (str): The team identifier to map
+        
+    Returns:
+        str: The mapped team identifier, or None if auto-detect needed
+    """
+    return TEAM_IDENTIFIER_MAPPINGS.get(team_id)
+
+def get_primary_team_identifier():
+    """
+    Get the primary team identifier used as fallback.
+    
+    Returns:
+        str: The primary team identifier
+    """
+    return PRIMARY_TEAM_IDENTIFIER

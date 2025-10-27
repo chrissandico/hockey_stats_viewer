@@ -274,44 +274,109 @@ class DataService:
 
     def _get_team_identifier_for_events(self, team_id):
         """
-        Get the correct team identifier to use when filtering events.
-        Enhanced version with comprehensive error handling, logging, and fallback handling.
+        Enhanced team identifier mapping with configuration support.
         
         Args:
             team_id (str): Team ID from games/teams data
             
         Returns:
-            str: Team identifier used in events data, or fallback identifier if mapping fails
+            str: Team identifier used in events data
         """
         try:
+            # Import config here to avoid circular imports
+            from ..config import get_team_identifier_mapping, get_primary_team_identifier
+            
             # Validate input
             if team_id is None or team_id == '':
                 self.logger.error("Invalid team_id provided: None or empty string")
-                return 'your_team'  # Fallback to prevent calculation errors
+                return get_primary_team_identifier()
             
-            self.logger.info(f"Starting team identifier mapping for team_id: '{team_id}'")
-            
-            # Get all unique teams from events to understand the mapping
-            try:
-                events = self.sheets_service.get_events()
-                if events is None or events.empty:
-                    self.logger.error("No events data available for team identifier mapping")
-                    return 'your_team'
-                
-                if 'Team' not in events.columns:
-                    self.logger.error(f"Team column not found in events data. Available columns: {list(events.columns)}")
-                    return 'your_team'
-                
-                unique_event_teams = events['Team'].unique()
-                self.logger.debug(f"Available teams in events: {unique_event_teams}")
-                
-            except Exception as e:
-                self.logger.error(f"Failed to retrieve events data for team mapping: {str(e)}")
-                return 'your_team'
-            
-            print(f"=== TEAM IDENTIFIER MAPPING ===")
-            print(f"Available teams in events: {unique_event_teams}")
+            self.logger.info(f"Starting enhanced team identifier mapping for team_id: '{team_id}'")
+            print(f"=== ENHANCED TEAM IDENTIFIER MAPPING ===")
             print(f"Looking for team_id: '{team_id}'")
+            
+            # Phase 1: Check configuration mappings
+            mapped_id = get_team_identifier_mapping(team_id)
+            if mapped_id is not None:
+                if mapped_id == 'auto_detect':
+                    self.logger.info(f"Configuration specifies auto-detection for '{team_id}'")
+                    print(f"📋 Configuration: Auto-detect for '{team_id}'")
+                    return self._auto_detect_team_identifier()
+                else:
+                    self.logger.info(f"Configuration mapping found: '{team_id}' -> '{mapped_id}'")
+                    print(f"📋 Configuration mapping: '{team_id}' -> '{mapped_id}'")
+                    return mapped_id
+            
+            # Phase 2: Dynamic detection for unmapped teams
+            print(f"🔍 No configuration mapping found, using dynamic detection")
+            return self._dynamic_team_mapping(team_id)
+            
+        except Exception as e:
+            self.logger.error(f"Unexpected error in _get_team_identifier_for_events for team_id '{team_id}': {str(e)}")
+            from ..config import get_primary_team_identifier
+            return get_primary_team_identifier()
+    
+    def _auto_detect_team_identifier(self):
+        """Auto-detect the primary team identifier from events data."""
+        try:
+            events = self.sheets_service.get_events()
+            if events is None or events.empty:
+                from ..config import get_primary_team_identifier
+                fallback = get_primary_team_identifier()
+                self.logger.warning(f"No events data available for auto-detection, using fallback: {fallback}")
+                print(f"⚠️  No events data, using fallback: {fallback}")
+                return fallback
+            
+            if 'Team' not in events.columns:
+                from ..config import get_primary_team_identifier
+                fallback = get_primary_team_identifier()
+                self.logger.error(f"Team column not found in events data, using fallback: {fallback}")
+                print(f"❌ Team column missing, using fallback: {fallback}")
+                return fallback
+            
+            # Find most frequent non-opponent team
+            team_counts = events['Team'].value_counts()
+            non_opponent_teams = team_counts[team_counts.index != 'opponent']
+            
+            if not non_opponent_teams.empty:
+                primary_team = non_opponent_teams.index[0]
+                self.logger.info(f"Auto-detected primary team: {primary_team} ({non_opponent_teams.iloc[0]} events)")
+                print(f"🎯 Auto-detected primary team: {primary_team} ({non_opponent_teams.iloc[0]} events)")
+                return primary_team
+            
+            from ..config import get_primary_team_identifier
+            fallback = get_primary_team_identifier()
+            self.logger.warning(f"No non-opponent teams found, using fallback: {fallback}")
+            print(f"⚠️  No non-opponent teams found, using fallback: {fallback}")
+            return fallback
+            
+        except Exception as e:
+            self.logger.error(f"Error in auto-detection: {str(e)}")
+            from ..config import get_primary_team_identifier
+            return get_primary_team_identifier()
+    
+    def _dynamic_team_mapping(self, team_id):
+        """Dynamic team mapping using the existing comprehensive logic."""
+        try:
+            # Get all unique teams from events to understand the mapping
+            events = self.sheets_service.get_events()
+            if events is None or events.empty:
+                from ..config import get_primary_team_identifier
+                fallback = get_primary_team_identifier()
+                self.logger.error(f"No events data available for dynamic mapping, using fallback: {fallback}")
+                print(f"❌ No events data, using fallback: {fallback}")
+                return fallback
+            
+            if 'Team' not in events.columns:
+                from ..config import get_primary_team_identifier
+                fallback = get_primary_team_identifier()
+                self.logger.error(f"Team column not found in events data, using fallback: {fallback}")
+                print(f"❌ Team column missing, using fallback: {fallback}")
+                return fallback
+            
+            unique_event_teams = events['Team'].unique()
+            self.logger.debug(f"Available teams in events: {unique_event_teams}")
+            print(f"Available teams in events: {unique_event_teams}")
             
             # Method 1: Try direct match first
             if team_id in unique_event_teams:
@@ -326,109 +391,140 @@ class DataService:
                     normalized_event_team = self._normalize_team_name(event_team)
                     if normalized_team_id == normalized_event_team:
                         self.logger.info(f"Normalized TeamID match found: '{team_id}' -> '{event_team}'")
-                        print(f"✅ Normalized TeamID match found: '{team_id}' -> '{event_team}'")
-                        print(f"   (normalized: '{normalized_team_id}' == '{normalized_event_team}')")
+                        print(f"✅ Normalized match: '{team_id}' -> '{event_team}'")
                         return event_team
             except Exception as e:
                 self.logger.warning(f"Error in normalized team ID matching: {str(e)}")
             
-            # Method 3: Try to find a mapping based on team names
+            # Method 3: Try team name-based mapping
             try:
                 teams = self.sheets_service.get_teams()
-                if teams is None or teams.empty:
-                    self.logger.warning("No teams data available for name-based mapping")
-                else:
+                if teams is not None and not teams.empty:
                     team_row = teams[teams['TeamID'] == team_id]
                     
                     if not team_row.empty:
                         team_name = team_row.iloc[0]['TeamName']
-                        self.logger.debug(f"Team name from Teams sheet: '{team_name}'")
                         print(f"Team name from Teams sheet: '{team_name}'")
                         
-                        # Method 3a: Check if team name appears in events (original logic)
-                        try:
-                            for event_team in unique_event_teams:
-                                if (team_name and event_team and 
-                                    (team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower())):
-                                    self.logger.info(f"Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
-                                    print(f"✅ Team name substring match found: '{team_id}' -> '{event_team}' (via team name: '{team_name}')")
-                                    return event_team
-                        except Exception as e:
-                            self.logger.warning(f"Error in team name substring matching: {str(e)}")
+                        # Try substring matching
+                        for event_team in unique_event_teams:
+                            if (team_name and event_team and 
+                                (team_name.lower() in event_team.lower() or event_team.lower() in team_name.lower())):
+                                self.logger.info(f"Team name match found: '{team_id}' -> '{event_team}' (via '{team_name}')")
+                                print(f"✅ Team name match: '{team_id}' -> '{event_team}' (via '{team_name}')")
+                                return event_team
                         
-                        # Method 3b: Try normalized team name matching
-                        try:
-                            normalized_team_name = self._normalize_team_name(team_name)
-                            for event_team in unique_event_teams:
-                                normalized_event_team = self._normalize_team_name(event_team)
-                                if normalized_team_name == normalized_event_team:
-                                    self.logger.info(f"Normalized team name match found: '{team_id}' -> '{event_team}'")
-                                    print(f"✅ Normalized team name match found: '{team_id}' -> '{event_team}'")
-                                    print(f"   (team name '{team_name}' normalized: '{normalized_team_name}' == '{normalized_event_team}')")
-                                    return event_team
-                        except Exception as e:
-                            self.logger.warning(f"Error in normalized team name matching: {str(e)}")
-                        
-                        # Method 3c: Try partial normalized matching (team name contains event team or vice versa)
-                        try:
-                            for event_team in unique_event_teams:
-                                normalized_event_team = self._normalize_team_name(event_team)
-                                if (normalized_team_name in normalized_event_team or 
-                                    normalized_event_team in normalized_team_name) and len(normalized_event_team) > 2:
-                                    self.logger.info(f"Partial normalized match found: '{team_id}' -> '{event_team}'")
-                                    print(f"✅ Partial normalized match found: '{team_id}' -> '{event_team}'")
-                                    print(f"   ('{normalized_team_name}' <-> '{normalized_event_team}')")
-                                    return event_team
-                        except Exception as e:
-                            self.logger.warning(f"Error in partial normalized matching: {str(e)}")
-                    else:
-                        self.logger.warning(f"Team ID '{team_id}' not found in Teams sheet")
+                        # Try normalized team name matching
+                        normalized_team_name = self._normalize_team_name(team_name)
+                        for event_team in unique_event_teams:
+                            normalized_event_team = self._normalize_team_name(event_team)
+                            if normalized_team_name == normalized_event_team:
+                                self.logger.info(f"Normalized team name match: '{team_id}' -> '{event_team}'")
+                                print(f"✅ Normalized team name match: '{team_id}' -> '{event_team}'")
+                                return event_team
+                            
+                            # Partial matching
+                            if ((normalized_team_name in normalized_event_team or 
+                                 normalized_event_team in normalized_team_name) and 
+                                len(normalized_event_team) > 2):
+                                self.logger.info(f"Partial normalized match: '{team_id}' -> '{event_team}'")
+                                print(f"✅ Partial match: '{team_id}' -> '{event_team}'")
+                                return event_team
                         
             except Exception as e:
-                self.logger.error(f"Error accessing teams data for mapping: {str(e)}")
+                self.logger.error(f"Error in team name-based mapping: {str(e)}")
             
-            # Special handling for common patterns
-            try:
-                if 'your_team' == team_id and len(unique_event_teams) > 0:
-                    # Find the team that's not 'opponent'
-                    non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
-                    if non_opponent_teams:
-                        mapped_team = non_opponent_teams[0]
-                        self.logger.info(f"Special 'your_team' mapping applied: {mapped_team}")
-                        print(f"✅ Special 'your_team' mapping: {mapped_team}")
-                        return mapped_team
-            except Exception as e:
-                self.logger.warning(f"Error in special pattern matching: {str(e)}")
+            # Special handling for 'your_team'
+            if team_id == 'your_team' and len(unique_event_teams) > 0:
+                non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
+                if non_opponent_teams:
+                    mapped_team = non_opponent_teams[0]
+                    self.logger.info(f"Special 'your_team' mapping: {mapped_team}")
+                    print(f"✅ Special 'your_team' mapping: {mapped_team}")
+                    return mapped_team
             
-            # Enhanced fallback handling
-            self.logger.warning(f"No mapping found for team_id '{team_id}' in events data")
-            print(f"⚠️  No mapping found for '{team_id}' in events data")
+            # Fallback to primary team identifier
+            from ..config import get_primary_team_identifier
+            fallback = get_primary_team_identifier()
             
-            # Try to use the most common team in events as fallback
-            fallback_team = 'your_team'  # Default fallback
+            # Try to use the most common non-opponent team as fallback
             try:
                 if len(unique_event_teams) > 0:
-                    # Use the first non-opponent team as fallback
                     non_opponent_teams = [t for t in unique_event_teams if t.lower() != 'opponent']
                     if non_opponent_teams:
-                        fallback_team = non_opponent_teams[0]
-                        self.logger.info(f"Using first available team as fallback: '{fallback_team}'")
-                    else:
-                        fallback_team = unique_event_teams[0]
-                        self.logger.info(f"Using first team in events as fallback: '{fallback_team}'")
+                        fallback = non_opponent_teams[0]
+                        self.logger.info(f"Using most common team as fallback: '{fallback}'")
+                        print(f"🔄 Using most common team as fallback: '{fallback}'")
             except Exception as e:
-                self.logger.warning(f"Error determining fallback team: {str(e)}")
+                self.logger.warning(f"Error determining dynamic fallback: {str(e)}")
             
-            self.logger.warning(f"Using fallback team identifier '{fallback_team}' for team_id '{team_id}'")
-            print(f"   Using '{fallback_team}' as fallback to prevent stats calculation errors")
-            print(f"   Note: This team may need events added to the Events sheet")
-            
-            return fallback_team
+            self.logger.warning(f"No mapping found for '{team_id}', using fallback: '{fallback}'")
+            print(f"⚠️  No mapping found for '{team_id}', using fallback: '{fallback}'")
+            return fallback
             
         except Exception as e:
-            self.logger.error(f"Unexpected error in _get_team_identifier_for_events for team_id '{team_id}': {str(e)}")
-            return 'your_team'  # Ultimate fallback
+            self.logger.error(f"Error in dynamic team mapping: {str(e)}")
+            from ..config import get_primary_team_identifier
+            return get_primary_team_identifier()
     
+    def validate_team_mappings(self):
+        """Validate that team identifier mappings work correctly."""
+        try:
+            events = self.sheets_service.get_events()
+            if events is None or events.empty:
+                return {"error": "No events data available"}
+            
+            if 'Team' not in events.columns:
+                return {"error": "Team column not found in events data"}
+            
+            unique_teams = events['Team'].unique()
+            validation_results = {}
+            
+            # Test mappings for all unique teams found in events
+            for team in unique_teams:
+                try:
+                    mapped_team = self._get_team_identifier_for_events(team)
+                    validation_results[team] = {
+                        'mapped_to': mapped_team,
+                        'exists_in_events': mapped_team in unique_teams,
+                        'event_count': len(events[events['Team'] == team]),
+                        'mapping_successful': mapped_team == team or mapped_team in unique_teams
+                    }
+                except Exception as e:
+                    validation_results[team] = {
+                        'error': str(e),
+                        'event_count': len(events[events['Team'] == team])
+                    }
+            
+            # Also test common team IDs that might be in games data
+            try:
+                teams = self.sheets_service.get_teams()
+                if teams is not None and not teams.empty:
+                    for _, team_row in teams.iterrows():
+                        team_id = team_row.get('TeamID', '')
+                        if team_id and team_id not in validation_results:
+                            try:
+                                mapped_team = self._get_team_identifier_for_events(team_id)
+                                validation_results[f"TeamID_{team_id}"] = {
+                                    'mapped_to': mapped_team,
+                                    'exists_in_events': mapped_team in unique_teams,
+                                    'event_count': len(events[events['Team'] == mapped_team]) if mapped_team in unique_teams else 0,
+                                    'mapping_successful': mapped_team in unique_teams,
+                                    'source': 'teams_sheet'
+                                }
+                            except Exception as e:
+                                validation_results[f"TeamID_{team_id}"] = {
+                                    'error': str(e),
+                                    'source': 'teams_sheet'
+                                }
+            except Exception as e:
+                validation_results['teams_sheet_error'] = str(e)
+            
+            return validation_results
+            
+        except Exception as e:
+            return {"error": f"Validation failed: {str(e)}"}
+
     def _filter_games_by_date(self, games, include_future=False):
         """
         Filter games to only include those on or before the current date.
@@ -894,7 +990,8 @@ class DataService:
                     print(f"Mapped team identifier: '{team_identifier}' for team ID: '{team_id}'")
                 except Exception as e:
                     self.logger.error(f"Error mapping team identifier for team_id '{team_id}': {str(e)}")
-                    team_identifier = 'your_team'  # Fallback
+                    from ..config import get_primary_team_identifier
+                    team_identifier = get_primary_team_identifier()  # Enhanced fallback
             else:
                 # For backward compatibility, try to get the first team or use fallback
                 try:
@@ -905,18 +1002,21 @@ class DataService:
                         self.logger.info(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                         print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                     else:
-                        team_identifier = 'your_team'
-                        self.logger.warning("No teams data available, using fallback team identifier")
-                        print(f"Using fallback team identifier: '{team_identifier}'")
+                        from ..config import get_primary_team_identifier
+                        team_identifier = get_primary_team_identifier()
+                        self.logger.warning("No teams data available, using enhanced fallback team identifier")
+                        print(f"Using enhanced fallback team identifier: '{team_identifier}'")
                 except Exception as e:
                     self.logger.error(f"Error getting fallback team identifier: {str(e)}")
-                    team_identifier = 'your_team'
-                    print(f"Using fallback team identifier: '{team_identifier}'")
+                    from ..config import get_primary_team_identifier
+                    team_identifier = get_primary_team_identifier()
+                    print(f"Using enhanced fallback team identifier: '{team_identifier}'")
             
             # Validate team identifier
             if team_identifier is None or team_identifier == '':
                 self.logger.error("Failed to determine valid team identifier")
-                team_identifier = 'your_team'
+                from ..config import get_primary_team_identifier
+                team_identifier = get_primary_team_identifier()
             
             # Add GoalsFor and GoalsAgainst columns
             if not games.empty:
@@ -937,9 +1037,10 @@ class DataService:
                     # Validate team identifier before proceeding
                     if team_identifier is None or team_identifier == '':
                         self.logger.error("Invalid team identifier for score calculation - cannot proceed")
-                        # Use fallback but log the issue
-                        team_identifier = 'your_team'
-                        self.logger.warning(f"Using fallback team identifier: '{team_identifier}'")
+                        # Use enhanced fallback but log the issue
+                        from ..config import get_primary_team_identifier
+                        team_identifier = get_primary_team_identifier()
+                        self.logger.warning(f"Using enhanced fallback team identifier: '{team_identifier}'")
                     
                     # Calculate goals for each game using the new centralized method
                     self.logger.info(f"Calculating goals for {len(games)} games (team: {team_identifier}, game_type: {game_type})")
@@ -958,8 +1059,12 @@ class DataService:
                                 calculation_errors.append(f"Invalid game ID: '{game_id}'")
                                 continue
                             
+                            # Get the specific team identifier for this game
+                            game_team_id = game.get('TeamID', team_identifier)
+                            game_team_identifier = self._get_team_identifier_for_events(game_team_id)
+                            
                             goals_for, goals_against = self._calculate_game_scores(
-                                game_id, events, team_identifier, game_type
+                                game_id, events, game_team_identifier, game_type
                             )
                             
                             # Validate calculated scores
@@ -1827,9 +1932,11 @@ class DataService:
                         first_team_id = teams.iloc[0]['TeamID']
                         team_identifier = self._get_team_identifier_for_events(first_team_id)
                     else:
-                        team_identifier = 'your_team'
+                        from ..config import get_primary_team_identifier
+                        team_identifier = get_primary_team_identifier()
                 except:
-                    team_identifier = 'your_team'
+                    from ..config import get_primary_team_identifier
+                    team_identifier = get_primary_team_identifier()
             
             # Filter games to only include those where the goalie faced shots
             valid_game_ids = []
@@ -2294,11 +2401,13 @@ class DataService:
                         team_identifier = self._get_team_identifier_for_events(first_team_id)
                         print(f"Using first team identifier: '{team_identifier}' (from team ID: '{first_team_id}')")
                     else:
-                        team_identifier = 'your_team'
-                        print(f"Using fallback team identifier: '{team_identifier}'")
+                        from ..config import get_primary_team_identifier
+                        team_identifier = get_primary_team_identifier()
+                        print(f"Using enhanced fallback team identifier: '{team_identifier}'")
                 except:
-                    team_identifier = 'your_team'
-                    print(f"Using fallback team identifier: '{team_identifier}'")
+                    from ..config import get_primary_team_identifier
+                    team_identifier = get_primary_team_identifier()
+                    print(f"Using enhanced fallback team identifier: '{team_identifier}'")
             
             # Calculate all stats using centralized functions with filtered events and error handling
             try:
