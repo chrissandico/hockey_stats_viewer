@@ -331,12 +331,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         [dash.dependencies.Input('game-dropdown', 'value')]
     )
     def update_game_summary(game_id):
-        # DEBUG: Log the callback inputs
-        print(f"DEBUG CALLBACK: update_game_summary called with game_id={game_id}")
-        
         # Skip header values
         if game_id is None or str(game_id).startswith('header-'):
-            print(f"DEBUG CALLBACK: game_id is None or header, returning empty div")
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
@@ -489,12 +485,8 @@ def register_game_callbacks(app, data_service, team_context=None):
          dash.dependencies.Input('btn-goalies', 'active')]
     )
     def update_player_stats(game_id, all_active, forwards_active, defense_active, goalies_active):
-        # DEBUG: Log the callback inputs
-        print(f"DEBUG CALLBACK: update_player_stats called with game_id={game_id}")
-        
         # Skip header values
         if game_id is None or str(game_id).startswith('header-'):
-            print(f"DEBUG CALLBACK: game_id is None or header, returning empty div")
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
