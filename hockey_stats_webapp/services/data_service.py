@@ -41,8 +41,9 @@ class DataService:
         self._events_cache = None
         self._game_roster_cache = None
         
-        # Initialize games calculated cache
+        # Initialize games calculated cache with timestamps
         self._games_calculated_cache = {}
+        self._games_cache_timestamps = {}  # Track when each cache entry was created
         
         # Force refresh events data to ensure boolean conversion happens
         self.force_refresh_events_data()
@@ -927,11 +928,58 @@ class DataService:
             # Check if we have cached results
             if not hasattr(self, '_games_calculated_cache'):
                 self._games_calculated_cache = {}
+            if not hasattr(self, '_games_cache_timestamps'):
+                self._games_cache_timestamps = {}
             
+            # Check if cache exists and is still valid
             if cache_key in self._games_calculated_cache:
-                self.logger.debug(f"Using cached games data for {cache_key}")
-                print(f"Using cached games data for {cache_key}")
-                return self._games_calculated_cache[cache_key].copy()
+                # Check cache age
+                from datetime import datetime, timedelta
+                cache_timestamp = self._games_cache_timestamps.get(cache_key)
+                
+                if cache_timestamp:
+                    cache_age = datetime.now() - cache_timestamp
+                    
+                    # For recent games (within last 7 days), use shorter cache TTL (5 minutes)
+                    # For older games, use longer cache TTL (1 hour)
+                    cached_games = self._games_calculated_cache[cache_key]
+                    has_recent_games = False
+                    
+                    if not cached_games.empty and 'Date' in cached_games.columns:
+                        try:
+                            # Check if any games are recent (within last 7 days)
+                            today = datetime.now().date()
+                            week_ago = today - timedelta(days=7)
+                            
+                            for game_date_str in cached_games['Date']:
+                                try:
+                                    game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
+                                    if game_date >= week_ago:
+                                        has_recent_games = True
+                                        break
+                                except:
+                                    pass
+                        except Exception as e:
+                            self.logger.warning(f"Error checking for recent games: {e}")
+                    
+                    # Determine cache TTL based on whether there are recent games
+                    cache_ttl = timedelta(minutes=5) if has_recent_games else timedelta(hours=1)
+                    
+                    if cache_age < cache_ttl:
+                        self.logger.debug(f"Using cached games data for {cache_key} (age: {cache_age}, TTL: {cache_ttl})")
+                        print(f"Using cached games data for {cache_key} (age: {cache_age.total_seconds():.0f}s)")
+                        return cached_games.copy()
+                    else:
+                        self.logger.info(f"Cache expired for {cache_key} (age: {cache_age}, TTL: {cache_ttl}), refreshing...")
+                        print(f"Cache expired for {cache_key}, refreshing...")
+                        # Remove expired cache
+                        del self._games_calculated_cache[cache_key]
+                        del self._games_cache_timestamps[cache_key]
+                else:
+                    # No timestamp, use cached data but log warning
+                    self.logger.warning(f"Using cached games data for {cache_key} (no timestamp)")
+                    print(f"Using cached games data for {cache_key}")
+                    return self._games_calculated_cache[cache_key].copy()
             
             # Get data from sheets service with error handling
             try:
@@ -1146,8 +1194,14 @@ class DataService:
                         # Check cache size before adding new entry
                         self._manage_cache_size_before_add()
                         
+                        # Store cache with timestamp
+                        from datetime import datetime
                         self._games_calculated_cache[cache_key] = cached_games
-                        self.logger.info(f"Successfully cached {len(cached_games)} games for key '{cache_key}'")
+                        if not hasattr(self, '_games_cache_timestamps'):
+                            self._games_cache_timestamps = {}
+                        self._games_cache_timestamps[cache_key] = datetime.now()
+                        
+                        self.logger.info(f"Successfully cached {len(cached_games)} games for key '{cache_key}' at {datetime.now()}")
                         print(f"Cached games data for {cache_key}")
                         
                         # Check if cache management is needed after adding
@@ -1187,8 +1241,10 @@ class DataService:
             original_cache_size = len(self._games_calculated_cache)
             
             if team_id is None and game_type is None:
-                # Clear all cache
+                # Clear all cache and timestamps
                 self._games_calculated_cache.clear()
+                if hasattr(self, '_games_cache_timestamps'):
+                    self._games_cache_timestamps.clear()
                 self.logger.info(f"Cleared all games cache ({original_cache_size} entries)")
                 print("Cleared all games cache")
             else:
@@ -1220,6 +1276,8 @@ class DataService:
                 for key in keys_to_remove:
                     try:
                         del self._games_calculated_cache[key]
+                        if hasattr(self, '_games_cache_timestamps') and key in self._games_cache_timestamps:
+                            del self._games_cache_timestamps[key]
                         self.logger.debug(f"Removed cache entry: {key}")
                     except KeyError:
                         self.logger.warning(f"Cache key {key} not found during removal")
@@ -1306,8 +1364,10 @@ class DataService:
                 
                 # Aggressive clearing needed
                 if team_id is None and game_type is None:
-                    # Clear all cache
+                    # Clear all cache and timestamps
                     self._games_calculated_cache.clear()
+                    if hasattr(self, '_games_cache_timestamps'):
+                        self._games_cache_timestamps.clear()
                     self._last_cleared_keys.clear() if hasattr(self, '_last_cleared_keys') else None
                     entries_removed = original_cache_size
                     reason = "full_clear_due_to_limits" if not force_clear else "full_clear_forced"
@@ -1407,6 +1467,8 @@ class DataService:
             for key in keys_to_remove:
                 try:
                     del self._games_calculated_cache[key]
+                    if hasattr(self, '_games_cache_timestamps') and key in self._games_cache_timestamps:
+                        del self._games_cache_timestamps[key]
                     self.logger.debug(f"Optimized selective clear: Removed cache entry {key}")
                 except KeyError:
                     self.logger.warning(f"Optimized selective clear: Cache key {key} not found during removal")
