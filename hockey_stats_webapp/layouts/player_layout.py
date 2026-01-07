@@ -632,5 +632,6 @@ def register_player_callbacks(app, data_service):
         except Exception as post_metrics_error:
             logger.warning(f"Player layout: Failed to collect post-operation cache metrics: {str(post_metrics_error)}")
             print(f"PLAYER CALLBACK: Warning - Failed to collect post-operation cache metrics: {str(post_metrics_error)}")
-        
+
+        print(f"=== PLAYER CALLBACK COMPLETE: Returning player_info and game_log_card with {len(game_log)} game entries ===\n")
         return player_info, game_log_card
