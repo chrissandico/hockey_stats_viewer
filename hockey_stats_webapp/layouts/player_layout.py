@@ -47,20 +47,47 @@ def create_player_layout(data_service, team_context=None):
         
         # Session store for game type selection
         create_game_type_session_store(),
-        
-        # Player selection
-        dbc.Card([
-            dbc.CardHeader(html.H4("Select Player", className="card-title")),
-            dbc.CardBody([
-                html.P("Choose a player by jersey number:"),
-                dbc.RadioItems(
-                    id='player-dropdown',
-                    options=radio_options,
-                    className="mb-3",
-                    inline=False
-                ),
-            ])
-        ], className="mb-4 shadow-sm"),
+
+        # Session store for recent games count
+        dcc.Store(id='player-recent-games-store', storage_type='session', data='all'),
+
+        # Player selection and filters row
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader(html.H4("Select Player", className="card-title")),
+                    dbc.CardBody([
+                        html.P("Choose a player by jersey number:"),
+                        dbc.RadioItems(
+                            id='player-dropdown',
+                            options=radio_options,
+                            className="mb-3",
+                            inline=False
+                        ),
+                    ])
+                ], className="mb-4 shadow-sm")
+            ], md=8),
+
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader(html.H4("Recent Games Filter", className="card-title")),
+                    dbc.CardBody([
+                        html.P("View stats for:"),
+                        dbc.Select(
+                            id='player-recent-games-selector',
+                            options=[
+                                {'label': 'All Games', 'value': 'all'},
+                                {'label': 'Last 2 Games', 'value': '2'},
+                                {'label': 'Last 3 Games', 'value': '3'},
+                                {'label': 'Last 5 Games', 'value': '5'},
+                                {'label': 'Last 10 Games', 'value': '10'}
+                            ],
+                            value='all'
+                        )
+                    ])
+                ], className="mb-4 shadow-sm")
+            ], md=4)
+        ]),
         
         # Progress indicator for data loading
         html.Div(id='player-progress-container', style={'display': 'none'}),
@@ -96,12 +123,21 @@ def register_player_callbacks(app, data_service):
         data_service (DataService): The data service for retrieving player data
     """
     @app.callback(
+        dash.dependencies.Output('player-recent-games-store', 'data'),
+        [dash.dependencies.Input('player-recent-games-selector', 'value')]
+    )
+    def update_recent_games_store(recent_games_value):
+        """Store the selected recent games count."""
+        return recent_games_value
+
+    @app.callback(
         [dash.dependencies.Output('player-info-container', 'children'),
          dash.dependencies.Output('player-game-log-container', 'children')],
         [dash.dependencies.Input('player-dropdown', 'value'),
-         dash.dependencies.Input('game-type-session-store', 'data')]
+         dash.dependencies.Input('game-type-session-store', 'data'),
+         dash.dependencies.Input('player-recent-games-store', 'data')]
     )
-    def update_player_info(jersey_number, game_type_data):
+    def update_player_info(jersey_number, game_type_data, recent_games_data):
         # Check if data service is available
         if data_service is None:
             print("DataService is None - services not initialized (missing credentials)")
@@ -314,8 +350,48 @@ def register_player_callbacks(app, data_service):
             
         if stats is None:
             return html.Div(dbc.Alert("Could not calculate player statistics", color="danger")), html.Div()
-        
+
+        # Get player game log with game type filtering
+        game_log = data_service.get_player_game_log(player_id, team_id, game_type)
+        print(f"DEBUG: Player game log entries: {len(game_log)} (filtered by game_type: {game_type})")
+
+        # Filter to recent games if selected
+        num_recent_games = None
+        if recent_games_data and recent_games_data != 'all':
+            try:
+                num_recent_games_requested = int(recent_games_data)
+
+                # Limit to available games
+                num_recent_games = min(num_recent_games_requested, len(game_log))
+
+                if num_recent_games > 0 and num_recent_games < len(game_log):
+                    # Game log is already sorted by date (most recent first)
+                    game_log = game_log[:num_recent_games]
+                    print(f"DEBUG: Filtered to last {num_recent_games} games")
+
+                    # Recalculate stats based on recent games only
+                    recent_game_ids = [g['game']['ID'] for g in game_log]
+                    print(f"DEBUG: Recalculating stats for recent game IDs: {recent_game_ids}")
+
+                    # Import helper function from recent_games_layout
+                    if is_goalie:
+                        from layouts.recent_games_layout import _calculate_goalie_stats_for_games
+                        stats = _calculate_goalie_stats_for_games(player_id, recent_game_ids, data_service, team_id)
+                    else:
+                        from layouts.recent_games_layout import _calculate_player_stats_for_games
+                        stats = _calculate_player_stats_for_games(player_id, recent_game_ids, data_service, team_id)
+
+                    print(f"DEBUG: Recalculated stats for recent {num_recent_games} games: {stats}")
+                elif num_recent_games == len(game_log):
+                    # Player has exactly N games or fewer - show all but update title
+                    num_recent_games = len(game_log)
+                    print(f"DEBUG: Player has {num_recent_games} games (showing all)")
+            except (ValueError, TypeError) as e:
+                print(f"WARNING: Could not parse recent_games_data: {e}")
+                num_recent_games = None
+
         # Create player info card with debug info
+        stats_title = f"Last {num_recent_games} Games" if num_recent_games else "Season Totals"
         player_info = dbc.Card([
             dbc.CardHeader(html.H4(f"#{player['JerseyNumber']}", className="card-title")),
             dbc.CardBody([
@@ -330,7 +406,7 @@ def register_player_callbacks(app, data_service):
                     
                     # Season stats - different display for goalies vs skaters
                     dbc.Col([
-                        html.H5("Season Totals"),
+                        html.H5(stats_title),
                         html.Div([
                             # Common stat for both player types
                             html.Div([
@@ -410,11 +486,7 @@ def register_player_callbacks(app, data_service):
                 ])
             ])
         ], className="mb-4 shadow-sm")
-        
-        # Get player game log with game type filtering
-        game_log = data_service.get_player_game_log(player_id, team_id, game_type)
-        print(f"DEBUG: Player game log entries: {len(game_log)} (filtered by game_type: {game_type})")
-        
+
         # Create game log table
         if game_log:
             # Convert game log to DataFrame for the table
