@@ -384,6 +384,13 @@ def _calculate_player_stats_for_games(player_id, game_ids, data_service, team_id
     points = goals + assists
     plus_minus = data_service.calculate_plus_minus_for_events(player_id, events, team_identifier)
 
+    # Calculate penalty minutes
+    penalty_events = events[
+        (events['EventType'] == 'Penalty') &
+        (events['PrimaryPlayerID'] == player_id)
+    ]
+    penalty_minutes = penalty_events['PenaltyDuration'].sum() if 'PenaltyDuration' in penalty_events.columns and not penalty_events.empty else 0
+
     # Count games played
     player_events = events[
         (events['PrimaryPlayerID'] == player_id) |
@@ -397,6 +404,7 @@ def _calculate_player_stats_for_games(player_id, game_ids, data_service, team_id
         'assists': assists,
         'points': points,
         'plus_minus': plus_minus,
+        'penalty_minutes': int(penalty_minutes),
         'games_played': games_played
     }
 
