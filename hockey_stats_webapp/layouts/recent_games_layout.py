@@ -440,18 +440,38 @@ def _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id
         (goalie_events['EventType'] == 'Shot')
     ]['GameID'].nunique()
 
-    # Calculate wins (need to check game results)
+    # Calculate wins, losses, ties from game results
     games_data = data_service.get_games(team_id)
     goalie_games = games_data[games_data['ID'].isin(game_ids)]
     wins = len(goalie_games[goalie_games['Result'] == 'W'])
+    losses = len(goalie_games[goalie_games['Result'] == 'L'])
+    ties = len(goalie_games[goalie_games['Result'] == 'T'])
+
+    # Calculate shutouts (games with 0 goals against)
+    shutouts = 0
+    for game_id in game_ids:
+        game_events = goalie_events[goalie_events['GameID'] == game_id]
+        opponent_goals = game_events[
+            (game_events['Team'] != team_identifier) &
+            (game_events['IsGoal'] == True)
+        ]
+        if len(game_events) > 0 and len(opponent_goals) == 0:
+            shutouts += 1
+
+    # Calculate GAA (goals against average)
+    gaa = (goals_against / games_with_shots) if games_with_shots > 0 else 0.0
 
     return {
         'games_played': games_with_shots,
         'wins': wins,
+        'losses': losses,
+        'ties': ties,
+        'shutouts': shutouts,
         'saves': saves,
         'shots_against': shots_against,
         'goals_against': goals_against,
-        'save_percentage': round(save_percentage, 1)
+        'save_percentage': round(save_percentage, 1),
+        'gaa': round(gaa, 2)
     }
 
 
