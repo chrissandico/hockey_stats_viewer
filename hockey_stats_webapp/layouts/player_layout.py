@@ -361,7 +361,7 @@ def register_player_callbacks(app, data_service):
 
         # Get player game log with game type filtering
         game_log = data_service.get_player_game_log(player_id, team_id, game_type)
-        print(f"DEBUG: Player game log entries: {len(game_log)} (filtered by game_type: {game_type})")
+        print(f"DEBUG: Player game log BEFORE filtering: {len(game_log)} entries (filtered by game_type: {game_type})")
 
         # Filter to recent games if selected
         num_recent_games = None
@@ -369,15 +369,17 @@ def register_player_callbacks(app, data_service):
         if recent_games_data and recent_games_data != 'all':
             try:
                 num_recent_games_requested = int(recent_games_data)
+                print(f"DEBUG: Recent games requested: {num_recent_games_requested}")
 
                 # Limit to available games
                 num_recent_games = min(num_recent_games_requested, len(game_log))
+                print(f"DEBUG: Actual recent games to show: {num_recent_games} (min of {num_recent_games_requested} and {len(game_log)})")
 
                 if num_recent_games > 0:
                     # Game log is already sorted by date (most recent first)
                     game_log = game_log[:num_recent_games]
                     stats_title = f"Last {num_recent_games} Games"
-                    print(f"DEBUG: Filtered to last {num_recent_games} games")
+                    print(f"DEBUG: Filtered game log to last {num_recent_games} games - game_log now has {len(game_log)} entries")
 
                     # Recalculate stats based on recent games only
                     recent_game_ids = [g['game']['ID'] for g in game_log]
@@ -392,9 +394,15 @@ def register_player_callbacks(app, data_service):
                         stats = _calculate_player_stats_for_games(player_id, recent_game_ids, data_service, team_id)
 
                     print(f"DEBUG: Recalculated stats for recent {num_recent_games} games: {stats}")
+                else:
+                    print(f"DEBUG: num_recent_games is 0, skipping filtering")
             except (ValueError, TypeError) as e:
                 print(f"WARNING: Could not parse recent_games_data: {e}")
                 num_recent_games = None
+        else:
+            print(f"DEBUG: No recent games filtering - recent_games_data={recent_games_data}")
+
+        print(f"DEBUG: Final game_log length AFTER filtering: {len(game_log)} entries")
 
         # Create player info card
         player_info = dbc.Card([
