@@ -35,22 +35,29 @@ def create_player_layout(data_service, team_context=None):
         
         # Sort by jersey number (ascending order)
         radio_options.sort(key=lambda x: x['value'])
-    
+
+        # Create player dropdown options with placeholder
+        player_dropdown_options = [
+            {'label': '-- Select Player --', 'value': '', 'disabled': True},
+            *radio_options
+        ]
+
     return html.Div([
         # Navigation bar
         create_navigation(),
-        
+
         # Title
         html.H1("Player Statistics", className="text-center mt-4"),
-        
+
         # Unified filter bar
         create_unified_filter_bar(
             screen_specific_controls=html.Div([
-                html.Label("Select Player:", className="fw-bold mb-2"),
-                dbc.RadioItems(
+                html.Label("Player", className="form-label fw-bold mb-1"),
+                dbc.Select(
                     id='player-dropdown',
-                    options=radio_options,
-                    inline=False
+                    options=player_dropdown_options,
+                    value='',
+                    className="form-select"
                 )
             ]),
             recent_games_selector_id='player-recent-games-selector',
@@ -242,8 +249,8 @@ def register_player_callbacks(app, data_service):
         print(f"DataService instance in callback: {data_service}")
         print(f"Coach status: {is_coach}")
         print(f"Game type from session: {game_type}")
-        
-        if jersey_number is None:
+
+        if not jersey_number or jersey_number == '':
             print("No jersey number selected, returning empty divs")
             return html.Div(), html.Div()
         

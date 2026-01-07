@@ -90,40 +90,28 @@ def create_game_type_badge(game_type_code):
 
 def register_game_type_filter_callbacks(app, data_service):
     """
-    Register callbacks for the game type filter component.
-    
+    Register callbacks for the game type filter component (dropdown-based).
+
     Args:
         app (dash.Dash): The Dash application
         data_service (DataService): The data service for retrieving game data
     """
-    @app.callback(
-        dash.dependencies.Output('game-type-filter-info', 'children'),
-        [dash.dependencies.Input('game-type-filter-tabs', 'active_tab')]
-    )
-    def update_game_type_info(active_tab):
-        """Update the info text based on the selected game type."""
-        if active_tab == "all":
-            return "Showing statistics for all game types combined."
-        elif active_tab in get_all_game_types():
-            game_type_name = get_game_type_name(active_tab)
-            return f"Showing statistics for {game_type_name} games only."
-        else:
-            return ""
-    
+    # NOTE: Removed update_game_type_info callback - no longer needed with dropdown interface
+
     @app.callback(
         dash.dependencies.Output('game-type-session-store', 'data'),
-        [dash.dependencies.Input('game-type-filter-tabs', 'active_tab')],
+        [dash.dependencies.Input('game-type-dropdown', 'value')],  # Changed from 'game-type-filter-tabs', 'active_tab'
         prevent_initial_call=True
     )
-    def update_game_type_session(active_tab):
+    def update_game_type_session(selected_value):  # Changed parameter name from active_tab
         """Update the game type selection in the session."""
         # Set the game type in the session
-        if active_tab == "all":
+        if selected_value == "all":
             data_service._set_game_type_in_session(None)
         else:
-            data_service._set_game_type_in_session(active_tab)
-        
-        return active_tab
+            data_service._set_game_type_in_session(selected_value)
+
+        return selected_value
 
 def create_game_type_session_store():
     """

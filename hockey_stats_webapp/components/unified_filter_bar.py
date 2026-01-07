@@ -1,6 +1,56 @@
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
+from components.game_type_filter import create_game_type_session_store
+
+
+def create_game_type_dropdown():
+    """
+    Create the game type dropdown component.
+
+    Returns:
+        html.Div: Game type dropdown with label and emoji indicators
+    """
+    return html.Div([
+        html.Label("Game Type", className="form-label fw-bold mb-1"),
+        dbc.Select(
+            id="game-type-dropdown",
+            options=[
+                {'label': '⚪ All Games', 'value': 'all'},
+                {'label': '🟠 Exhibition', 'value': 'E'},
+                {'label': '🔵 Regular Season', 'value': 'R'},
+                {'label': '🟣 Tournament', 'value': 'T'}
+            ],
+            value='R',  # Default to Regular Season
+            className="form-select"
+        )
+    ])
+
+
+def create_recent_games_dropdown(selector_id):
+    """
+    Create the recent games dropdown component.
+
+    Args:
+        selector_id (str): ID for the dropdown selector
+
+    Returns:
+        html.Div: Recent games dropdown with label
+    """
+    return html.Div([
+        html.Label("Recent Games", className="form-label fw-bold mb-1"),
+        dbc.Select(
+            id=selector_id,
+            options=[
+                {'label': 'All Games', 'value': 'all'},
+                {'label': 'Last 2 Games', 'value': '2'},
+                {'label': 'Last 3 Games', 'value': '3'},
+                {'label': 'Last 5 Games', 'value': '5'},
+                {'label': 'Last 10 Games', 'value': '10'}
+            ],
+            value='all',
+            className="form-select"
+        )
+    ])
 
 
 def create_unified_filter_bar(
@@ -9,16 +59,17 @@ def create_unified_filter_bar(
     recent_games_store_id='recent-games-store'
 ):
     """
-    Create a unified filter bar that combines game type filter, optional screen-specific
-    controls (like player selection), and recent games selector into a single compact card.
+    Create a unified filter bar with all dropdown-based controls in a single row.
 
-    This component provides a consistent, mobile-responsive filtering interface across
-    different screens (Team Stats, Player Stats, etc.).
+    This component provides a clean, cohesive filtering interface with all controls
+    as dropdowns. The layout adapts based on screen type:
+    - Team Stats: 2 columns (Game Type, Recent Games)
+    - Player Stats: 3 columns (Game Type, Player Selection, Recent Games)
 
     Args:
         screen_specific_controls (dash.html component, optional): Optional Dash component
-            to display in the left column (e.g., player selection RadioItems for Player Stats).
-            If None, the recent games selector will take full width.
+            for the middle column (e.g., player selection dropdown for Player Stats).
+            If None, uses 2-column layout (Team Stats).
         recent_games_selector_id (str): ID for the recent games dropdown selector.
             Default: 'recent-games-selector'
         recent_games_store_id (str): ID for the recent games session store.
@@ -27,59 +78,37 @@ def create_unified_filter_bar(
     Returns:
         dbc.Card: A Bootstrap card component containing the unified filter bar
 
-    Layout Structure:
-        - Row 1: Game type tabs (Exhibition, Regular Season, Tournament, All Games) - full width
-        - Row 2: Screen-specific controls (left, md=8) + Recent games dropdown (right, md=4)
-
     Responsive Behavior:
-        - Desktop (≥768px): Two columns side-by-side in Row 2
-        - Mobile (<768px): All controls stack vertically at full width
+        - Desktop (≥768px): Columns side-by-side with equal widths
+        - Mobile (<576px): All controls stack vertically at full width
     """
-    # Build the second row with conditional column layout
-    second_row_cols = []
-
-    # Add screen-specific controls column if provided
+    # Determine column configuration based on screen type
     if screen_specific_controls:
-        second_row_cols.append(
-            dbc.Col([
-                screen_specific_controls
-            ], xs=12, md=8)
-        )
-
-    # Add recent games selector column (full width if no screen-specific controls)
-    second_row_cols.append(
-        dbc.Col([
-            html.Label("Recent Games:", className="fw-bold mb-2"),
-            dbc.Select(
-                id=recent_games_selector_id,
-                options=[
-                    {'label': 'All Games', 'value': 'all'},
-                    {'label': 'Last 2 Games', 'value': '2'},
-                    {'label': 'Last 3 Games', 'value': '3'},
-                    {'label': 'Last 5 Games', 'value': '5'},
-                    {'label': 'Last 10 Games', 'value': '10'}
-                ],
-                value='all',
-                className="form-select"
-            )
-        ], xs=12, md=4 if screen_specific_controls else 12)
-    )
+        # 3-column layout (Player Stats)
+        col_width = 4
+        columns = [
+            dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
+            dbc.Col([screen_specific_controls], xs=12, md=col_width),
+            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
+        ]
+    else:
+        # 2-column layout (Team Stats)
+        col_width = 6
+        columns = [
+            dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
+            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
+        ]
 
     return dbc.Card([
-        dbc.CardHeader(html.H4("Filters", className="card-title mb-0")),
+        dbc.CardHeader([
+            html.H5("Filters", className="mb-0")
+        ]),
         dbc.CardBody([
-            # Row 1: Game type filter tabs (full width)
-            dbc.Row([
-                dbc.Col([
-                    create_game_type_filter_component()
-                ], width=12)
-            ], className="mb-3"),
-
-            # Row 2: Screen-specific controls + Recent games dropdown
-            dbc.Row(second_row_cols),
+            # Single row with adaptive columns
+            dbc.Row(columns, className="g-3"),
 
             # Session stores (hidden components)
             create_game_type_session_store(),
             dcc.Store(id=recent_games_store_id, storage_type='session', data='all')
-        ])
+        ], className="pb-3")
     ], className="mb-4 shadow-sm")
