@@ -27,6 +27,7 @@ from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.navigation import create_navigation, register_navigation_callbacks
 from layouts.performance_layout import create_performance_layout, register_performance_callbacks
+from layouts.recent_games_layout import create_recent_games_layout, register_recent_games_callbacks
 
 # Initialize the Dash app with Bootstrap theme
 app = dash.Dash(
@@ -213,6 +214,10 @@ def display_page(pathname):
     elif pathname == '/performance':
         # App Performance dashboard - only for coaches
         return create_performance_layout(auth_service)
+    elif pathname == '/recent-games':
+        # Recent Games Analysis - only for coaches
+        team_context = get_team_context()
+        return create_recent_games_layout(data_service, team_context)
     else:
         team_context = get_team_context()
         return create_main_layout(team_context)
@@ -376,6 +381,10 @@ else:
 
 # Register performance monitoring callbacks (always register, even if services not initialized)
 register_performance_callbacks(app, auth_service)
+
+# Register recent games analysis callbacks (coach-only feature)
+if services_initialized:
+    register_recent_games_callbacks(app, data_service)
 
 
 # Run the app
