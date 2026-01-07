@@ -105,11 +105,6 @@ def _create_recent_games_content():
         ),
 
         # Player leaderboards section
-        html.H3([
-            html.I(className="fas fa-trophy me-2"),
-            "Player Leaderboards"
-        ], className="mt-5 mb-3"),
-
         dcc.Loading(
             id="leaderboards-loading",
             type="default",
@@ -244,7 +239,7 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
 
 def _create_team_performance_card(team_stats, num_games_requested, num_games_actual):
     """
-    Create the team performance card display.
+    Create the team performance card display matching Team Stats screen format.
 
     Args:
         team_stats (dict): Aggregated team statistics
@@ -254,13 +249,18 @@ def _create_team_performance_card(team_stats, num_games_requested, num_games_act
     Returns:
         dbc.Card: The team performance card
     """
-    # Calculate differentials
+    # Calculate differentials and averages
     goal_diff = team_stats['goals_for'] - team_stats['goals_against']
-    goal_diff_sign = "+" if goal_diff > 0 else ""
-    goal_diff_color = "success" if goal_diff > 0 else "danger" if goal_diff < 0 else "secondary"
+    gp = team_stats['games_played']
 
-    shot_diff = team_stats['shots_for'] - team_stats['shots_against']
-    shot_diff_sign = "+" if shot_diff > 0 else ""
+    # Win percentage
+    win_pct = (team_stats['wins'] / gp) if gp > 0 else 0.0
+
+    # Per-game averages
+    gf_per_game = (team_stats['goals_for'] / gp) if gp > 0 else 0.0
+    ga_per_game = (team_stats['goals_against'] / gp) if gp > 0 else 0.0
+    sf_per_game = (team_stats['shots_for'] / gp) if gp > 0 else 0.0
+    sa_per_game = (team_stats['shots_against'] / gp) if gp > 0 else 0.0
 
     # Warning message if fewer games than requested
     warning_msg = None
@@ -272,97 +272,73 @@ def _create_team_performance_card(team_stats, num_games_requested, num_games_act
         )
 
     return dbc.Card([
-        dbc.CardHeader([
-            html.H4([
-                html.I(className="fas fa-chart-line me-2"),
-                f"Team Performance - Last {num_games_actual} Games"
-            ], className="card-title mb-0")
-        ]),
+        dbc.CardHeader(html.H4(f"Summary - Last {num_games_actual} Games", className="card-title")),
         dbc.CardBody([
             warning_msg,
             dbc.Row([
                 # Record column
                 dbc.Col([
-                    html.H5("Record", className="text-center mb-3"),
+                    html.H5("Record"),
                     html.Div([
                         html.Div([
                             html.Span("Games Played: ", className="fw-bold"),
                             html.Span(f"{team_stats['games_played']}")
-                        ], className="mb-2"),
+                        ], className="mb-1"),
                         html.Div([
-                            html.Span("Wins: ", className="fw-bold text-success"),
-                            html.Span(f"{team_stats['wins']}", className="text-success")
-                        ], className="mb-2"),
+                            html.Span("Wins: ", className="fw-bold"),
+                            html.Span(f"{team_stats['wins']}")
+                        ], className="mb-1"),
                         html.Div([
-                            html.Span("Losses: ", className="fw-bold text-danger"),
-                            html.Span(f"{team_stats['losses']}", className="text-danger")
-                        ], className="mb-2"),
+                            html.Span("Losses: ", className="fw-bold"),
+                            html.Span(f"{team_stats['losses']}")
+                        ], className="mb-1"),
                         html.Div([
                             html.Span("Ties: ", className="fw-bold"),
                             html.Span(f"{team_stats['ties']}")
-                        ], className="mb-2"),
+                        ], className="mb-1"),
                     ])
-                ], md=3, className="border-end"),
+                ], md=4),
 
                 # Goals column
                 dbc.Col([
-                    html.H5("Goals", className="text-center mb-3"),
+                    html.H5("Goals"),
                     html.Div([
                         html.Div([
                             html.Span("Goals For: ", className="fw-bold"),
                             html.Span(f"{team_stats['goals_for']}")
-                        ], className="mb-2"),
+                        ], className="mb-1"),
                         html.Div([
                             html.Span("Goals Against: ", className="fw-bold"),
                             html.Span(f"{team_stats['goals_against']}")
-                        ], className="mb-2"),
+                        ], className="mb-1"),
                         html.Div([
-                            html.Span("Differential: ", className="fw-bold"),
-                            dbc.Badge(
-                                f"{goal_diff_sign}{goal_diff}",
-                                color=goal_diff_color,
-                                className="ms-1"
-                            )
-                        ], className="mb-2"),
+                            html.Span("Goal Differential: ", className="fw-bold"),
+                            html.Span(f"{goal_diff}")
+                        ], className="mb-1"),
                     ])
-                ], md=3, className="border-end"),
+                ], md=4),
 
-                # Shots column
+                # Averages column
                 dbc.Col([
-                    html.H5("Shots", className="text-center mb-3"),
+                    html.H5("Averages"),
                     html.Div([
                         html.Div([
-                            html.Span("Shots For: ", className="fw-bold"),
-                            html.Span(f"{team_stats['shots_for']}")
-                        ], className="mb-2"),
+                            html.Span("Win Percentage: ", className="fw-bold"),
+                            html.Span(f"{win_pct:.3f}")
+                        ], className="mb-1"),
                         html.Div([
-                            html.Span("Shots Against: ", className="fw-bold"),
-                            html.Span(f"{team_stats['shots_against']}")
-                        ], className="mb-2"),
+                            html.Span("Goals For per Game: ", className="fw-bold"),
+                            html.Span(f"{gf_per_game:.2f}")
+                        ], className="mb-1"),
                         html.Div([
-                            html.Span("Differential: ", className="fw-bold"),
-                            html.Span(f"{shot_diff_sign}{shot_diff}")
-                        ], className="mb-2"),
+                            html.Span("Goals Against per Game: ", className="fw-bold"),
+                            html.Span(f"{ga_per_game:.2f}")
+                        ], className="mb-1"),
                     ])
-                ], md=3, className="border-end"),
-
-                # Penalties column
-                dbc.Col([
-                    html.H5("Penalties", className="text-center mb-3"),
-                    html.Div([
-                        html.Div([
-                            html.Span("Penalties: ", className="fw-bold"),
-                            html.Span(f"{team_stats['penalties']}")
-                        ], className="mb-2"),
-                        html.Div([
-                            html.Span("Penalty Minutes: ", className="fw-bold"),
-                            html.Span(f"{team_stats['penalty_minutes']}")
-                        ], className="mb-2"),
-                    ])
-                ], md=3),
+                ], md=4),
             ])
         ])
-    ], className="mb-4 shadow")
+    ], className="mb-4 shadow-sm")
 
 
 def _calculate_player_stats_for_games(player_id, game_ids, data_service, team_id):
@@ -464,25 +440,21 @@ def _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id
     }
 
 
-def _create_leaderboard_table(leaderboard_data, stat_columns, title, icon_class="fa-list"):
+def _create_leaderboard_table(leaderboard_data, stat_columns, title):
     """
-    Create a leaderboard table.
+    Create a leaderboard table matching Team Stats screen format.
 
     Args:
         leaderboard_data (list): List of player stat dicts
-        stat_columns (list): List of tuples (column_name, display_name)
+        stat_columns (list): List of tuples (column_name, display_name, type)
         title (str): Table title
-        icon_class (str): FontAwesome icon class
 
     Returns:
         dbc.Card: The leaderboard card with table
     """
     if not leaderboard_data:
         return dbc.Card([
-            dbc.CardHeader([
-                html.H5([html.I(className=f"fas {icon_class} me-2"), title],
-                       className="card-title mb-0")
-            ]),
+            dbc.CardHeader(html.H4(title, className="card-title")),
             dbc.CardBody([
                 dbc.Alert("No data available for this period", color="info")
             ])
@@ -491,37 +463,44 @@ def _create_leaderboard_table(leaderboard_data, stat_columns, title, icon_class=
     # Create DataFrame
     df = pd.DataFrame(leaderboard_data)
 
-    # Create columns for DataTable
-    columns = [{'name': '#', 'id': 'jersey_number'}]
-    columns.extend([{'name': display, 'id': col} for col, display in stat_columns])
+    # Create columns for DataTable matching team stats format
+    columns = [{'name': 'Player', 'id': 'player', 'type': 'text'}]
+    columns.extend([{'name': display, 'id': col, 'type': col_type} for col, display, col_type in stat_columns])
+
+    # Format player display
+    for item in leaderboard_data:
+        item['player'] = f"#{item['jersey_number']}"
 
     return dbc.Card([
-        dbc.CardHeader([
-            html.H5([html.I(className=f"fas {icon_class} me-2"), title],
-                   className="card-title mb-0")
-        ]),
+        dbc.CardHeader(html.H4(title, className="card-title")),
         dbc.CardBody([
             dash_table.DataTable(
-                data=df.to_dict('records'),
+                data=leaderboard_data,
                 columns=columns,
                 style_table={'overflowX': 'auto'},
                 style_cell={
-                    'textAlign': 'left',
+                    'textAlign': 'center',
                     'padding': '10px',
-                    'fontFamily': 'system-ui'
+                    'minWidth': '80px'
                 },
+                style_cell_conditional=[
+                    {
+                        'if': {'column_id': 'player'},
+                        'textAlign': 'left'
+                    }
+                ],
                 style_header={
-                    'backgroundColor': '#00205b',
-                    'color': 'white',
+                    'backgroundColor': 'rgb(230, 230, 230)',
                     'fontWeight': 'bold'
                 },
                 style_data_conditional=[
                     {
                         'if': {'row_index': 'odd'},
-                        'backgroundColor': '#f8f9fa'
+                        'backgroundColor': 'rgb(248, 248, 248)'
                     }
                 ],
-                page_size=10
+                sort_action='native',
+                sort_mode='single'
             )
         ])
     ], className="mb-4 shadow-sm")
@@ -720,38 +699,34 @@ def register_recent_games_callbacks(app, data_service):
             plus_minus_leaders = sorted(skater_stats, key=lambda x: (-x['plus_minus'], -x['points']))[:5]
             goalie_leaders = sorted(goalie_stats, key=lambda x: (-x['save_percentage'], -x['saves']))[:3]
 
-            # Create leaderboard tables
+            # Create leaderboard tables matching Team Stats format
             return dbc.Row([
                 dbc.Col([
                     _create_leaderboard_table(
                         goals_leaders,
-                        [('name', 'Player'), ('goals', 'G'), ('games_played', 'GP')],
-                        "Goals Leaders",
-                        "fa-hockey-puck"
+                        [('goals', 'G', 'numeric'), ('games_played', 'GP', 'numeric')],
+                        "Goals Leaders"
                     )
                 ], md=6),
                 dbc.Col([
                     _create_leaderboard_table(
                         points_leaders,
-                        [('name', 'Player'), ('points', 'PTS'), ('goals', 'G'), ('assists', 'A'), ('games_played', 'GP')],
-                        "Points Leaders",
-                        "fa-star"
+                        [('goals', 'G', 'numeric'), ('assists', 'A', 'numeric'), ('points', 'P', 'numeric')],
+                        "Points Leaders"
                     )
                 ], md=6),
                 dbc.Col([
                     _create_leaderboard_table(
                         plus_minus_leaders,
-                        [('name', 'Player'), ('plus_minus', '+/-'), ('points', 'PTS'), ('games_played', 'GP')],
-                        "Plus/Minus Leaders",
-                        "fa-chart-line"
+                        [('goals', 'G', 'numeric'), ('assists', 'A', 'numeric'), ('points', 'P', 'numeric'), ('plus_minus', '+/-', 'numeric')],
+                        "Plus/Minus Leaders"
                     )
                 ], md=6, className="mt-4"),
                 dbc.Col([
                     _create_leaderboard_table(
                         goalie_leaders,
-                        [('name', 'Player'), ('save_percentage', 'SV%'), ('saves', 'SVS'), ('wins', 'W'), ('games_played', 'GP')],
-                        "Goalie Leaders",
-                        "fa-shield-alt"
+                        [('wins', 'W', 'numeric'), ('saves', 'SVS', 'numeric'), ('save_percentage', 'SV%', 'numeric'), ('games_played', 'GP', 'numeric')],
+                        "Goalie Leaders"
                     )
                 ], md=6, className="mt-4"),
             ])
