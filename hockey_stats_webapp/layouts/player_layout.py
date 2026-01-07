@@ -128,6 +128,7 @@ def register_player_callbacks(app, data_service):
     )
     def update_recent_games_store(recent_games_value):
         """Store the selected recent games count."""
+        print(f"=== PLAYER RECENT GAMES STORE CALLBACK: Selector value changed to: {recent_games_value} ===")
         return recent_games_value
 
     @app.callback(
@@ -138,6 +139,10 @@ def register_player_callbacks(app, data_service):
          dash.dependencies.Input('player-recent-games-store', 'data')]
     )
     def update_player_info(jersey_number, game_type_data, recent_games_data):
+        # Debug logging for callback inputs
+        print(f"=== PLAYER CALLBACK TRIGGERED ===")
+        print(f"=== INPUTS: jersey_number={jersey_number}, game_type_data={game_type_data}, recent_games_data={recent_games_data} ===")
+
         # Check if data service is available
         if data_service is None:
             print("DataService is None - services not initialized (missing credentials)")
@@ -165,7 +170,10 @@ def register_player_callbacks(app, data_service):
         # Handle "All Games" selection - when active_tab is "all", game_type should be None
         if game_type == "all":
             game_type = None
-        
+
+        print(f"=== PROCESSED: Jersey={jersey_number}, Team ID={team_id}, Coach={is_coach}, Game type={game_type} ===")
+        print(f"=== Recent games data: {recent_games_data} ===")
+
         # Cache management: Track previous state to detect changes
         previous_game_type = session.get('player_previous_game_type')
         previous_jersey_number = session.get('player_previous_jersey_number')
