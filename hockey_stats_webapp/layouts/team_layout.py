@@ -109,7 +109,33 @@ def create_team_layout(data_service, team_context=None):
         
         # Session store for game type selection
         create_game_type_session_store(),
-        
+
+        # Session store for recent games count
+        dcc.Store(id='team-recent-games-store', storage_type='session', data='all'),
+
+        # Recent games filter
+        dbc.Card([
+            dbc.CardHeader(html.H4("Recent Games Filter", className="card-title")),
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.P("View stats for:"),
+                        dbc.Select(
+                            id='team-recent-games-selector',
+                            options=[
+                                {'label': 'All Games', 'value': 'all'},
+                                {'label': 'Last 2 Games', 'value': '2'},
+                                {'label': 'Last 3 Games', 'value': '3'},
+                                {'label': 'Last 5 Games', 'value': '5'},
+                                {'label': 'Last 10 Games', 'value': '10'}
+                            ],
+                            value='all'
+                        )
+                    ], md=3)
+                ])
+            ])
+        ], className="mb-4 shadow-sm"),
+
         # Team season summary with loading
         dcc.Loading(
             id="team-stats-loading",
@@ -422,18 +448,27 @@ def create_team_layout(data_service, team_context=None):
 def register_team_callbacks(app, data_service):
     """
     Register callbacks for the team statistics layout to handle game type filtering.
-    
+
     Args:
         app (dash.Dash): The Dash application
         data_service (DataService): The data service for retrieving team data
     """
     @app.callback(
+        dash.dependencies.Output('team-recent-games-store', 'data'),
+        [dash.dependencies.Input('team-recent-games-selector', 'value')]
+    )
+    def update_recent_games_store(recent_games_value):
+        """Store the selected recent games count."""
+        return recent_games_value
+
+    @app.callback(
         [dash.dependencies.Output('team-stats-loading', 'children'),
          dash.dependencies.Output('team-leaderboards-loading', 'children'),
          dash.dependencies.Output('team-game-log-loading', 'children')],
-        [dash.dependencies.Input('game-type-session-store', 'data')]
+        [dash.dependencies.Input('game-type-session-store', 'data'),
+         dash.dependencies.Input('team-recent-games-store', 'data')]
     )
-    def update_team_stats_by_game_type(game_type_data):
+    def update_team_stats_by_game_type(game_type_data, recent_games_data):
         """Update team statistics based on selected game type."""
         from flask import session
         
@@ -549,28 +584,105 @@ def register_team_callbacks(app, data_service):
             logger.debug(f"Team layout: Game type unchanged ({game_type}), no cache clearing needed")
             print(f"TEAM CALLBACK: Game type unchanged ({game_type}), no cache clearing needed")
         
-        # Calculate team stats with game type filtering
-        team_stats = data_service.calculate_team_stats(team_id, game_type)
-        
         # Get games with game type filtering
         games = data_service.get_games(team_id, game_type)
         games = data_service._filter_games_by_date(games, include_future=False)
-        
-        # Get leaderboards with game type filtering
-        if is_coach:
-            forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id, game_type=game_type)
-            defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id, game_type=game_type)
-            goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id, game_type=game_type)
-            forwards_sort_label = "Points"
-            defense_sort_label = "Plus/Minus"
-            goalies_sort_label = "Save Percentage"
+
+        # Filter to recent games if selected
+        num_recent_games = None
+        stats_title = "Summary"
+        if recent_games_data and recent_games_data != 'all':
+            try:
+                num_recent_games_requested = int(recent_games_data)
+
+                # Sort games by date and get N most recent
+                if not games.empty and 'Date' in games.columns:
+                    games_copy = games.copy()
+                    games_copy['DateSortable'] = pd.to_datetime(games_copy['Date'], errors='coerce')
+                    games_sorted = games_copy.sort_values('DateSortable', ascending=False).reset_index(drop=True)
+
+                    num_recent_games = min(num_recent_games_requested, len(games_sorted))
+
+                    if num_recent_games > 0:
+                        games = games_sorted.head(num_recent_games)
+                        stats_title = f"Summary - Last {num_recent_games} Games"
+                        print(f"TEAM CALLBACK: Filtered to last {num_recent_games} games")
+            except (ValueError, TypeError) as e:
+                print(f"WARNING: Could not parse recent_games_data: {e}")
+                num_recent_games = None
+
+        # Calculate team stats from filtered games
+        if num_recent_games:
+            # Recalculate stats for recent games only
+            from layouts.recent_games_layout import _aggregate_recent_games_team_stats
+            team_stats = _aggregate_recent_games_team_stats(games, data_service, team_id)
         else:
-            forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id, game_type=game_type)
-            defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id, game_type=game_type)
-            goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id, game_type=game_type)
-            forwards_sort_label = "Jersey Number"
-            defense_sort_label = "Jersey Number"
-            goalies_sort_label = "Jersey Number"
+            # Use normal team stats calculation
+            team_stats = data_service.calculate_team_stats(team_id, game_type)
+
+        # Get leaderboards with game type filtering
+        if num_recent_games:
+            # Calculate leaderboards for recent games only
+            game_ids = games['ID'].tolist() if 'ID' in games.columns and not games.empty else []
+            if game_ids:
+                players = data_service.get_players(team_id)
+                # We'll recalculate leaderboards below using helper functions
+                forwards_points_leaders = []
+                defense_leaders = []
+                goalies_leaders = []
+
+                for _, player in players.iterrows():
+                    player_id = data_service._get_player_id_from_series(player)
+                    if player_id is None:
+                        continue
+
+                    position = player.get('Position', 'F')
+
+                    if position == 'G':
+                        from layouts.recent_games_layout import _calculate_goalie_stats_for_games
+                        stats = _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id)
+                        if stats['games_played'] > 0:
+                            goalies_leaders.append({**player.to_dict(), **stats})
+                    else:
+                        from layouts.recent_games_layout import _calculate_player_stats_for_games
+                        stats = _calculate_player_stats_for_games(player_id, game_ids, data_service, team_id)
+                        if stats['games_played'] > 0:
+                            if position == 'F':
+                                forwards_points_leaders.append({**player.to_dict(), **stats})
+                            elif position == 'D':
+                                defense_leaders.append({**player.to_dict(), **stats})
+
+                # Sort leaderboards
+                forwards_points_leaders = sorted(forwards_points_leaders, key=lambda x: (-x.get('points', 0), -x.get('goals', 0)))
+                defense_leaders = sorted(defense_leaders, key=lambda x: (-x.get('plus_minus', 0), -x.get('points', 0)))
+                goalies_leaders = sorted(goalies_leaders, key=lambda x: (-x.get('save_percentage', 0), -x.get('saves', 0)))
+
+                forwards_sort_label = "Points"
+                defense_sort_label = "Plus/Minus"
+                goalies_sort_label = "Save Percentage"
+            else:
+                forwards_points_leaders = []
+                defense_leaders = []
+                goalies_leaders = []
+                forwards_sort_label = "Points"
+                defense_sort_label = "Plus/Minus"
+                goalies_sort_label = "Save Percentage"
+        else:
+            # Normal leaderboards (not recent games filter)
+            if is_coach:
+                forwards_points_leaders = data_service.get_team_leaderboard(stat='points', position='F', team_id=team_id, game_type=game_type)
+                defense_leaders = data_service.get_team_leaderboard(stat='plus_minus', position='D', team_id=team_id, game_type=game_type)
+                goalies_leaders = data_service.get_team_leaderboard(stat='save_percentage', position='G', team_id=team_id, game_type=game_type)
+                forwards_sort_label = "Points"
+                defense_sort_label = "Plus/Minus"
+                goalies_sort_label = "Save Percentage"
+            else:
+                forwards_points_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='F', team_id=team_id, game_type=game_type)
+                defense_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='D', team_id=team_id, game_type=game_type)
+                goalies_leaders = data_service.get_team_leaderboard(stat='jersey_number', position='G', team_id=team_id, game_type=game_type)
+                forwards_sort_label = "Jersey Number"
+                defense_sort_label = "Jersey Number"
+                goalies_sort_label = "Jersey Number"
         
         # Create updated team stats component
         team_stats_component = dbc.Card([
