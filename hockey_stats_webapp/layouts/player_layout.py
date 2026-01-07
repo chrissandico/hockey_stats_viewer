@@ -255,14 +255,23 @@ def register_player_callbacks(app, data_service):
             return html.Div(), html.Div()
         
         # Get player by jersey number - filter by team to ensure we get the right player
-        print(f"Getting player with jersey number: {jersey_number} for team: {team_id}")
-        
+        print(f"Getting player with jersey number: {jersey_number} (type: {type(jersey_number)}) for team: {team_id}")
+
         # Get team-filtered players first
         team_players = data_service.get_players(team_id)
-        matching_players = team_players[team_players['JerseyNumber'] == jersey_number]
-        
+
+        # Convert jersey_number to int for comparison (dbc.Select returns strings)
+        try:
+            jersey_number_int = int(jersey_number)
+        except (ValueError, TypeError):
+            print(f"ERROR: Invalid jersey number format: {jersey_number}")
+            return html.Div(dbc.Alert("Invalid player selection", color="danger")), html.Div()
+
+        matching_players = team_players[team_players['JerseyNumber'] == jersey_number_int]
+
         if matching_players.empty:
-            print(f"ERROR: Player with jersey number {jersey_number} not found for team {team_id}!")
+            print(f"ERROR: Player with jersey number {jersey_number_int} not found for team {team_id}!")
+            print(f"Available players: {team_players['JerseyNumber'].tolist()}")
             return html.Div(dbc.Alert("Player not found", color="danger")), html.Div()
         
         player = matching_players.iloc[0]
