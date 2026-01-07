@@ -673,10 +673,16 @@ def register_recent_games_callbacks(app, data_service):
             goalie_stats = []
 
             for _, player in players.iterrows():
-                player_id = player['ID']
-                jersey_num = player['JerseyNumber']
-                name = f"{player['FirstName']} {player['LastName']}"
-                position = player['Position']
+                # Use centralized helper method for player ID
+                player_id = data_service._get_player_id_from_series(player)
+                if player_id is None:
+                    continue  # Skip if no valid player ID
+
+                jersey_num = player.get('JerseyNumber', 0)
+                first_name = player.get('FirstName', '')
+                last_name = player.get('LastName', '')
+                name = f"{first_name} {last_name}".strip()
+                position = player.get('Position', 'F')
 
                 if position == 'G':
                     # Goalie stats
