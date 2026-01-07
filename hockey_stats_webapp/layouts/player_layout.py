@@ -5,6 +5,7 @@ import pandas as pd
 import logging
 from layouts.navigation import create_navigation
 from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
+from components.unified_filter_bar import create_unified_filter_bar
 import config
 
 def create_player_layout(data_service, team_context=None):
@@ -42,52 +43,19 @@ def create_player_layout(data_service, team_context=None):
         # Title
         html.H1("Player Statistics", className="text-center mt-4"),
         
-        # Game type filter
-        create_game_type_filter_component(),
-        
-        # Session store for game type selection
-        create_game_type_session_store(),
-
-        # Session store for recent games count
-        dcc.Store(id='player-recent-games-store', storage_type='session', data='all'),
-
-        # Player selection and filters row
-        dbc.Row([
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader(html.H4("Select Player", className="card-title")),
-                    dbc.CardBody([
-                        html.P("Choose a player by jersey number:"),
-                        dbc.RadioItems(
-                            id='player-dropdown',
-                            options=radio_options,
-                            className="mb-3",
-                            inline=False
-                        ),
-                    ])
-                ], className="mb-4 shadow-sm")
-            ], md=8),
-
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader(html.H4("Recent Games Filter", className="card-title")),
-                    dbc.CardBody([
-                        html.P("View stats for:"),
-                        dbc.Select(
-                            id='player-recent-games-selector',
-                            options=[
-                                {'label': 'All Games', 'value': 'all'},
-                                {'label': 'Last 2 Games', 'value': '2'},
-                                {'label': 'Last 3 Games', 'value': '3'},
-                                {'label': 'Last 5 Games', 'value': '5'},
-                                {'label': 'Last 10 Games', 'value': '10'}
-                            ],
-                            value='all'
-                        )
-                    ])
-                ], className="mb-4 shadow-sm")
-            ], md=4)
-        ]),
+        # Unified filter bar
+        create_unified_filter_bar(
+            screen_specific_controls=html.Div([
+                html.Label("Select Player:", className="fw-bold mb-2"),
+                dbc.RadioItems(
+                    id='player-dropdown',
+                    options=radio_options,
+                    inline=False
+                )
+            ]),
+            recent_games_selector_id='player-recent-games-selector',
+            recent_games_store_id='player-recent-games-store'
+        ),
         
         # Progress indicator for data loading
         html.Div(id='player-progress-container', style={'display': 'none'}),
@@ -421,12 +389,6 @@ def register_player_callbacks(app, data_service):
                     dbc.Col([
                         html.H5(stats_title),
                         html.Div([
-                            # Common stat for both player types
-                            html.Div([
-                                html.Span("Games Played: ", className="fw-bold"),
-                                html.Span(f"{stats['games_played']}")
-                            ], className="mb-1"),
-                            
                             # Conditional stats based on position
                             *([
                                 # Goalie specific stats

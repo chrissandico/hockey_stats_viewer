@@ -5,6 +5,7 @@ import pandas as pd
 import logging
 from layouts.navigation import create_navigation
 from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
+from components.unified_filter_bar import create_unified_filter_bar
 import config
 
 def create_team_layout(data_service, team_context=None):
@@ -104,37 +105,12 @@ def create_team_layout(data_service, team_context=None):
         # Title
         html.H1("Team Statistics", className="text-center mt-4"),
         
-        # Game type filter
-        create_game_type_filter_component(),
-        
-        # Session store for game type selection
-        create_game_type_session_store(),
-
-        # Session store for recent games count
-        dcc.Store(id='team-recent-games-store', storage_type='session', data='all'),
-
-        # Recent games filter
-        dbc.Card([
-            dbc.CardHeader(html.H4("Recent Games Filter", className="card-title")),
-            dbc.CardBody([
-                dbc.Row([
-                    dbc.Col([
-                        html.P("View stats for:"),
-                        dbc.Select(
-                            id='team-recent-games-selector',
-                            options=[
-                                {'label': 'All Games', 'value': 'all'},
-                                {'label': 'Last 2 Games', 'value': '2'},
-                                {'label': 'Last 3 Games', 'value': '3'},
-                                {'label': 'Last 5 Games', 'value': '5'},
-                                {'label': 'Last 10 Games', 'value': '10'}
-                            ],
-                            value='all'
-                        )
-                    ], md=3)
-                ])
-            ])
-        ], className="mb-4 shadow-sm"),
+        # Unified filter bar (no screen-specific controls for Team Stats)
+        create_unified_filter_bar(
+            screen_specific_controls=None,
+            recent_games_selector_id='team-recent-games-selector',
+            recent_games_store_id='team-recent-games-store'
+        ),
 
         # Team season summary with loading
         dcc.Loading(
