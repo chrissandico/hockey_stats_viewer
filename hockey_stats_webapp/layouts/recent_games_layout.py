@@ -601,7 +601,9 @@ def register_recent_games_callbacks(app, data_service):
             games = games.copy()
             games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
             games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
-            num_games = num_games or 5  # Default to 5
+
+            # Convert num_games to int (it comes as string from dcc.Store)
+            num_games = int(num_games) if num_games else 5
             recent_games = games_sorted.head(num_games)
 
             # Ensure clean dataframe before passing to aggregation
@@ -655,7 +657,9 @@ def register_recent_games_callbacks(app, data_service):
             games = games.copy()
             games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
             games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
-            num_games = num_games or 5
+
+            # Convert num_games to int (it comes as string from dcc.Store)
+            num_games = int(num_games) if num_games else 5
             recent_games = games_sorted.head(num_games)
 
             # Ensure clean dataframe
