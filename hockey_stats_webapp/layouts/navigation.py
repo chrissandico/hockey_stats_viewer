@@ -24,9 +24,7 @@ def create_navigation():
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
                     dbc.NavItem(dbc.NavLink("Player Stats", href="/player", active="exact")),
                     dbc.NavItem(dbc.NavLink("Team Stats", href="/team", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Game Stats", href="/game", active="exact")),
-                    # Coach-only links
-                    html.Div(id="app-performance-nav-item", style={"display": "none"})
+                    dbc.NavItem(dbc.NavLink("Game Stats", href="/game", active="exact"))
                 ], className="me-auto", navbar=True),
                 id="navbar-collapse",
                 navbar=True,
@@ -41,27 +39,6 @@ def create_navigation():
         className="mb-4",
         sticky="top",  # Make the navbar stick to the top when scrolling
     )
-
-@callback(
-    [Output('app-performance-nav-item', 'children'),
-     Output('app-performance-nav-item', 'style')],
-    [Input('url', 'pathname')],
-    prevent_initial_call=False
-)
-def show_app_performance_nav(pathname):
-    """Show App Performance navigation only for coaches."""
-    try:
-        # Check if user is a coach
-        if 'is_coach' in session and session.get('is_coach', False):
-            nav_item = dbc.NavItem(dbc.NavLink([
-                html.I(className="fas fa-chart-line me-2"),
-                "App Performance"
-            ], href="/performance", active="exact"))
-            return nav_item, {'display': 'block'}
-        else:
-            return [], {'display': 'none'}
-    except Exception:
-        return [], {'display': 'none'}
 
 def register_navigation_callbacks(app):
     """
