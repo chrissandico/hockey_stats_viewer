@@ -646,15 +646,15 @@ def register_team_callbacks(app, data_service):
                         from layouts.recent_games_layout import _calculate_goalie_stats_for_games
                         stats = _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id)
                         if stats['games_played'] > 0:
-                            goalies_leaders.append({**player.to_dict(), **stats})
+                            goalies_leaders.append({'player': player.to_dict(), **stats})
                     else:
                         from layouts.recent_games_layout import _calculate_player_stats_for_games
                         stats = _calculate_player_stats_for_games(player_id, game_ids, data_service, team_id)
                         if stats['games_played'] > 0:
                             if position == 'F':
-                                forwards_points_leaders.append({**player.to_dict(), **stats})
+                                forwards_points_leaders.append({'player': player.to_dict(), **stats})
                             elif position == 'D':
-                                defense_leaders.append({**player.to_dict(), **stats})
+                                defense_leaders.append({'player': player.to_dict(), **stats})
 
                 # Sort leaderboards
                 forwards_points_leaders = sorted(forwards_points_leaders, key=lambda x: (-x.get('points', 0), -x.get('goals', 0)))
@@ -690,7 +690,7 @@ def register_team_callbacks(app, data_service):
         
         # Create updated team stats component
         team_stats_component = dbc.Card([
-            dbc.CardHeader(html.H4("Summary", className="card-title")),
+            dbc.CardHeader(html.H4(stats_title, className="card-title")),
             dbc.CardBody([
                 dbc.Row([
                     # Record
