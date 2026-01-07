@@ -357,6 +357,7 @@ def register_player_callbacks(app, data_service):
 
         # Filter to recent games if selected
         num_recent_games = None
+        stats_title = "Season Totals"
         if recent_games_data and recent_games_data != 'all':
             try:
                 num_recent_games_requested = int(recent_games_data)
@@ -364,9 +365,10 @@ def register_player_callbacks(app, data_service):
                 # Limit to available games
                 num_recent_games = min(num_recent_games_requested, len(game_log))
 
-                if num_recent_games > 0 and num_recent_games < len(game_log):
+                if num_recent_games > 0:
                     # Game log is already sorted by date (most recent first)
                     game_log = game_log[:num_recent_games]
+                    stats_title = f"Last {num_recent_games} Games"
                     print(f"DEBUG: Filtered to last {num_recent_games} games")
 
                     # Recalculate stats based on recent games only
@@ -382,16 +384,11 @@ def register_player_callbacks(app, data_service):
                         stats = _calculate_player_stats_for_games(player_id, recent_game_ids, data_service, team_id)
 
                     print(f"DEBUG: Recalculated stats for recent {num_recent_games} games: {stats}")
-                elif num_recent_games == len(game_log):
-                    # Player has exactly N games or fewer - show all but update title
-                    num_recent_games = len(game_log)
-                    print(f"DEBUG: Player has {num_recent_games} games (showing all)")
             except (ValueError, TypeError) as e:
                 print(f"WARNING: Could not parse recent_games_data: {e}")
                 num_recent_games = None
 
-        # Create player info card with debug info
-        stats_title = f"Last {num_recent_games} Games" if num_recent_games else "Season Totals"
+        # Create player info card
         player_info = dbc.Card([
             dbc.CardHeader(html.H4(f"#{player['JerseyNumber']}", className="card-title")),
             dbc.CardBody([
