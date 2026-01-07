@@ -577,7 +577,10 @@ def register_recent_games_callbacks(app, data_service):
                 return dbc.Alert("No games found for selected filters", color="info")
 
             # Sort by date and get N most recent
-            games_sorted = games.sort_values('Date', ascending=False)
+            # Convert Date to datetime for proper sorting and reset index
+            games = games.copy()
+            games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
+            games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
             num_games = num_games or 5  # Default to 5
             recent_games = games_sorted.head(num_games)
 
@@ -618,7 +621,10 @@ def register_recent_games_callbacks(app, data_service):
                 return dbc.Alert("No games found for selected filters", color="info")
 
             # Sort by date and get N most recent
-            games_sorted = games.sort_values('Date', ascending=False)
+            # Convert Date to datetime for proper sorting and reset index
+            games = games.copy()
+            games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
+            games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
             num_games = num_games or 5
             recent_games = games_sorted.head(num_games)
             game_ids = recent_games['ID'].tolist()
