@@ -688,7 +688,7 @@ def register_team_callbacks(app, data_service):
                 defense_sort_label = "Jersey Number"
                 goalies_sort_label = "Jersey Number"
         
-        # Create updated team stats component
+        # Create updated team stats component with 4-column layout
         team_stats_component = dbc.Card([
             dbc.CardHeader(html.H4(stats_title, className="card-title")),
             dbc.CardBody([
@@ -714,8 +714,8 @@ def register_team_callbacks(app, data_service):
                                 html.Span(f"{team_stats['ties']}")
                             ], className="mb-1"),
                         ])
-                    ], md=4),
-                    
+                    ], md=3),
+
                     # Goals
                     dbc.Col([
                         html.H5("Goals"),
@@ -729,30 +729,45 @@ def register_team_callbacks(app, data_service):
                                 html.Span(f"{team_stats['goals_against']}")
                             ], className="mb-1"),
                             html.Div([
-                                html.Span("Goal Differential: ", className="fw-bold"),
-                                html.Span(f"{team_stats['goals_for'] - team_stats['goals_against']}")
+                                html.Span("Differential: ", className="fw-bold"),
+                                html.Span(f"{team_stats['goals_for'] - team_stats['goals_against']:+d}")
                             ], className="mb-1"),
                         ])
-                    ], md=4),
-                    
-                    # Percentages
+                    ], md=3),
+
+                    # Shots
                     dbc.Col([
-                        html.H5("Percentages"),
+                        html.H5("Shots"),
                         html.Div([
                             html.Div([
-                                html.Span("Win Percentage: ", className="fw-bold"),
-                                html.Span(f"{team_stats['win_percentage']:.3f}")
+                                html.Span("Shots For: ", className="fw-bold"),
+                                html.Span(f"{team_stats.get('shots_for', 0)}")
                             ], className="mb-1"),
                             html.Div([
-                                html.Span("Goals For per Game: ", className="fw-bold"),
-                                html.Span(f"{team_stats['goals_for'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                                html.Span("Shots Against: ", className="fw-bold"),
+                                html.Span(f"{team_stats.get('shots_against', 0)}")
                             ], className="mb-1"),
                             html.Div([
-                                html.Span("Goals Against per Game: ", className="fw-bold"),
-                                html.Span(f"{team_stats['goals_against'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                                html.Span("Differential: ", className="fw-bold"),
+                                html.Span(f"{team_stats.get('shots_for', 0) - team_stats.get('shots_against', 0):+d}")
                             ], className="mb-1"),
                         ])
-                    ], md=4),
+                    ], md=3),
+
+                    # Penalties
+                    dbc.Col([
+                        html.H5("Penalties"),
+                        html.Div([
+                            html.Div([
+                                html.Span("Penalties: ", className="fw-bold"),
+                                html.Span(f"{team_stats.get('penalties', 0)}")
+                            ], className="mb-1"),
+                            html.Div([
+                                html.Span("Penalty Minutes: ", className="fw-bold"),
+                                html.Span(f"{team_stats.get('penalty_minutes', 0)}")
+                            ], className="mb-1"),
+                        ])
+                    ], md=3),
                 ])
             ])
         ], className="mb-4 shadow-sm")
