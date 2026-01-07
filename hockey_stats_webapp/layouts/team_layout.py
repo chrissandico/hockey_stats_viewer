@@ -459,6 +459,7 @@ def register_team_callbacks(app, data_service):
     )
     def update_recent_games_store(recent_games_value):
         """Store the selected recent games count."""
+        print(f"=== TEAM RECENT GAMES STORE CALLBACK: Selector value changed to: {recent_games_value} ===")
         return recent_games_value
 
     @app.callback(
@@ -471,27 +472,30 @@ def register_team_callbacks(app, data_service):
     def update_team_stats_by_game_type(game_type_data, recent_games_data):
         """Update team statistics based on selected game type."""
         from flask import session
-        
+
+        print(f"\n=== TEAM CALLBACK TRIGGERED ===")
+        print(f"=== INPUTS: game_type_data={game_type_data}, recent_games_data={recent_games_data} ===")
+
         # Get team context from session
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
-        
+
         # Get game type from callback parameter instead of session
         game_type = game_type_data if isinstance(game_type_data, str) else None
         if game_type_data and isinstance(game_type_data, dict):
             game_type = game_type_data.get('game_type')
-        
+
         # Handle "All Games" selection - when active_tab is "all", game_type should be None
         if game_type == "all":
             game_type = None
-        
+
         # Only default to Regular Season if game_type is explicitly undefined, not when it's None (All Games)
         # None means "All Games", empty string or False means no selection made
         if game_type == "" or game_type is False:
             game_type = 'R'
-        
-        print(f"\n=== TEAM CALLBACK: update_team_stats_by_game_type called with game_type_data={game_type_data} ===")
-        print(f"Team ID: {team_id}, Coach status: {is_coach}, Game type: {game_type}")
+
+        print(f"=== PROCESSED: Team ID={team_id}, Coach={is_coach}, Game type={game_type} ===")
+        print(f"=== Recent games data: {recent_games_data} ===")
         
         # Cache management: Track previous game type to detect changes
         previous_game_type = session.get('team_previous_game_type')
@@ -974,5 +978,8 @@ def register_team_callbacks(app, data_service):
         except Exception as post_metrics_error:
             logger.warning(f"Team layout: Failed to collect post-operation cache metrics: {str(post_metrics_error)}")
             print(f"TEAM CALLBACK: Warning - Failed to collect post-operation cache metrics: {str(post_metrics_error)}")
-        
+
+        print(f"=== TEAM CALLBACK RETURNING COMPONENTS ===")
+        print(f"=== Stats title should show: {stats_title} ===")
+
         return team_stats_component, leaderboards_component, game_log_component
