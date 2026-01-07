@@ -159,7 +159,8 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
             'shots_for': 0,
             'shots_against': 0,
             'penalties': 0,
-            'penalty_minutes': 0
+            'penalty_minutes': 0,
+            'win_percentage': 0.0
         }
 
     # Ensure we're working with a clean dataframe
@@ -181,8 +182,10 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
     game_ids = recent_games['ID'].tolist() if 'ID' in recent_games.columns else []
 
     if not game_ids:
+        games_played = len(recent_games)
+        win_percentage = (wins / games_played) if games_played > 0 else 0.0
         return {
-            'games_played': len(recent_games),
+            'games_played': games_played,
             'wins': wins,
             'losses': losses,
             'ties': ties,
@@ -191,7 +194,8 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
             'shots_for': 0,
             'shots_against': 0,
             'penalties': 0,
-            'penalty_minutes': 0
+            'penalty_minutes': 0,
+            'win_percentage': win_percentage
         }
 
     # Get events for these games to calculate shots and penalties
@@ -223,8 +227,12 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
     penalties = len(team_penalty_events)
     penalty_minutes = team_penalty_events['PenaltyDuration'].sum() if 'PenaltyDuration' in team_penalty_events.columns else 0
 
+    # Calculate win percentage
+    games_played = len(recent_games)
+    win_percentage = (wins / games_played) if games_played > 0 else 0.0
+
     return {
-        'games_played': len(recent_games),
+        'games_played': games_played,
         'wins': wins,
         'losses': losses,
         'ties': ties,
@@ -233,7 +241,8 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
         'shots_for': shots_for,
         'shots_against': shots_against,
         'penalties': penalties,
-        'penalty_minutes': int(penalty_minutes)
+        'penalty_minutes': int(penalty_minutes),
+        'win_percentage': win_percentage
     }
 
 
