@@ -33,11 +33,50 @@ def create_team_layout(data_service, team_context=None):
     # Calculate team stats with team filtering and game type filtering
     team_stats = data_service.calculate_team_stats(team_id, game_type)
     print(f"TEAM LAYOUT: Team stats calculated: {team_stats}")
-    
+
     # Get games for the game log with team filtering, game type filtering, and date filtering (only completed games)
     games = data_service.get_games(team_id, game_type)
     games = data_service._filter_games_by_date(games, include_future=False)
     print(f"TEAM LAYOUT: Games retrieved: {len(games)} games (filtered to completed games only)")
+
+    # Calculate shots and penalties from events for 4-column display
+    if not games.empty:
+        game_ids = games['ID'].tolist() if 'ID' in games.columns else []
+        all_events = data_service.get_events()
+        team_events = all_events[all_events['GameID'].isin(game_ids)]
+        team_identifier = data_service._get_team_identifier_for_events(team_id)
+
+        # Calculate shots
+        team_shot_events = team_events[
+            (team_events['EventType'] == 'Shot') &
+            (team_events['Team'] == team_identifier)
+        ]
+        shots_for = len(team_shot_events)
+
+        opponent_shot_events = team_events[
+            (team_events['EventType'] == 'Shot') &
+            (team_events['Team'] != team_identifier)
+        ]
+        shots_against = len(opponent_shot_events)
+
+        # Calculate penalties
+        team_penalty_events = team_events[
+            (team_events['EventType'] == 'Penalty') &
+            (team_events['Team'] == team_identifier)
+        ]
+        penalties = len(team_penalty_events)
+        penalty_minutes = team_penalty_events['PenaltyDuration'].sum() if 'PenaltyDuration' in team_penalty_events.columns else 0
+
+        # Add to team_stats
+        team_stats['shots_for'] = shots_for
+        team_stats['shots_against'] = shots_against
+        team_stats['penalties'] = penalties
+        team_stats['penalty_minutes'] = int(penalty_minutes)
+    else:
+        team_stats['shots_for'] = 0
+        team_stats['shots_against'] = 0
+        team_stats['penalties'] = 0
+        team_stats['penalty_minutes'] = 0
     
     # Get leaderboards with team filtering and game type filtering - use different sorting based on coach status
     if is_coach:
@@ -102,8 +141,8 @@ def create_team_layout(data_service, team_context=None):
                                         html.Span(f"{team_stats['ties']}")
                                     ], className="mb-1"),
                                 ])
-                            ], md=4),
-                            
+                            ], md=3),
+
                             # Goals
                             dbc.Col([
                                 html.H5("Goals"),
@@ -121,26 +160,41 @@ def create_team_layout(data_service, team_context=None):
                                         html.Span(f"{team_stats['goals_for'] - team_stats['goals_against']}")
                                     ], className="mb-1"),
                                 ])
-                            ], md=4),
-                            
-                            # Percentages
+                            ], md=3),
+
+                            # Shots
                             dbc.Col([
-                                html.H5("Percentages"),
+                                html.H5("Shots"),
                                 html.Div([
                                     html.Div([
-                                        html.Span("Win Percentage: ", className="fw-bold"),
-                                        html.Span(f"{team_stats['win_percentage']:.3f}")
+                                        html.Span("Shots For: ", className="fw-bold"),
+                                        html.Span(f"{team_stats['shots_for']}")
                                     ], className="mb-1"),
                                     html.Div([
-                                        html.Span("Goals For per Game: ", className="fw-bold"),
-                                        html.Span(f"{team_stats['goals_for'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                                        html.Span("Shots Against: ", className="fw-bold"),
+                                        html.Span(f"{team_stats['shots_against']}")
                                     ], className="mb-1"),
                                     html.Div([
-                                        html.Span("Goals Against per Game: ", className="fw-bold"),
-                                        html.Span(f"{team_stats['goals_against'] / team_stats['games_played']:.2f}" if team_stats['games_played'] > 0 else "0.00")
+                                        html.Span("Shot Differential: ", className="fw-bold"),
+                                        html.Span(f"{team_stats['shots_for'] - team_stats['shots_against']}")
                                     ], className="mb-1"),
                                 ])
-                            ], md=4),
+                            ], md=3),
+
+                            # Penalties
+                            dbc.Col([
+                                html.H5("Penalties"),
+                                html.Div([
+                                    html.Div([
+                                        html.Span("Penalties: ", className="fw-bold"),
+                                        html.Span(f"{team_stats['penalties']}")
+                                    ], className="mb-1"),
+                                    html.Div([
+                                        html.Span("Penalty Minutes: ", className="fw-bold"),
+                                        html.Span(f"{team_stats['penalty_minutes']}")
+                                    ], className="mb-1"),
+                                ])
+                            ], md=3),
                         ])
                     ])
                 ], className="mb-4 shadow-sm")

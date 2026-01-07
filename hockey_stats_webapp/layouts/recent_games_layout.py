@@ -239,7 +239,7 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
 
 def _create_team_performance_card(team_stats, num_games_requested, num_games_actual):
     """
-    Create the team performance card display matching Team Stats screen format.
+    Create the team performance card display with 4-column layout.
 
     Args:
         team_stats (dict): Aggregated team statistics
@@ -249,18 +249,9 @@ def _create_team_performance_card(team_stats, num_games_requested, num_games_act
     Returns:
         dbc.Card: The team performance card
     """
-    # Calculate differentials and averages
+    # Calculate differentials
     goal_diff = team_stats['goals_for'] - team_stats['goals_against']
-    gp = team_stats['games_played']
-
-    # Win percentage
-    win_pct = (team_stats['wins'] / gp) if gp > 0 else 0.0
-
-    # Per-game averages
-    gf_per_game = (team_stats['goals_for'] / gp) if gp > 0 else 0.0
-    ga_per_game = (team_stats['goals_against'] / gp) if gp > 0 else 0.0
-    sf_per_game = (team_stats['shots_for'] / gp) if gp > 0 else 0.0
-    sa_per_game = (team_stats['shots_against'] / gp) if gp > 0 else 0.0
+    shot_diff = team_stats['shots_for'] - team_stats['shots_against']
 
     # Warning message if fewer games than requested
     warning_msg = None
@@ -297,7 +288,7 @@ def _create_team_performance_card(team_stats, num_games_requested, num_games_act
                             html.Span(f"{team_stats['ties']}")
                         ], className="mb-1"),
                     ])
-                ], md=4),
+                ], md=3),
 
                 # Goals column
                 dbc.Col([
@@ -316,26 +307,41 @@ def _create_team_performance_card(team_stats, num_games_requested, num_games_act
                             html.Span(f"{goal_diff}")
                         ], className="mb-1"),
                     ])
-                ], md=4),
+                ], md=3),
 
-                # Averages column
+                # Shots column
                 dbc.Col([
-                    html.H5("Averages"),
+                    html.H5("Shots"),
                     html.Div([
                         html.Div([
-                            html.Span("Win Percentage: ", className="fw-bold"),
-                            html.Span(f"{win_pct:.3f}")
+                            html.Span("Shots For: ", className="fw-bold"),
+                            html.Span(f"{team_stats['shots_for']}")
                         ], className="mb-1"),
                         html.Div([
-                            html.Span("Goals For per Game: ", className="fw-bold"),
-                            html.Span(f"{gf_per_game:.2f}")
+                            html.Span("Shots Against: ", className="fw-bold"),
+                            html.Span(f"{team_stats['shots_against']}")
                         ], className="mb-1"),
                         html.Div([
-                            html.Span("Goals Against per Game: ", className="fw-bold"),
-                            html.Span(f"{ga_per_game:.2f}")
+                            html.Span("Shot Differential: ", className="fw-bold"),
+                            html.Span(f"{shot_diff}")
                         ], className="mb-1"),
                     ])
-                ], md=4),
+                ], md=3),
+
+                # Penalties column
+                dbc.Col([
+                    html.H5("Penalties"),
+                    html.Div([
+                        html.Div([
+                            html.Span("Penalties: ", className="fw-bold"),
+                            html.Span(f"{team_stats['penalties']}")
+                        ], className="mb-1"),
+                        html.Div([
+                            html.Span("Penalty Minutes: ", className="fw-bold"),
+                            html.Span(f"{team_stats['penalty_minutes']}")
+                        ], className="mb-1"),
+                    ])
+                ], md=3),
             ])
         ])
     ], className="mb-4 shadow-sm")
