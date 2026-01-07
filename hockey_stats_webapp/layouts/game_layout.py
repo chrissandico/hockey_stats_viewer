@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 from layouts.navigation import create_navigation
 from components.period_breakdown import create_period_breakdown_component
-from components.game_type_filter import create_game_type_badge, create_game_type_filter_component, create_game_type_session_store
+from components.game_type_filter import create_game_type_badge
 import config
 
 def create_game_layout(data_service, team_context=None):
@@ -52,23 +52,17 @@ def create_game_layout(data_service, team_context=None):
     return html.Div([
         # Navigation bar
         create_navigation(),
-        
+
         # Title
         html.H1("Game Statistics", className="text-center mt-4"),
-        
-        # Game type filter
-        create_game_type_filter_component(),
-        
-        # Game type session store
-        create_game_type_session_store(),
-        
+
         # Game selection
         dbc.Card([
             dbc.CardHeader(html.H4("Select Game", className="card-title")),
             dbc.CardBody([
-                html.P("Choose a game:"),
+                html.Label("Choose a game:", className="form-label fw-bold mb-2"),
                 html.Div(id='game-dropdown-container', children=[
-                    # This will be populated by the callback with sectioned games
+                    # This will be populated by the callback
                     html.P("Loading games...", className="text-muted")
                 ])
             ])
@@ -120,95 +114,23 @@ def register_game_callbacks(app, data_service, team_context=None):
     # Extract team_id from context for use in callbacks
     team_id = team_context['team_id'] if team_context else None
     
-    # Callback to update game dropdown based on game type filter
+    # Callback to update game dropdown - show all games (no game type filtering)
     @app.callback(
         dash.dependencies.Output('game-dropdown-container', 'children'),
-        [dash.dependencies.Input('game-type-session-store', 'data')]
+        [dash.dependencies.Input('url', 'pathname')]  # Trigger on page load
     )
-    def update_game_dropdown(game_type_data):
-        # Get game type from callback parameter (same pattern as player/team layouts)
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type_data and isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type')
-        
-        # Handle "All Games" selection - when active_tab is "all", game_type should be None
-        if game_type == "all":
-            game_type = None
-        
-        # Only default to All Games if game_type is explicitly undefined, not when it's None (All Games)
-        # None means "All Games", empty string or False means no selection made
-        if game_type == "" or game_type is False:
-            game_type = None  # Default to All Games instead of Regular Season
+    def update_game_dropdown(pathname):
+        # Show all games regardless of type
+        game_type = None
         
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         from datetime import datetime, date
-        
-        # Get team_id and coach status from session for proper filtering
+
+        # Get team_id from session for proper filtering
         session_team_id = None
-        is_coach = False
         if session.get('authenticated', False):
             session_team_id = session.get('team_id')
-            is_coach = session.get('is_coach', False)
-        
-        # Cache management: Track previous game type to detect changes
-        previous_game_type = session.get('game_previous_game_type')
-        logger = logging.getLogger(__name__)
-        
-        # Clear cache if game type has changed
-        if previous_game_type != game_type:
-            try:
-                logger.info(f"Game layout: Game type changed from {previous_game_type} to {game_type}, clearing cache for team {session_team_id}")
-                print(f"GAME CALLBACK: Game type changed from {previous_game_type} to {game_type}, clearing cache")
-                
-                # Clear cache for the previous game type to ensure fresh data
-                if previous_game_type is not None:
-                    try:
-                        data_service.clear_games_cache(team_id=session_team_id, game_type=previous_game_type)
-                        logger.debug(f"Game layout: Successfully cleared cache for previous game type {previous_game_type}")
-                        print(f"GAME CALLBACK: Cleared cache for previous game type {previous_game_type}")
-                    except Exception as prev_cache_error:
-                        logger.warning(f"Game layout: Failed to clear cache for previous game type {previous_game_type}: {str(prev_cache_error)}")
-                        print(f"GAME CALLBACK: Warning - Failed to clear cache for previous game type {previous_game_type}: {str(prev_cache_error)}")
-                        # Continue with clearing current game type cache
-                
-                # Clear cache for the new game type to ensure consistency
-                try:
-                    data_service.clear_games_cache(team_id=session_team_id, game_type=game_type)
-                    logger.debug(f"Game layout: Successfully cleared cache for current game type {game_type}")
-                    print(f"GAME CALLBACK: Cleared cache for current game type {game_type}")
-                except Exception as curr_cache_error:
-                    logger.warning(f"Game layout: Failed to clear cache for current game type {game_type}: {str(curr_cache_error)}")
-                    print(f"GAME CALLBACK: Warning - Failed to clear cache for current game type {game_type}: {str(curr_cache_error)}")
-                    # Continue execution - cache clearing failure shouldn't break the UI
-                
-                # Update session with new game type (do this even if cache clearing partially failed)
-                session['game_previous_game_type'] = game_type
-                logger.info(f"Game layout: Cache management completed successfully for team {session_team_id}")
-                print(f"GAME CALLBACK: Cache management completed for team {session_team_id}")
-                
-            except Exception as cache_error:
-                logger.error(f"Game layout: Unexpected error in cache management for team {session_team_id}: {str(cache_error)}")
-                print(f"GAME CALLBACK: Error in cache management: {str(cache_error)}")
-                
-                # Add cache diagnostic information for debugging
-                try:
-                    cache_info = data_service.get_cache_info()
-                    logger.debug(f"Game layout: Cache diagnostic info after error: {cache_info}")
-                except Exception as diag_error:
-                    logger.warning(f"Game layout: Failed to get cache diagnostic info: {str(diag_error)}")
-                
-                # Ensure session is still updated to prevent repeated cache clearing attempts
-                try:
-                    session['game_previous_game_type'] = game_type
-                    logger.debug(f"Game layout: Session updated despite cache error")
-                except Exception as session_error:
-                    logger.error(f"Game layout: Failed to update session after cache error: {str(session_error)}")
-                    print(f"GAME CALLBACK: Warning - Failed to update session: {str(session_error)}")
-                # Continue execution - cache errors should not break the user interface
-        else:
-            logger.debug(f"Game layout: Game type unchanged ({game_type}), no cache clearing needed")
-            print(f"GAME CALLBACK: Game type unchanged ({game_type}), no cache clearing needed")
         
         # Use session team_id if available, otherwise fall back to passed team_id
         effective_team_id = session_team_id if session_team_id else team_id
@@ -316,13 +238,17 @@ def register_game_callbacks(app, data_service, team_context=None):
         
         # If no games, show a message
         if not all_options:
-            return html.P("No games found for the selected filters.", className="text-muted")
-        
-        # Create a single radio button group
-        return dbc.RadioItems(
+            return html.P("No games found.", className="text-muted")
+
+        # Add placeholder option at the beginning
+        all_options.insert(0, {'label': '-- Select a Game --', 'value': '', 'disabled': True})
+
+        # Create a dropdown (Select) instead of radio buttons
+        return dbc.Select(
             id='game-dropdown',
             options=all_options,
-            className="mb-3"
+            value='',  # No game selected by default
+            className="form-select"
         )
     
     # Callback for game summary
@@ -331,8 +257,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         [dash.dependencies.Input('game-dropdown', 'value')]
     )
     def update_game_summary(game_id):
-        # Skip header values
-        if game_id is None or str(game_id).startswith('header-'):
+        # Skip empty/placeholder values and header values
+        if not game_id or game_id == '' or str(game_id).startswith('header-'):
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
@@ -485,8 +411,8 @@ def register_game_callbacks(app, data_service, team_context=None):
          dash.dependencies.Input('btn-goalies', 'active')]
     )
     def update_player_stats(game_id, all_active, forwards_active, defense_active, goalies_active):
-        # Skip header values
-        if game_id is None or str(game_id).startswith('header-'):
+        # Skip empty/placeholder values and header values
+        if not game_id or game_id == '' or str(game_id).startswith('header-'):
             return html.Div()
         
         # Get team context from session (import here to avoid circular imports)
