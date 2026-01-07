@@ -432,7 +432,9 @@ def _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id
     goals_against = len(opponent_shot_events[opponent_shot_events['IsGoal'] == True])
 
     saves = shots_against - goals_against
-    save_percentage = (saves / shots_against * 100) if shots_against > 0 else 0.0
+    # Save percentage as decimal (0-1 range) to match DataService format
+    save_percentage = (saves / shots_against) if shots_against > 0 else 0.0
+    save_percentage = max(0, min(1, save_percentage))  # Clamp to 0-1 range
 
     # Count games played - games where goalie faced at least 1 shot
     games_with_shots = goalie_events[
@@ -470,8 +472,8 @@ def _calculate_goalie_stats_for_games(player_id, game_ids, data_service, team_id
         'saves': saves,
         'shots_against': shots_against,
         'goals_against': goals_against,
-        'save_percentage': round(save_percentage, 1),
-        'gaa': round(gaa, 2)
+        'save_percentage': save_percentage,  # Return as decimal (0-1 range) for UI formatting
+        'gaa': gaa  # Return raw value for UI formatting
     }
 
 
