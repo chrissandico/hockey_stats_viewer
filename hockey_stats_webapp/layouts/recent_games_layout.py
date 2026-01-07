@@ -167,17 +167,37 @@ def _aggregate_recent_games_team_stats(recent_games, data_service, team_id):
             'penalty_minutes': 0
         }
 
+    # Ensure we're working with a clean dataframe
+    recent_games = recent_games.reset_index(drop=True)
+
     # Calculate W-L-T record
-    wins = len(recent_games[recent_games['Result'] == 'W'])
-    losses = len(recent_games[recent_games['Result'] == 'L'])
-    ties = len(recent_games[recent_games['Result'] == 'T'])
+    if 'Result' in recent_games.columns:
+        wins = len(recent_games[recent_games['Result'] == 'W'])
+        losses = len(recent_games[recent_games['Result'] == 'L'])
+        ties = len(recent_games[recent_games['Result'] == 'T'])
+    else:
+        wins = losses = ties = 0
 
     # Calculate goals
     goals_for = recent_games['GoalsFor'].sum() if 'GoalsFor' in recent_games.columns else 0
     goals_against = recent_games['GoalsAgainst'].sum() if 'GoalsAgainst' in recent_games.columns else 0
 
     # Get game IDs for event-based stats
-    game_ids = recent_games['ID'].tolist()
+    game_ids = recent_games['ID'].tolist() if 'ID' in recent_games.columns else []
+
+    if not game_ids:
+        return {
+            'games_played': len(recent_games),
+            'wins': wins,
+            'losses': losses,
+            'ties': ties,
+            'goals_for': int(goals_for),
+            'goals_against': int(goals_against),
+            'shots_for': 0,
+            'shots_against': 0,
+            'penalties': 0,
+            'penalty_minutes': 0
+        }
 
     # Get events for these games to calculate shots and penalties
     all_events = data_service.get_events()
@@ -584,6 +604,9 @@ def register_recent_games_callbacks(app, data_service):
             num_games = num_games or 5  # Default to 5
             recent_games = games_sorted.head(num_games)
 
+            # Ensure clean dataframe before passing to aggregation
+            recent_games = recent_games.copy()
+
             # Aggregate team stats
             team_stats = _aggregate_recent_games_team_stats(recent_games, data_service, team_id)
 
@@ -591,8 +614,15 @@ def register_recent_games_callbacks(app, data_service):
             return _create_team_performance_card(team_stats, num_games, len(recent_games))
 
         except Exception as e:
-            logger.error(f"Error updating team performance: {e}")
-            return dbc.Alert(f"Error loading team stats: {str(e)}", color="danger")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Error updating team performance: {e}\n{error_details}")
+            return dbc.Alert([
+                html.H5("Error loading team stats", className="alert-heading"),
+                html.P(f"{str(e)}"),
+                html.Hr(),
+                html.Pre(error_details, style={"fontSize": "10px", "maxHeight": "200px", "overflow": "auto"})
+            ], color="danger")
 
     @app.callback(
         Output('player-leaderboards-section', 'children'),
@@ -627,7 +657,13 @@ def register_recent_games_callbacks(app, data_service):
             games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
             num_games = num_games or 5
             recent_games = games_sorted.head(num_games)
-            game_ids = recent_games['ID'].tolist()
+
+            # Ensure clean dataframe
+            recent_games = recent_games.copy()
+            game_ids = recent_games['ID'].tolist() if 'ID' in recent_games.columns else []
+
+            if not game_ids:
+                return dbc.Alert("No game IDs found in selected games", color="warning")
 
             # Get all players on team
             players = data_service.get_players(team_id)
@@ -711,5 +747,12 @@ def register_recent_games_callbacks(app, data_service):
             ])
 
         except Exception as e:
-            logger.error(f"Error updating player leaderboards: {e}")
-            return dbc.Alert(f"Error loading leaderboards: {str(e)}", color="danger")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Error updating player leaderboards: {e}\n{error_details}")
+            return dbc.Alert([
+                html.H5("Error loading leaderboards", className="alert-heading"),
+                html.P(f"{str(e)}"),
+                html.Hr(),
+                html.Pre(error_details, style={"fontSize": "10px", "maxHeight": "200px", "overflow": "auto"})
+            ], color="danger")
