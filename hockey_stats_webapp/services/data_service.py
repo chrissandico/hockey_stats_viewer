@@ -3106,7 +3106,7 @@ class DataService:
                     # Only include players who have at least some stats
                     if goals > 0 or assists > 0 or plus_minus != 0 or penalty_minutes > 0:
                         player_stats.append({
-                            'player': player.to_dict(),
+                            'player': player,  # Store Series object, not dict
                             'goals': goals,
                             'assists': assists,
                             'points': points,
@@ -3224,7 +3224,7 @@ class DataService:
                     shutouts += 1
 
             goalie_stats.append({
-                'player': goalie.to_dict(),
+                'player': goalie,  # Store Series object, not dict
                 'games_played': games_played,
                 'wins': wins,
                 'losses': losses,
