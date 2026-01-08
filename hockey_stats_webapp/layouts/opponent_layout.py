@@ -332,7 +332,7 @@ def create_player_table(players, is_coach=False):
             # Coaches see plus/minus
             table_data = [
                 {
-                    'Player': f"#{p['player'].get('JerseyNumber', '?')} {p['player'].get('FirstName', '')} {p['player'].get('LastName', '')}",
+                    'Player': f"#{p['player']['JerseyNumber']}",
                     'G': p['goals'],
                     'A': p['assists'],
                     'P': p['points'],
@@ -351,7 +351,7 @@ def create_player_table(players, is_coach=False):
             # Players don't see plus/minus
             table_data = [
                 {
-                    'Player': f"#{p['player'].get('JerseyNumber', '?')} {p['player'].get('FirstName', '')} {p['player'].get('LastName', '')}",
+                    'Player': f"#{p['player']['JerseyNumber']}",
                     'G': p['goals'],
                     'A': p['assists'],
                     'P': p['points']
@@ -402,7 +402,7 @@ def create_goalie_stats_card(opponent_name, goalies):
     try:
         table_data = [
             {
-                'Player': f"#{g['player'].get('JerseyNumber', '?')} {g['player'].get('FirstName', '')} {g['player'].get('LastName', '')}",
+                'Player': f"#{g['player']['JerseyNumber']}",
                 'GP': g['games_played'],
                 'W': g['wins'],
                 'L': g['losses'],
