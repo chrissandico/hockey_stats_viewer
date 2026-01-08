@@ -327,42 +327,46 @@ def create_player_table(players, is_coach=False):
         return html.P("No data available", className="text-muted")
 
     # Build table data and columns based on coach status
-    if is_coach:
-        # Coaches see plus/minus
-        table_data = [
-            {
-                'Player': f"#{p['player']['JerseyNumber']} {p['player']['FirstName']} {p['player']['LastName']}",
-                'G': p['goals'],
-                'A': p['assists'],
-                'P': p['points'],
-                '+/-': p['plus_minus']
-            }
-            for p in players
-        ]
-        columns = [
-            {'name': 'Player', 'id': 'Player'},
-            {'name': 'G', 'id': 'G'},
-            {'name': 'A', 'id': 'A'},
-            {'name': 'P', 'id': 'P'},
-            {'name': '+/-', 'id': '+/-'}
-        ]
-    else:
-        # Players don't see plus/minus
-        table_data = [
-            {
-                'Player': f"#{p['player']['JerseyNumber']} {p['player']['FirstName']} {p['player']['LastName']}",
-                'G': p['goals'],
-                'A': p['assists'],
-                'P': p['points']
-            }
-            for p in players
-        ]
-        columns = [
-            {'name': 'Player', 'id': 'Player'},
-            {'name': 'G', 'id': 'G'},
-            {'name': 'A', 'id': 'A'},
-            {'name': 'P', 'id': 'P'}
-        ]
+    try:
+        if is_coach:
+            # Coaches see plus/minus
+            table_data = [
+                {
+                    'Player': f"#{p['player'].get('JerseyNumber', '?')} {p['player'].get('FirstName', '')} {p['player'].get('LastName', '')}",
+                    'G': p['goals'],
+                    'A': p['assists'],
+                    'P': p['points'],
+                    '+/-': p['plus_minus']
+                }
+                for p in players
+            ]
+            columns = [
+                {'name': 'Player', 'id': 'Player'},
+                {'name': 'G', 'id': 'G'},
+                {'name': 'A', 'id': 'A'},
+                {'name': 'P', 'id': 'P'},
+                {'name': '+/-', 'id': '+/-'}
+            ]
+        else:
+            # Players don't see plus/minus
+            table_data = [
+                {
+                    'Player': f"#{p['player'].get('JerseyNumber', '?')} {p['player'].get('FirstName', '')} {p['player'].get('LastName', '')}",
+                    'G': p['goals'],
+                    'A': p['assists'],
+                    'P': p['points']
+                }
+                for p in players
+            ]
+            columns = [
+                {'name': 'Player', 'id': 'Player'},
+                {'name': 'G', 'id': 'G'},
+                {'name': 'A', 'id': 'A'},
+                {'name': 'P', 'id': 'P'}
+            ]
+    except Exception as e:
+        logger.error(f"Error building player table: {e}")
+        return html.P(f"Error displaying player data: {str(e)}", className="text-danger")
 
     return dash_table.DataTable(
         data=table_data,
@@ -395,20 +399,24 @@ def create_goalie_stats_card(opponent_name, goalies):
     if not goalies:
         return html.Div()  # Hide if no goalies
 
-    table_data = [
-        {
-            'Player': f"#{g['player']['JerseyNumber']} {g['player']['FirstName']} {g['player']['LastName']}",
-            'GP': g['games_played'],
-            'W': g['wins'],
-            'L': g['losses'],
-            'T': g['ties'],
-            'SV%': f"{g['save_percentage']:.3f}",
-            'GAA': f"{g['gaa']:.2f}",
-            'SO': g['shutouts'],
-            'SOG': g['shots_against']
-        }
-        for g in goalies
-    ]
+    try:
+        table_data = [
+            {
+                'Player': f"#{g['player'].get('JerseyNumber', '?')} {g['player'].get('FirstName', '')} {g['player'].get('LastName', '')}",
+                'GP': g['games_played'],
+                'W': g['wins'],
+                'L': g['losses'],
+                'T': g['ties'],
+                'SV%': f"{g['save_percentage']:.3f}",
+                'GAA': f"{g['gaa']:.2f}",
+                'SO': g['shutouts'],
+                'SOG': g['shots_against']
+            }
+            for g in goalies
+        ]
+    except Exception as e:
+        logger.error(f"Error building goalie table: {e}")
+        return html.Div()  # Hide on error
 
     return dbc.Card([
         dbc.CardHeader(html.H4(f"Goalie Stats vs {opponent_name}", className="card-title mb-0")),
