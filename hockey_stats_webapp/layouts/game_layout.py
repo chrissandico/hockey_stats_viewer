@@ -260,7 +260,14 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Skip empty/placeholder values and header values
         if not game_id or game_id == '' or str(game_id).startswith('header-'):
             return html.Div()
-        
+
+        # Convert game_id to appropriate type (dropdown returns strings)
+        # Try to convert to int if it looks like a number, otherwise keep as string
+        try:
+            game_id = int(game_id)
+        except (ValueError, TypeError):
+            pass  # Keep as string if conversion fails
+
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         
@@ -414,7 +421,14 @@ def register_game_callbacks(app, data_service, team_context=None):
         # Skip empty/placeholder values and header values
         if not game_id or game_id == '' or str(game_id).startswith('header-'):
             return html.Div()
-        
+
+        # Convert game_id to appropriate type (dropdown returns strings)
+        # Try to convert to int if it looks like a number, otherwise keep as string
+        try:
+            game_id = int(game_id)
+        except (ValueError, TypeError):
+            pass  # Keep as string if conversion fails
+
         # Get team context from session (import here to avoid circular imports)
         from flask import session
         
