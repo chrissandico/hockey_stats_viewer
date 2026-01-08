@@ -2870,7 +2870,383 @@ class DataService:
             'goals_against': goals_against,
             'win_percentage': win_percentage
         }
-    
+
+    # ============================================================================
+    # OPPONENT STATISTICS METHODS
+    # ============================================================================
+
+    def get_unique_opponents(self, team_id=None, game_type=None):
+        """
+        Get list of unique opponents with game counts and W/L/T records.
+
+        Args:
+            team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
+
+        Returns:
+            list: List of dictionaries with opponent info:
+                  [{'opponent': 'Clippers', 'games': 4, 'wins': 2, 'losses': 1, 'ties': 1}, ...]
+        """
+        # Get games using standard filtering
+        games = self.get_games(team_id, game_type)
+
+        # Filter to completed games only
+        completed_games = self._filter_games_by_date(games, include_future=False)
+
+        if completed_games.empty:
+            print(f"No completed games found for team_id={team_id}, game_type={game_type}")
+            return []
+
+        # Ensure Result column exists
+        completed_games = self._ensure_result_column(completed_games)
+
+        # Group by opponent and aggregate stats
+        opponents_list = []
+
+        # Skip games with no opponent value
+        completed_games = completed_games[completed_games['Opponent'].notna() & (completed_games['Opponent'] != '')]
+
+        for opponent_name in completed_games['Opponent'].unique():
+            opponent_games = completed_games[completed_games['Opponent'] == opponent_name]
+
+            wins = len(opponent_games[opponent_games['Result'] == 'W'])
+            losses = len(opponent_games[opponent_games['Result'] == 'L'])
+            ties = len(opponent_games[opponent_games['Result'] == 'T'])
+
+            opponents_list.append({
+                'opponent': opponent_name,
+                'games': len(opponent_games),
+                'wins': wins,
+                'losses': losses,
+                'ties': ties
+            })
+
+        # Sort alphabetically by opponent name
+        opponents_list.sort(key=lambda x: x['opponent'])
+
+        print(f"Found {len(opponents_list)} unique opponents for team_id={team_id}, game_type={game_type}")
+        return opponents_list
+
+    def calculate_opponent_head_to_head(self, opponent_name, team_id=None, game_type=None):
+        """
+        Calculate head-to-head statistics against a specific opponent.
+
+        Args:
+            opponent_name (str): Name of the opponent
+            team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
+
+        Returns:
+            dict: Dictionary containing head-to-head statistics:
+                  {'games_played': 4, 'wins': 2, 'losses': 1, 'ties': 1,
+                   'goals_for': 12, 'goals_against': 8, 'win_percentage': 50.0,
+                   'goal_differential': 4}
+        """
+        # Get games using standard filtering
+        games = self.get_games(team_id, game_type)
+
+        # Filter to completed games only
+        completed_games = self._filter_games_by_date(games, include_future=False)
+
+        # Filter to opponent
+        opponent_games = completed_games[completed_games['Opponent'] == opponent_name]
+
+        if opponent_games.empty:
+            print(f"No games found against opponent '{opponent_name}'")
+            return {
+                'games_played': 0,
+                'wins': 0,
+                'losses': 0,
+                'ties': 0,
+                'goals_for': 0,
+                'goals_against': 0,
+                'win_percentage': 0.0,
+                'goal_differential': 0
+            }
+
+        # Ensure Result column exists
+        opponent_games = self._ensure_result_column(opponent_games)
+
+        # Calculate statistics
+        try:
+            wins = len(opponent_games[opponent_games['Result'] == 'W'])
+            losses = len(opponent_games[opponent_games['Result'] == 'L'])
+            ties = len(opponent_games[opponent_games['Result'] == 'T'])
+        except KeyError as e:
+            print(f"Error calculating W/L/T: {e}")
+            wins = 0
+            losses = 0
+            ties = 0
+
+        try:
+            goals_for = opponent_games['GoalsFor'].sum()
+            goals_against = opponent_games['GoalsAgainst'].sum()
+        except KeyError as e:
+            print(f"Error calculating goals: {e}")
+            goals_for = 0
+            goals_against = 0
+
+        games_played = len(opponent_games)
+        win_percentage = (wins / games_played * 100) if games_played > 0 else 0.0
+        goal_differential = goals_for - goals_against
+
+        print(f"Head-to-head vs {opponent_name}: {wins}-{losses}-{ties} in {games_played} games")
+
+        return {
+            'games_played': games_played,
+            'wins': wins,
+            'losses': losses,
+            'ties': ties,
+            'goals_for': goals_for,
+            'goals_against': goals_against,
+            'win_percentage': win_percentage,
+            'goal_differential': goal_differential
+        }
+
+    def get_opponent_games(self, opponent_name, team_id=None, game_type=None):
+        """
+        Get all games played against a specific opponent.
+
+        Args:
+            opponent_name (str): Name of the opponent
+            team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
+
+        Returns:
+            DataFrame: Game details sorted by date descending
+        """
+        # Get games using standard filtering
+        games = self.get_games(team_id, game_type)
+
+        # Filter to completed games only
+        completed_games = self._filter_games_by_date(games, include_future=False)
+
+        # Filter to opponent
+        opponent_games = completed_games[completed_games['Opponent'] == opponent_name]
+
+        if opponent_games.empty:
+            print(f"No games found against opponent '{opponent_name}'")
+            return pd.DataFrame()
+
+        # Ensure Result column exists
+        opponent_games = self._ensure_result_column(opponent_games)
+
+        # Sort by date descending (most recent first)
+        opponent_games = opponent_games.sort_values('Date', ascending=False)
+
+        print(f"Found {len(opponent_games)} games against {opponent_name}")
+        return opponent_games
+
+    def get_opponent_player_leaderboard(self, opponent_name, team_id=None, game_type=None, stat='points', position=None, limit=10):
+        """
+        Calculate player performance statistics against a specific opponent.
+
+        Args:
+            opponent_name (str): Name of the opponent
+            team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
+            stat (str): Statistic to sort by (default: 'points')
+            position (str, optional): Filter by position (F, D, G)
+            limit (int): Maximum number of players to return (default: 10)
+
+        Returns:
+            list: List of dictionaries containing player statistics (same format as get_team_leaderboard)
+        """
+        # Get games against this opponent
+        opponent_games = self.get_opponent_games(opponent_name, team_id, game_type)
+
+        if opponent_games.empty:
+            print(f"No games found against opponent '{opponent_name}' - returning empty leaderboard")
+            return []
+
+        # Extract game IDs
+        game_ids = opponent_games['ID'].tolist()
+        print(f"Calculating player stats for {len(game_ids)} games vs {opponent_name}")
+
+        # Get all players
+        players = self.get_players(team_id)
+
+        # Filter by position if specified
+        if position:
+            players = players[players['Position'] == position]
+
+        if players.empty:
+            print(f"No players found for team_id={team_id}, position={position}")
+            return []
+
+        # Get all events
+        events = self.sheets_service.get_events()
+
+        # Filter events to only these games
+        events = events[events['GameID'].isin(game_ids)]
+
+        if events.empty:
+            print(f"No events found for games vs {opponent_name}")
+            return []
+
+        # Get team identifier for plus/minus calculation
+        team_identifier = self._get_team_identifier_for_events(team_id)
+
+        # Calculate stats for each player
+        player_stats = []
+
+        for _, player in players.iterrows():
+            player_id = player['ID']
+
+            # Calculate stats using helper methods (for non-goalies)
+            if player['Position'] != 'G':
+                try:
+                    # Calculate individual stats using helper methods
+                    goals = self.calculate_goals_for_events(player_id, events)
+                    assists = self.calculate_assists_for_events(player_id, events)
+                    points = goals + assists
+                    plus_minus = self.calculate_plus_minus_for_events(player_id, events, team_identifier)
+                    penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, events)
+
+                    # Only include players who have at least some stats
+                    if goals > 0 or assists > 0 or plus_minus != 0 or penalty_minutes > 0:
+                        player_stats.append({
+                            'player': player.to_dict(),
+                            'goals': goals,
+                            'assists': assists,
+                            'points': points,
+                            'plus_minus': plus_minus,
+                            'penalty_minutes': penalty_minutes
+                        })
+                except Exception as e:
+                    print(f"Error calculating stats for player {player_id} vs {opponent_name}: {e}")
+                    continue
+
+        # Sort by specified stat
+        if stat == 'jersey_number':
+            player_stats.sort(key=lambda x: x['player'].get('JerseyNumber', 999))
+        else:
+            player_stats.sort(key=lambda x: x.get(stat, 0), reverse=True)
+
+        # Apply limit
+        if limit:
+            player_stats = player_stats[:limit]
+
+        print(f"Returning {len(player_stats)} players for opponent leaderboard")
+        return player_stats
+
+    def get_opponent_goalie_stats(self, opponent_name, team_id=None, game_type=None):
+        """
+        Calculate goalie performance statistics against a specific opponent.
+
+        Args:
+            opponent_name (str): Name of the opponent
+            team_id (str, optional): Team ID to filter by
+            game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
+
+        Returns:
+            list: List of dictionaries containing goalie statistics
+        """
+        # Get games against this opponent
+        opponent_games = self.get_opponent_games(opponent_name, team_id, game_type)
+
+        if opponent_games.empty:
+            print(f"No games found against opponent '{opponent_name}' - returning empty goalie stats")
+            return []
+
+        # Extract game IDs
+        game_ids = opponent_games['ID'].tolist()
+
+        # Get goalies
+        players = self.get_players(team_id)
+        goalies = players[players['Position'] == 'G']
+
+        if goalies.empty:
+            print(f"No goalies found for team_id={team_id}")
+            return []
+
+        # Get team identifier for events
+        team_identifier = self._get_team_identifier_for_events(team_id)
+
+        # Get all events for these games
+        events = self.sheets_service.get_events()
+        events = events[events['GameID'].isin(game_ids)]
+
+        # Get roster data for games played
+        roster = self.sheets_service.get_game_roster()
+        roster = roster[roster['GameID'].isin(game_ids)]
+
+        goalie_stats = []
+
+        for _, goalie in goalies.iterrows():
+            goalie_id = goalie['ID']
+
+            # Count games played from roster
+            games_played = len(roster[(roster['PlayerID'] == goalie_id) & (roster['Status'] == 'Present')])
+
+            if games_played == 0:
+                continue  # Skip goalies who didn't play
+
+            # Calculate W/L/T from game results
+            goalie_games = opponent_games[opponent_games['ID'].isin(
+                roster[(roster['PlayerID'] == goalie_id) & (roster['Status'] == 'Present')]['GameID']
+            )]
+
+            wins = len(goalie_games[goalie_games['Result'] == 'W'])
+            losses = len(goalie_games[goalie_games['Result'] == 'L'])
+            ties = len(goalie_games[goalie_games['Result'] == 'T'])
+
+            # Get goalie-specific events
+            goalie_events = events[
+                (events['GoalieOnIceId'] == goalie_id) |
+                (events['GameID'].isin(game_ids))  # Fallback to all events in these games
+            ]
+
+            # Count goals against (goals by opposing team)
+            goals_against_events = goalie_events[
+                (goalie_events['IsGoal'] == True) &
+                (goalie_events['Team'] != team_identifier)
+            ]
+            goals_against = len(goals_against_events)
+
+            # Count shots against
+            shots_against = len(goalie_events[goalie_events['Team'] != team_identifier])
+
+            # Calculate saves and save percentage
+            saves = shots_against - goals_against
+            save_percentage = saves / shots_against if shots_against > 0 else 0.0
+
+            # Calculate GAA (goals against average)
+            # Assuming regulation game length from config
+            regulation_length = 36  # minutes (3 periods x 12 minutes)
+            gaa = (goals_against / games_played) * regulation_length if games_played > 0 else 0.0
+
+            # Count shutouts
+            shutouts = 0
+            for game_id in goalie_games['ID']:
+                game_goals_against = len(goals_against_events[goals_against_events['GameID'] == game_id])
+                if game_goals_against == 0:
+                    shutouts += 1
+
+            goalie_stats.append({
+                'player': goalie.to_dict(),
+                'games_played': games_played,
+                'wins': wins,
+                'losses': losses,
+                'ties': ties,
+                'save_percentage': save_percentage,
+                'gaa': gaa,
+                'shutouts': shutouts,
+                'goals_against': goals_against,
+                'shots_against': shots_against,
+                'saves': saves
+            })
+
+        # Sort by save percentage descending
+        goalie_stats.sort(key=lambda x: x['save_percentage'], reverse=True)
+
+        print(f"Returning {len(goalie_stats)} goalies for opponent stats")
+        return goalie_stats
+
+    # ============================================================================
+    # END OPPONENT STATISTICS METHODS
+    # ============================================================================
+
     def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None, game_type=None):
         """
         Get a team leaderboard for a specific statistic.

@@ -25,6 +25,7 @@ from layouts.main_layout import create_main_layout
 from layouts.player_layout import create_player_layout, register_player_callbacks
 from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
+from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
 from layouts.navigation import create_navigation, register_navigation_callbacks
 
 # Initialize the Dash app with Bootstrap theme
@@ -209,6 +210,9 @@ def display_page(pathname):
     elif pathname == '/game':
         team_context = get_team_context()
         return create_game_layout(data_service, team_context)
+    elif pathname == '/opponent':
+        team_context = get_team_context()
+        return create_opponent_layout(data_service, team_context)
     else:
         team_context = get_team_context()
         return create_main_layout(team_context)
@@ -361,10 +365,13 @@ if services_initialized:
     from layouts.team_layout import register_team_callbacks
     register_team_callbacks(app, data_service)
 
+    # Register opponent callbacks
+    register_opponent_callbacks(app, data_service)
+
     # Register game type filter callbacks
     from components.game_type_filter import register_game_type_filter_callbacks
     register_game_type_filter_callbacks(app, data_service)
-    
+
     print("=== STARTUP: All callbacks registered successfully ===")
 else:
     print("=== STARTUP: Core callbacks registered, but data-dependent callbacks skipped due to service initialization failure ===")
