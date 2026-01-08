@@ -3550,21 +3550,33 @@ class DataService:
     def get_game_player_stats(self, game_id, position=None, team_id=None):
         """
         Get player statistics for a specific game.
-        
+
         Args:
             game_id (str): The game ID
             position (str, optional): Filter by position (F, D, G)
             team_id (str, optional): Team ID to filter by
-            
+
         Returns:
             list: List of dictionaries containing player game statistics
         """
+        print(f"DEBUG get_game_player_stats: game_id={game_id}, position={position}, team_id={team_id}")
+
         game_roster = self.get_game_roster(team_id)
         players = self.get_players(team_id)
-        
+
+        print(f"DEBUG: Total game roster entries: {len(game_roster)}")
+        print(f"DEBUG: Total players: {len(players)}")
+
+        if not game_roster.empty:
+            print(f"DEBUG: GameRoster unique GameIDs: {game_roster['GameID'].unique()[:10]}")  # Show first 10
+            print(f"DEBUG: Looking for game_id: {game_id}")
+            print(f"DEBUG: GameRoster for this game before status filter: {len(game_roster[game_roster['GameID'] == game_id])}")
+
         # Get players who were present for this game
-        game_players = game_roster[(game_roster['GameID'] == game_id) & 
+        game_players = game_roster[(game_roster['GameID'] == game_id) &
                                   (game_roster['Status'] == 'Present')]
+
+        print(f"DEBUG: Players present for game {game_id}: {len(game_players)}")
         
         # Join with players to get position - use centralized helper method for column detection
         id_column = self._get_player_id_column(players)
