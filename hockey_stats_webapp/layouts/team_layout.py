@@ -179,7 +179,7 @@ def register_team_callbacks(app, data_service):
             num_recent_games = None
             if isinstance(recent_games_data, str) and recent_games_data.startswith('Last'):
                 try:
-                    num_recent_games = int(recent_games_data.split()[-1])
+                    num_recent_games = int(recent_games_data.split()[1])
                     games_for_stats = games.tail(num_recent_games).copy()
                     game_ids_recent = games_for_stats['ID'].tolist() if 'ID' in games_for_stats.columns and not games_for_stats.empty else []
                     
