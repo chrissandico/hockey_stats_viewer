@@ -352,7 +352,8 @@ def register_player_callbacks(app, data_service):
         stats_title = "Season Totals"
         if recent_games_data and recent_games_data != 'all':
             try:
-                num_recent_games_requested = int(recent_games_data)
+                # Extract number from "Last N Games" format
+                num_recent_games_requested = int(recent_games_data.split()[-1]) if isinstance(recent_games_data, str) else recent_games_data
                 print(f"DEBUG: Recent games requested: {num_recent_games_requested}")
 
                 # Limit to available games
