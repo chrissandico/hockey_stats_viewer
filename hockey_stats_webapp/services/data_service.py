@@ -45,6 +45,11 @@ class DataService:
         self._games_calculated_cache = {}
         self._games_cache_timestamps = {}  # Track when each cache entry was created
         
+        # Add leaderboard cache to prevent duplicate calculations
+        self._leaderboard_cache = {}
+        self._leaderboard_cache_time = {}
+        self._leaderboard_cache_ttl = 1800  # 30 minutes in seconds
+        
         # Force refresh events data to ensure boolean conversion happens
         self.force_refresh_events_data()
     
@@ -3247,6 +3252,45 @@ class DataService:
     # END OPPONENT STATISTICS METHODS
     # ============================================================================
 
+    # ============================================================================
+    # LEADERBOARD CACHING METHODS
+    # ============================================================================
+    
+    def _get_leaderboard_cache_key(self, stat, position, team_id, game_type):
+        """Generate a cache key for leaderboard results."""
+        return f"lb:{stat}:{position}:{team_id}:{game_type}"
+    
+    def _is_leaderboard_cache_valid(self, cache_key):
+        """Check if a leaderboard cache entry is still valid."""
+        import time
+        if cache_key not in self._leaderboard_cache:
+            return False
+        
+        cache_time = self._leaderboard_cache_time.get(cache_key, 0)
+        elapsed = time.time() - cache_time
+        
+        return elapsed < self._leaderboard_cache_ttl
+    
+    def _get_cached_leaderboard(self, cache_key):
+        """Get a leaderboard from cache if valid."""
+        if self._is_leaderboard_cache_valid(cache_key):
+            self.logger.debug(f"Leaderboard cache hit: {cache_key}")
+            return self._leaderboard_cache[cache_key]
+        return None
+    
+    def _cache_leaderboard(self, cache_key, leaderboard_data):
+        """Cache leaderboard results."""
+        import time
+        self._leaderboard_cache[cache_key] = leaderboard_data
+        self._leaderboard_cache_time[cache_key] = time.time()
+        self.logger.debug(f"Cached leaderboard: {cache_key}")
+    
+    def clear_leaderboard_cache(self):
+        """Clear all leaderboard cache entries."""
+        self._leaderboard_cache.clear()
+        self._leaderboard_cache_time.clear()
+        self.logger.info("Leaderboard cache cleared")
+
     def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None, game_type=None):
         """
         Get a team leaderboard for a specific statistic.
@@ -3261,6 +3305,12 @@ class DataService:
         Returns:
             list: List of dictionaries containing player statistics
         """
+        # **PERFORMANCE OPTIMIZATION**: Check cache first
+        cache_key = self._get_leaderboard_cache_key(stat, position, team_id, game_type)
+        cached_result = self._get_cached_leaderboard(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
         # First check if there are any games of the specified type
         if game_type is not None:
             games = self.get_games(team_id, game_type)
@@ -3326,12 +3376,11 @@ class DataService:
             # Goals Against Average - lower is better, sort ascending
             player_stats.sort(key=lambda x: x[stat], reverse=False)
         
-        # Limit the number of players if a limit is specified
-        if limit is not None:
-            return player_stats[:limit]
-        else:
-            # Return all players if no limit is specified
-            return player_stats
+        # **PERFORMANCE OPTIMIZATION**: Cache the result before returning
+        result = player_stats[:limit] if limit is not None else player_stats
+        self._cache_leaderboard(cache_key, result)
+        
+        return result
     
     def calculate_goalie_stats(self, player_id, team_id=None, game_type=None):
         """
