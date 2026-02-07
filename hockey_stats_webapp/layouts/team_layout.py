@@ -180,7 +180,7 @@ def register_team_callbacks(app, data_service):
             if isinstance(recent_games_data, str) and recent_games_data.startswith('Last'):
                 try:
                     num_recent_games = int(recent_games_data.split()[1])
-                    games_for_stats = games.tail(num_recent_games).copy()
+                    games_for_stats = games.head(num_recent_games).copy()  # .head() for newest-first sorted games
                     game_ids_recent = games_for_stats['ID'].tolist() if 'ID' in games_for_stats.columns and not games_for_stats.empty else []
                     
                     if game_ids_recent:
@@ -224,8 +224,8 @@ def register_team_callbacks(app, data_service):
                         defense_sort_label = "Plus/Minus"
                         goalies_sort_label = "Save Percentage"
                         
-                        # Filter games for display
-                        games = games.tail(num_recent_games)
+                        # Filter games for display (games are sorted newest-first)
+                        games = games.head(num_recent_games)
                 except (ValueError, TypeError, ImportError) as e:
                     logging.error(f"Error processing recent games filter: {e}")
                     num_recent_games = None
