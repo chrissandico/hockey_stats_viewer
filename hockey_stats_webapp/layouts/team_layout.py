@@ -353,8 +353,8 @@ def register_team_callbacks(app, data_service):
                     'Opponent': game.get('Opponent', 'Unknown'),
                     'Location': game.get('Location', ''),
                     'Result': result,
-                    'Score': f"{game.get('Score', '0 - 0')}",
-                    'GameType': game.get('GameType', 'E')
+                    'Score': f"{game.get('GoalsFor', 0)} - {game.get('GoalsAgainst', 0)}",
+                    'GameType': config.get_game_type_name(game.get('GameType', 'E'))
                 })
             
             game_log = dbc.Card([
@@ -375,7 +375,15 @@ def register_team_callbacks(app, data_service):
                         style_cell={'textAlign': 'center', 'padding': '10px'},
                         style_cell_conditional=[{'if': {'column_id': col}, 'textAlign': 'left'} for col in ['Opponent', 'Location']],
                         style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
-                        style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
+                        style_data_conditional=[
+                            {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'},
+                            {'if': {'filter_query': '{Result} = "W"'}, 'backgroundColor': 'rgba(0, 255, 0, 0.1)'},
+                            {'if': {'filter_query': '{Result} = "L"'}, 'backgroundColor': 'rgba(255, 0, 0, 0.1)'},
+                            {'if': {'filter_query': '{Result} = "T"'}, 'backgroundColor': 'rgba(255, 255, 0, 0.1)'},
+                        ],
+                        sort_action='native',
+                        sort_mode='single',
+                        sort_by=[{'column_id': 'Date', 'direction': 'desc'}],
                     )
                 ])
             ], className="mb-4 shadow-sm")
