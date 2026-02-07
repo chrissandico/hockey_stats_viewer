@@ -382,7 +382,7 @@ def register_team_callbacks(app, data_service):
                             'Player': f"#{stats['player']['JerseyNumber']}",
                             'GP': stats['games_played'],
                             'W': stats['wins'],
-                            'L': stats['shutouts'],
+                            'L': stats['losses'],
                             'SV%': f"{stats['save_percentage']:.3f}",
                             'GAA': f"{stats['gaa']:.2f}",
                         } for stats in goalies_leaders],
