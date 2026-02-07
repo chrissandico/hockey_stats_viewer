@@ -25,6 +25,11 @@ GAME_TYPES = {
         'name': 'Tournament',
         'color': '#9C27B0',  # Purple
         'badge_class': 'secondary'
+    },
+    'P': {
+        'name': 'Playoffs',
+        'color': '#F44336',  # Red
+        'badge_class': 'danger'
     }
 }
 
@@ -48,7 +53,7 @@ def get_game_type_name(game_type_code):
     Get the display name for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E, R, T)
+        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The display name for the game type
@@ -62,7 +67,7 @@ def get_game_type_color(game_type_code):
     Get the color for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E, R, T)
+        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The hex color code for the game type
@@ -76,7 +81,7 @@ def get_game_type_badge_class(game_type_code):
     Get the Bootstrap badge class for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E, R, T)
+        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The Bootstrap badge class for the game type

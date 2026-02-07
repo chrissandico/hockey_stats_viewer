@@ -923,8 +923,8 @@ class DataService:
                 self.logger.error(f"Invalid team_id parameter: '{team_id}'. Must be a non-empty string or None.")
                 return pd.DataFrame()
             
-            if game_type is not None and game_type not in ['E', 'R', 'T']:
-                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'E', 'R', 'T', or None.")
+            if game_type is not None and game_type not in ['E', 'R', 'T', 'P']:
+                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'E', 'R', 'T', 'P', or None.")
                 return pd.DataFrame()
             
             # Create a cache key based on team_id and game_type
@@ -2368,8 +2368,8 @@ class DataService:
                 self.logger.error(f"Invalid team_id provided: '{team_id}'")
                 return None
             
-            if game_type is not None and game_type not in ['E', 'R', 'T']:
-                self.logger.error(f"Invalid game_type provided: '{game_type}'. Must be 'E', 'R', 'T', or None")
+            if game_type is not None and game_type not in ['E', 'R', 'T', 'P']:
+                self.logger.error(f"Invalid game_type provided: '{game_type}'. Must be 'E', 'R', 'T', 'P', or None")
                 return None
             
             self.logger.info(f"Calculating player stats for player_id='{player_id}', team_id='{team_id}', game_type='{game_type}'")

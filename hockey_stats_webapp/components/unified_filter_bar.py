@@ -18,7 +18,8 @@ def create_game_type_dropdown():
                 {'label': '⚪ All Games', 'value': 'all'},
                 {'label': '🟠 Exhibition', 'value': 'E'},
                 {'label': '🔵 Regular Season', 'value': 'R'},
-                {'label': '🟣 Tournament', 'value': 'T'}
+                {'label': '🟣 Tournament', 'value': 'T'},
+                {'label': '🔴 Playoffs', 'value': 'P'}
             ],
             value='R',  # Default to Regular Season
             className="form-select"
