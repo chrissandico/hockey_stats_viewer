@@ -135,6 +135,10 @@ def register_team_callbacks(app, data_service):
             games = data_service.get_games(team_id, game_type)
             games = data_service._filter_games_by_date(games, include_future=False)
             
+            # CRITICAL: Sort games by date descending (newest first) - matches Player Stats behavior
+            if not games.empty and 'Date' in games.columns:
+                games = games.sort_values('Date', ascending=False)
+            
             # Calculate shots and penalties from events
             if not games.empty:
                 game_ids = games['ID'].tolist() if 'ID' in games.columns else []
@@ -180,7 +184,8 @@ def register_team_callbacks(app, data_service):
             if isinstance(recent_games_data, str) and recent_games_data.startswith('Last'):
                 try:
                     num_recent_games = int(recent_games_data.split()[1])
-                    games_for_stats = games.head(num_recent_games).copy()  # .head() for newest-first sorted games
+                    # Games already sorted by date descending (newest first) - just take first N
+                    games_for_stats = games.head(num_recent_games).copy()
                     game_ids_recent = games_for_stats['ID'].tolist() if 'ID' in games_for_stats.columns and not games_for_stats.empty else []
                     
                     if game_ids_recent:
@@ -224,7 +229,7 @@ def register_team_callbacks(app, data_service):
                         defense_sort_label = "Plus/Minus"
                         goalies_sort_label = "Save Percentage"
                         
-                        # Filter games for display (games are sorted newest-first)
+                        # Filter games for display (already sorted by date desc - newest first)
                         games = games.head(num_recent_games)
                 except (ValueError, TypeError, ImportError) as e:
                     logging.error(f"Error processing recent games filter: {e}")
