@@ -42,10 +42,10 @@ def create_recent_games_dropdown(selector_id):
             id=selector_id,
             options=[
                 {'label': 'All Games', 'value': 'all'},
-                {'label': 'Last 2 Games', 'value': '2'},
-                {'label': 'Last 3 Games', 'value': '3'},
-                {'label': 'Last 5 Games', 'value': '5'},
-                {'label': 'Last 10 Games', 'value': '10'}
+                {'label': 'Last 2 Games', 'value': 'Last 2 Games'},
+                {'label': 'Last 3 Games', 'value': 'Last 3 Games'},
+                {'label': 'Last 5 Games', 'value': 'Last 5 Games'},
+                {'label': 'Last 10 Games', 'value': 'Last 10 Games'}
             ],
             value='all',
             className="form-select"
