@@ -1,6 +1,3 @@
-import hashlib
-import os
-
 class AuthService:
     """
     Service for handling authentication.
@@ -16,28 +13,6 @@ class AuthService:
         """
         self.sheets_service = sheets_service
         print("Team-based authentication service initialized")
-    
-    def _hash_password(self, password):
-        """
-        Hash a password using SHA-256.
-        
-        Args:
-            password (str): The password to hash
-            
-        Returns:
-            str: The hashed password
-        """
-        if not password:
-            raise ValueError("Password cannot be empty")
-        
-        # Create a new SHA-256 hash object
-        sha256 = hashlib.sha256()
-        
-        # Update the hash object with the password bytes
-        sha256.update(password.encode('utf-8'))
-        
-        # Get the hexadecimal digest of the hash
-        return sha256.hexdigest()
     
     def verify_password(self, password):
         """

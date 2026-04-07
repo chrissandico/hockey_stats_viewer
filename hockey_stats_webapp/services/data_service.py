@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import logging
 from datetime import datetime, date
 import config
