@@ -300,7 +300,7 @@ class SheetsService:
                 worksheet = self._get_worksheet('Teams')
                 data = worksheet.get_all_records()
                 df = pd.DataFrame(data)
-                
+
                 # Validate required columns
                 required_columns = ['TeamID', 'TeamName', 'Password']
                 missing_columns = [col for col in required_columns if col not in df.columns]
@@ -308,15 +308,20 @@ class SheetsService:
                     error_msg = f"Teams sheet missing required columns: {missing_columns}"
                     print(f"ERROR: {error_msg}")
                     raise ValueError(error_msg)
-                
+
                 # Validate data integrity
                 if df.empty:
                     error_msg = "Teams sheet is empty - no team data available"
                     print(f"ERROR: {error_msg}")
                     raise ValueError(error_msg)
-                
-                # Check for duplicate passwords
-                duplicate_passwords = df[df.duplicated(subset=['Password'], keep=False)]
+
+                # Normalize Password column to strings and strip whitespace so that
+                # numeric passwords (gspread may return them as int) compare correctly
+                df['Password'] = df['Password'].astype(str).str.strip()
+
+                # Check for duplicate passwords, ignoring blank/empty entries
+                non_empty = df[df['Password'] != '']
+                duplicate_passwords = non_empty[non_empty.duplicated(subset=['Password'], keep=False)]
                 if not duplicate_passwords.empty:
                     error_msg = f"Duplicate passwords found in Teams sheet: {duplicate_passwords['Password'].tolist()}"
                     print(f"ERROR: {error_msg}")
