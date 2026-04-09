@@ -42,7 +42,9 @@ class SheetsService:
             # Try to get credentials from environment variable first
             creds_json = os.environ.get('GOOGLE_CREDENTIALS')
             if creds_json:
-                print(f"GOOGLE_CREDENTIALS env var found (length: {len(creds_json)} chars)")
+                # Strip BOM and surrounding whitespace that can corrupt JSON parsing
+                creds_json = creds_json.strip().lstrip('\ufeff')
+                print(f"GOOGLE_CREDENTIALS env var found (length: {len(creds_json)} chars, first char: {repr(creds_json[0]) if creds_json else 'EMPTY'})")
                 try:
                     creds_dict = json.loads(creds_json)
                     credentials = Credentials.from_service_account_info(
