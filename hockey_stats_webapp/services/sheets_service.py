@@ -42,19 +42,20 @@ class SheetsService:
             # Try to get credentials from environment variable first
             creds_json = os.environ.get('GOOGLE_CREDENTIALS')
             if creds_json:
+                print(f"GOOGLE_CREDENTIALS env var found (length: {len(creds_json)} chars)")
                 try:
                     creds_dict = json.loads(creds_json)
                     credentials = Credentials.from_service_account_info(
                         creds_dict, scopes=scope)
                     print("Using credentials from environment variable")
+                except json.JSONDecodeError as e:
+                    print(f"FATAL: GOOGLE_CREDENTIALS is not valid JSON: {e}")
+                    raise ValueError(f"GOOGLE_CREDENTIALS env var contains invalid JSON: {e}")
                 except Exception as e:
-                    print(f"Error parsing credentials from environment: {e}")
-                    # Fall back to file
-                    credentials = Credentials.from_service_account_file(
-                        self.credentials_path, scopes=scope)
-                    print("Using credentials from file")
+                    print(f"FATAL: Failed to create credentials from GOOGLE_CREDENTIALS: {e}")
+                    raise
             else:
-                # Get credentials from file
+                print("GOOGLE_CREDENTIALS env var not set, trying credentials.json file")
                 credentials = Credentials.from_service_account_file(
                     self.credentials_path, scopes=scope)
                 print("Using credentials from file")
