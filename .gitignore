@@ -47,6 +47,10 @@ test_*_with_secrets.py
 .kiro/settings/
 .kiro/cache/
 
+# Git worktrees
+.worktrees/
+.superpowers/
+
 # OS specific files
 .DS_Store
 Thumbs.db
