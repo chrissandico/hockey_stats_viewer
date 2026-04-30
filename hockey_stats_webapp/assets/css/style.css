@@ -1,45 +1,63 @@
-/* Hockey Stats Web Application Styles */
+/* ============================================================
+   NHL Design Language — Hockey Stats Viewer
+   Tokens extracted from nhl.com/stats via designlang
+   ============================================================ */
 
-/* Global Styles */
+:root {
+  --nhl-bg-dark:       #000000;
+  --nhl-bg-dark-2:     #1a1a1a;
+  --nhl-bg-light:      #ffffff;
+  --nhl-bg-light-2:    #f8f8f8;
+  --nhl-primary:       #0055e9;
+  --nhl-primary-hover: #0042bb;
+  --nhl-text-primary:  #121212;
+  --nhl-text-secondary:#6f6f6f;
+  --nhl-text-muted:    #98989e;
+  --nhl-border:        #e0e0e0;
+  --nhl-border-light:  #f2f2f2;
+  --nhl-positive:      #468254;
+  --nhl-negative:      #c8102e;
+}
+
+/* Global */
 body {
-    font-family: 'Arial', sans-serif;
-    background-color: #f8f9fa;
-    color: #212529;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--nhl-bg-light);
+  color: var(--nhl-text-primary);
+  margin: 0;
 }
 
-/* Blue and White Theme (Toronto Maple Leafs inspired) */
-.navbar-dark.bg-primary {
-    background-color: #00205b !important; /* Maple Leafs blue */
-}
-
+/* Bootstrap primary color overrides */
 .btn-primary {
-    background-color: #00205b !important;
-    border-color: #00205b !important;
+  background-color: var(--nhl-primary) !important;
+  border-color: var(--nhl-primary) !important;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  border-radius: 8px;
 }
 
 .btn-primary:hover {
-    background-color: #001a4d !important;
-    border-color: #001a4d !important;
+  background-color: var(--nhl-primary-hover) !important;
+  border-color: var(--nhl-primary-hover) !important;
 }
 
 .btn-outline-primary {
-    color: #00205b !important;
-    border-color: #00205b !important;
+  color: var(--nhl-primary) !important;
+  border-color: var(--nhl-primary) !important;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  border-radius: 8px;
 }
 
-.btn-outline-primary:hover {
-    background-color: #00205b !important;
-    color: white !important;
-}
-
+.btn-outline-primary:hover,
 .btn-outline-primary.active {
-    background-color: #00205b !important;
-    color: white !important;
+  background-color: var(--nhl-primary) !important;
+  color: white !important;
 }
 
 .card-header {
-    background-color: #f1f1f1;
-    border-bottom: 2px solid #00205b;
+  background-color: var(--nhl-bg-light-2);
+  border-bottom: 2px solid var(--nhl-primary);
 }
 
 /* Table Styles */

@@ -33,7 +33,8 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[
         dbc.themes.BOOTSTRAP,
-        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css",
+        "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap",
     ],
     suppress_callback_exceptions=True,
     meta_tags=[
