@@ -60,6 +60,77 @@ body {
   border-bottom: 2px solid var(--nhl-primary);
 }
 
+/* ============================================================
+   Navigation
+   ============================================================ */
+.nhl-navbar {
+  background-color: var(--nhl-bg-dark) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0 24px;
+  min-height: 52px;
+}
+
+.nhl-navbar-brand {
+  color: #ffffff !important;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  margin-right: 24px;
+}
+
+.nhl-navbar .nav-link {
+  color: var(--nhl-text-muted) !important;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 14px !important;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.nhl-navbar .nav-link:hover {
+  color: #ffffff !important;
+}
+
+.nhl-navbar .nav-link.active {
+  color: #ffffff !important;
+  border-bottom: 2px solid var(--nhl-primary);
+}
+
+.nhl-navbar-logout {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: var(--nhl-text-muted) !important;
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  border-radius: 4px !important;
+}
+
+.nhl-navbar-logout:hover {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Mobile navbar toggler */
+.nhl-navbar .navbar-toggler {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 768px) {
+  .nhl-navbar .nav-link {
+    height: auto;
+    padding: 12px 14px !important;
+    border-bottom: none;
+    border-left: 2px solid transparent;
+  }
+  .nhl-navbar .nav-link.active {
+    border-bottom: none;
+    border-left: 2px solid var(--nhl-primary);
+  }
+}
+
 /* Table Styles */
 .table {
     width: 100%;

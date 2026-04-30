@@ -13,32 +13,31 @@ def create_navigation():
     return dbc.Navbar(
         dbc.Container([
             # Brand/logo
-            dbc.NavbarBrand("Hockey Stats", className="ms-2"),
-            
+            dbc.NavbarBrand("⬡ Hockey Stats", className="nhl-navbar-brand"),
+
             # Toggle button for mobile view
             dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
-            
-            # Navigation links in a collapsible container
+
+            # Navigation links
             dbc.Collapse(
                 dbc.Nav([
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
                     dbc.NavItem(dbc.NavLink("Player Stats", href="/player", active="exact")),
                     dbc.NavItem(dbc.NavLink("Team Stats", href="/team", active="exact")),
                     dbc.NavItem(dbc.NavLink("Game Stats", href="/game", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Opponent Stats", href="/opponent", active="exact"))
+                    dbc.NavItem(dbc.NavLink("Opponent Stats", href="/opponent", active="exact")),
                 ], className="me-auto", navbar=True),
                 id="navbar-collapse",
                 navbar=True,
                 is_open=False,
             ),
-            
+
             # Logout button
-            dbc.NavItem(dbc.Button("Logout", id="logout-button", color="light", className="ms-2")),
-        ]),
-        color="primary",
+            dbc.NavItem(dbc.Button("Logout", id="logout-button", className="nhl-navbar-logout ms-2")),
+        ], fluid=True),
         dark=True,
-        className="mb-4",
-        sticky="top",  # Make the navbar stick to the top when scrolling
+        className="nhl-navbar mb-0",
+        sticky="top",
     )
 
 def register_navigation_callbacks(app):
