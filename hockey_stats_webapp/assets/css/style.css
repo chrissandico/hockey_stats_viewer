@@ -36,8 +36,9 @@ body {
   background-color: var(--nhl-primary) !important;
   border-color: var(--nhl-primary) !important;
   font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  border-radius: 8px;
+  font-weight: 700;
+  border-radius: 0;
+  padding: 10px 32px;
 }
 
 .btn-primary:hover {
@@ -49,8 +50,8 @@ body {
   color: var(--nhl-primary) !important;
   border-color: var(--nhl-primary) !important;
   font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  border-radius: 8px;
+  font-weight: 700;
+  border-radius: 0;
 }
 
 .btn-outline-primary:hover,
