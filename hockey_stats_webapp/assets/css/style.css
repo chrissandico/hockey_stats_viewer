@@ -8,15 +8,19 @@
   --nhl-bg-dark-2:     #1a1a1a;
   --nhl-bg-light:      #ffffff;
   --nhl-bg-light-2:    #f8f8f8;
-  --nhl-primary:       #0055e9;
-  --nhl-primary-hover: #0042bb;
+  --nhl-primary:       #0042bb;
+  --nhl-primary-hover: #001e8c;
   --nhl-text-primary:  #121212;
   --nhl-text-secondary:#6f6f6f;
   --nhl-text-muted:    #98989e;
   --nhl-border:        #e0e0e0;
   --nhl-border-light:  #f2f2f2;
-  --nhl-positive:      #468254;
+  --nhl-accent:        #eca200;
+  --nhl-positive:      #00843d;
   --nhl-negative:      #c8102e;
+  --nhl-shadow-card:   rgba(0,0,0,.08) 0px 16px 32px 0px,
+                       rgba(0,0,0,.16) 0px 8px 16px 0px,
+                       rgba(0,0,0,.24) 0px 4px 8px 0px;
 }
 
 /* Global */
