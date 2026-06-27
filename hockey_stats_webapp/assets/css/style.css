@@ -87,9 +87,8 @@ body {
 /* Card Styles */
 .card {
     border: none;
-    border-radius: 24px;
+    border-radius: 0.5rem;
     overflow: hidden;
-    box-shadow: var(--nhl-shadow-card);
 }
 
 .card-body {
