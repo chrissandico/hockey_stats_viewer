@@ -183,7 +183,7 @@ body {
     border: none;
     border-radius: 24px;
     overflow: hidden;
-    box-shadow: var(--nhl-shadow-card);
+    box-shadow: var(--nhl-shadow-card) !important;
 }
 
 .card-body {
@@ -191,7 +191,7 @@ body {
 }
 
 .shadow-sm {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+    box-shadow: var(--nhl-shadow-card) !important;
 }
 
 /* Dropdown Styles */
