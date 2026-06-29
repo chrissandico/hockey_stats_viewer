@@ -162,7 +162,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-    background-color: rgba(0, 32, 91, 0.075);
+    background-color: rgba(0, 66, 187, 0.08);
 }
 
 /* Result Colors */
@@ -197,7 +197,7 @@ body {
 /* Dropdown Styles */
 .Select-control, .dash-dropdown .Select-control {
     border-radius: 0.25rem;
-    border: 2px solid #00205b;
+    border: 2px solid var(--nhl-primary);
     height: 44px;
     font-size: 1.1rem;
     background-color: #f8f9fa;
@@ -206,7 +206,7 @@ body {
 .Select-menu-outer, .dash-dropdown .Select-menu-outer {
     border-bottom-right-radius: 0.25rem;
     border-bottom-left-radius: 0.25rem;
-    border: 2px solid #00205b;
+    border: 2px solid var(--nhl-primary);
     border-top: none;
     font-size: 1.1rem;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -235,11 +235,11 @@ body {
 }
 
 .Select-option:hover, .dash-dropdown .Select-option:hover {
-    background-color: rgba(0, 32, 91, 0.1);
+    background-color: rgba(0, 66, 187, 0.1);
 }
 
 .Select-option.is-selected, .dash-dropdown .Select-option.is-selected {
-    background-color: rgba(0, 32, 91, 0.2);
+    background-color: rgba(0, 66, 187, 0.2);
 }
 
 /* Mobile Optimizations */
