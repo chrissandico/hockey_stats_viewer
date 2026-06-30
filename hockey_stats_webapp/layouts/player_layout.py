@@ -114,9 +114,13 @@ def register_player_callbacks(app, data_service):
     )
     def select_player(n_clicks_list):
         """Store the jersey number of the clicked player card."""
-        if not callback_context.triggered:
+        triggered = callback_context.triggered
+        if not triggered:
             return no_update
-        triggered_id = callback_context.triggered[0]['prop_id']
+        # n_clicks=0 means page load, not a real click — ignore
+        if not triggered[0].get('value'):
+            return no_update
+        triggered_id = triggered[0]['prop_id']
         return json.loads(triggered_id.split('.')[0])['index']
 
     # ------------------------------------------------------------------
