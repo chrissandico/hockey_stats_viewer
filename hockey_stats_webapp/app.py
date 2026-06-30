@@ -26,7 +26,6 @@ from layouts.player_layout import create_player_layout, register_player_callback
 from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
-from layouts.navigation import create_navigation, register_navigation_callbacks
 from layouts.shell import create_shell_header, create_shell_footer, register_shell_callbacks
 
 # Initialize the Dash app with Bootstrap theme

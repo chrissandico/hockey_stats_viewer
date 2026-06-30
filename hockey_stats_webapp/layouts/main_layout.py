@@ -103,6 +103,9 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             pass
 
+        if games_df is not None and not games_df.empty and 'Date' in games_df.columns:
+            games_df = games_df.sort_values('Date', ascending=False).reset_index(drop=True)
+
         # ── Recent form dots ──────────────────────────────────────────────────
         try:
             if games_df is not None and not games_df.empty:

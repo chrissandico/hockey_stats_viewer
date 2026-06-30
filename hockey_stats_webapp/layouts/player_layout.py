@@ -46,7 +46,7 @@ def create_player_layout(data_service, team_context=None):
         dash.html.Div: The player statistics layout
     """
     team_id = (team_context or {}).get('team_id')
-    players_df = data_service.sheets_service.get_players(team_id) if data_service else None
+    players_df = data_service.get_players(team_id) if data_service else None
 
     cards = []
     if players_df is not None and not players_df.empty:
