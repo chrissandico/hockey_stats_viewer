@@ -27,6 +27,7 @@ from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
 from layouts.navigation import create_navigation, register_navigation_callbacks
+from layouts.shell import create_shell_header, create_shell_footer, register_shell_callbacks
 
 # Initialize the Dash app with Bootstrap theme
 app = dash.Dash(
@@ -156,7 +157,8 @@ def get_team_context():
     
     return {
         'team_id': team_id,
-        'team_name': team_name
+        'team_name': team_name,
+        'is_coach': session.get('is_coach', False),
     }
 
 def validate_team_session():
@@ -178,16 +180,16 @@ def validate_team_session():
 # Define the app layout
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
+    html.Div(id='shell-header-container'),
     dcc.Loading(
         id="main-loading",
         type="default",
-        color="#00205b",
-        children=[
-            html.Div(id='page-content')
-        ],
+        color="#0042bb",
+        children=[html.Div(id='page-content')],
         style={"minHeight": "200px"}
-    )
-])
+    ),
+    html.Div(id='shell-footer-container'),
+], className="nhl-app")
 
 # Define the main callback for navigation
 @app.callback(
@@ -217,6 +219,17 @@ def display_page(pathname):
     else:
         team_context = get_team_context()
         return create_main_layout(team_context)
+
+# Shell callback — renders persistent header/footer outside page-content
+@app.callback(
+    Output('shell-header-container', 'children'),
+    Output('shell-footer-container', 'children'),
+    Input('url', 'pathname')
+)
+def update_shell(pathname):
+    if pathname == '/login' or not validate_team_session():
+        return [], []
+    return create_shell_header(get_team_context()), create_shell_footer()
 
 # Create login layout
 def create_login_layout():
@@ -354,7 +367,7 @@ def logout(n_clicks):
 
 # Register callbacks for navigation, player and game views
 # Always register callbacks, but handle the case where services aren't initialized
-register_navigation_callbacks(app)
+register_shell_callbacks(app)
 register_player_callbacks(app, data_service)
 
 if services_initialized:

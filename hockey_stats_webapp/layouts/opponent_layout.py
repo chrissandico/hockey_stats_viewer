@@ -7,7 +7,6 @@ import dash_bootstrap_components as dbc
 from flask import session
 import pandas as pd
 import logging
-from layouts.navigation import create_navigation
 from components.unified_filter_bar import create_unified_filter_bar
 import config
 
@@ -31,7 +30,6 @@ def create_opponent_layout(data_service, team_context=None):
 
     if not team_id:
         return html.Div([
-            create_navigation(),
             dbc.Alert("Please log in to view opponent statistics.", color="warning", className="m-4")
         ])
 
@@ -46,9 +44,6 @@ def create_opponent_layout(data_service, team_context=None):
     opponent_dropdown = create_opponent_dropdown(opponents)
 
     return html.Div([
-        # Navigation
-        create_navigation(),
-
         # Title
         html.H1("Opponent Statistics", className="text-center mt-4 mb-4"),
 

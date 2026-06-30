@@ -12,7 +12,6 @@ from flask import session
 import pandas as pd
 import logging
 
-from layouts.navigation import create_navigation
 from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
 import config
 
@@ -32,9 +31,6 @@ def create_recent_games_layout(data_service, team_context=None):
     """
 
     return html.Div([
-        # Navigation bar
-        create_navigation(),
-
         # Title
         html.Div([
             html.H1([

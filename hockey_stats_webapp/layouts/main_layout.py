@@ -1,8 +1,6 @@
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from layouts.navigation import create_navigation
-
 def create_main_layout(team_context=None):
     """
     Create the main layout for the application.
@@ -17,9 +15,6 @@ def create_main_layout(team_context=None):
     team_name = team_context['team_name'] if team_context else "Hockey Stats"
     
     return html.Div([
-        # Navigation bar
-        create_navigation(),
-        
         # Main content container
         dbc.Container([
             # Welcome message with team name

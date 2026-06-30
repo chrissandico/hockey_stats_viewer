@@ -3,7 +3,6 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import logging
-from layouts.navigation import create_navigation
 from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
 from components.unified_filter_bar import create_unified_filter_bar
 import config
@@ -43,9 +42,6 @@ def create_player_layout(data_service, team_context=None):
         ]
 
     return html.Div([
-        # Navigation bar
-        create_navigation(),
-
         # Title
         html.H1("Player Statistics", className="text-center mt-4"),
 

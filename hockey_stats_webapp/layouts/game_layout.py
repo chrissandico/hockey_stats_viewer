@@ -3,7 +3,6 @@ from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import logging
-from layouts.navigation import create_navigation
 from components.period_breakdown import create_period_breakdown_component
 from components.game_type_filter import create_game_type_badge
 import config
@@ -50,9 +49,6 @@ def create_game_layout(data_service, team_context=None):
     radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=True)
     
     return html.Div([
-        # Navigation bar
-        create_navigation(),
-
         # Title
         html.H1("Game Statistics", className="text-center mt-4"),
 
