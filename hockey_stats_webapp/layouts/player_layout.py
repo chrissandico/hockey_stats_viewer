@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _initials(row):
+    label = format_player_label(row)  # e.g. "PS #12" or "#12"
+    if label and not label.startswith('#'):
+        return label.split()[0]  # "PS" from "PS #12"
+    # Direct fallback for when format_player_label also falls through
     f = str(row.get('FirstName', '') or '')[:1]
     l = str(row.get('LastName', '') or '')[:1]
-    return f"{f}{l}" or "#"
+    return f"{f}{l}" if (f or l) else "#"
 
 
 def _initials_class(pos):
@@ -64,6 +68,7 @@ def create_player_layout(data_service, team_context=None):
                     ]),
                     id={'type': 'player-card', 'index': str(row['JerseyNumber'])},
                     className="player-card mb-3",
+                    n_clicks=0,
                 ),
                 xs=6, sm=4, md=3, lg=2,
             ))

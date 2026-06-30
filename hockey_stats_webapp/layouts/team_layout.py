@@ -313,22 +313,28 @@ def register_team_callbacks(app, data_service):
                     **({'PlusMinus': stats['plus_minus']} if is_coach else {})
                 } for stats in active_leaders]
 
+            if not active_leaders:
+                leaderboard_body = html.P(
+                    f"No {active_tab} players found.",
+                    className="text-muted text-center py-3"
+                )
+            else:
+                leaderboard_body = dash_table.DataTable(
+                    id='position-leaderboard-table',
+                    columns=table_columns,
+                    data=table_data,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={'textAlign': 'center', 'padding': '10px', 'minWidth': '80px'},
+                    style_cell_conditional=[{'if': {'column_id': 'Player'}, 'textAlign': 'left'}],
+                    style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
+                    style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
+                    sort_action='native',
+                    sort_mode='single',
+                )
+
             leaderboard_card = dbc.Card([
                 dbc.CardHeader(html.H4(heading_text, className="card-title")),
-                dbc.CardBody([
-                    dash_table.DataTable(
-                        id='position-leaderboard-table',
-                        columns=table_columns,
-                        data=table_data,
-                        style_table={'overflowX': 'auto'},
-                        style_cell={'textAlign': 'center', 'padding': '10px', 'minWidth': '80px'},
-                        style_cell_conditional=[{'if': {'column_id': 'Player'}, 'textAlign': 'left'}],
-                        style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
-                        style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
-                        sort_action='native',
-                        sort_mode='single',
-                    )
-                ])
+                dbc.CardBody([leaderboard_body])
             ], className="mb-4 shadow-sm")
 
             # --- Build season goals trend chart ---
