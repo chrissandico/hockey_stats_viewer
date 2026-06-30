@@ -21,7 +21,7 @@ from services.auth_service import AuthService
 from services.data_service import DataService
 
 # Import layouts
-from layouts.main_layout import create_main_layout
+from layouts.main_layout import create_main_layout, register_dashboard_callbacks
 from layouts.player_layout import create_player_layout, register_player_callbacks
 from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
@@ -371,6 +371,9 @@ register_shell_callbacks(app)
 register_player_callbacks(app, data_service)
 
 if services_initialized:
+    # Register dashboard callbacks for the home page live stats
+    register_dashboard_callbacks(app, data_service)
+
     # Register game callbacks - use the fixed version from game_layout.py
     # Note: We pass None for team_context since it will be retrieved dynamically from session
     register_game_callbacks(app, data_service, team_context=None)
