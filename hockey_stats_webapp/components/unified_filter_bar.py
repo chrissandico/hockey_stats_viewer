@@ -57,7 +57,8 @@ def create_recent_games_dropdown(selector_id):
 def create_unified_filter_bar(
     screen_specific_controls=None,
     recent_games_selector_id='recent-games-selector',
-    recent_games_store_id='recent-games-store'
+    recent_games_store_id='recent-games-store',
+    show_recent_games=True
 ):
     """
     Create a unified filter bar with all dropdown-based controls in a single row.
@@ -75,6 +76,9 @@ def create_unified_filter_bar(
             Default: 'recent-games-selector'
         recent_games_store_id (str): ID for the recent games session store.
             Default: 'recent-games-store'
+        show_recent_games (bool): Whether to include the Recent Games dropdown and its
+            session store. Default: True. When False, the Recent Games column and its
+            dcc.Store are omitted; remaining columns expand to fill the space.
 
     Returns:
         dbc.Card: A Bootstrap card component containing the unified filter bar
@@ -83,22 +87,38 @@ def create_unified_filter_bar(
         - Desktop (≥768px): Columns side-by-side with equal widths
         - Mobile (<576px): All controls stack vertically at full width
     """
-    # Determine column configuration based on screen type
-    if screen_specific_controls:
-        # 3-column layout (Player Stats)
-        col_width = 4
-        columns = [
-            dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
-            dbc.Col([screen_specific_controls], xs=12, md=col_width),
-            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
-        ]
+    # Determine column configuration based on screen type and show_recent_games flag
+    if show_recent_games:
+        if screen_specific_controls:
+            # 3-column layout (e.g. Player Stats): Game Type | Screen-specific | Recent Games
+            col_width = 4
+            columns = [
+                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
+                dbc.Col([screen_specific_controls], xs=12, md=col_width),
+                dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
+            ]
+        else:
+            # 2-column layout (e.g. Team Stats): Game Type | Recent Games
+            col_width = 6
+            columns = [
+                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
+                dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
+            ]
+        extra_stores = [dcc.Store(id=recent_games_store_id, storage_type='session', data='all')]
     else:
-        # 2-column layout (Team Stats)
-        col_width = 6
-        columns = [
-            dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
-            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
-        ]
+        if screen_specific_controls:
+            # 2-column layout without Recent Games: Game Type | Screen-specific
+            col_width = 6
+            columns = [
+                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
+                dbc.Col([screen_specific_controls], xs=12, md=col_width)
+            ]
+        else:
+            # 1-column layout without Recent Games: Game Type only
+            columns = [
+                dbc.Col([create_game_type_dropdown()], xs=12, md=12)
+            ]
+        extra_stores = []
 
     return dbc.Card([
         dbc.CardHeader([
@@ -110,6 +130,6 @@ def create_unified_filter_bar(
 
             # Session stores (hidden components)
             create_game_type_session_store(),
-            dcc.Store(id=recent_games_store_id, storage_type='session', data='all')
+            *extra_stores
         ], className="pb-3")
     ], className="mb-4 shadow-sm")

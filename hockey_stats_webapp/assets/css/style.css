@@ -29,6 +29,8 @@ body {
   background-color: var(--nhl-bg-light);
   color: var(--nhl-text-primary);
   margin: 0;
+  font-size: 14px;
+  line-height: 21px;
 }
 
 /* Bootstrap primary color overrides */
@@ -193,6 +195,53 @@ body {
 .shadow-sm {
     box-shadow: var(--nhl-shadow-card) !important;
 }
+
+/* ============================================================
+   KPI Tiles
+   ============================================================ */
+.kpi-tile  { text-align: center; padding: 16px 8px; }
+.kpi-value { font-size: 36px; font-weight: 700; color: var(--nhl-primary); line-height: 1; }
+.kpi-label { font-size: 11px; font-weight: 400; text-transform: uppercase;
+             letter-spacing: 0.06em; color: var(--nhl-text-secondary); margin-top: 6px; }
+
+/* ============================================================
+   Player Roster Cards
+   ============================================================ */
+.player-card          { cursor: pointer; transition: transform .15s, box-shadow .15s;
+                        border: 2px solid transparent !important; }
+.player-card:hover    { transform: translateY(-3px); }
+.player-card.selected { border-color: var(--nhl-primary) !important; }
+.player-initials      { width: 52px; height: 52px; border-radius: 50%;
+                        background: var(--nhl-primary); color: #fff;
+                        font-size: 18px; font-weight: 700;
+                        display: flex; align-items: center; justify-content: center;
+                        margin: 0 auto 8px; }
+.player-initials.goalie  { background: var(--nhl-accent); color: #000; }
+.player-initials.defense { background: var(--nhl-bg-dark-2); color: #fff; }
+
+/* ============================================================
+   Game Scorecards
+   ============================================================ */
+.game-scorecard          { cursor: pointer; transition: transform .15s; }
+.game-scorecard:hover    { transform: translateY(-2px); }
+.game-scorecard.selected { border-left: 4px solid var(--nhl-primary) !important; }
+.game-score              { font-size: 32px; font-weight: 700; line-height: 1; }
+
+/* ============================================================
+   Recent Form Dots
+   ============================================================ */
+.form-dot   { display: inline-flex; align-items: center; justify-content: center;
+              width: 28px; height: 28px; border-radius: 50%;
+              font-size: 11px; font-weight: 700; color: #fff; margin: 0 3px; }
+.form-dot-W { background: var(--nhl-positive); }
+.form-dot-L { background: var(--nhl-negative); }
+.form-dot-T { background: var(--nhl-accent); color: #000; }
+
+/* ============================================================
+   Dark Footer
+   ============================================================ */
+.nhl-footer { background-color: var(--nhl-bg-dark-2); color: #fff;
+              font-size: 14px; padding: 24px 0; margin-top: 3rem; text-align: center; }
 
 /* Dropdown Styles */
 .Select-control, .dash-dropdown .Select-control {
