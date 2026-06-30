@@ -7,7 +7,9 @@ import dash_bootstrap_components as dbc
 from flask import session
 import pandas as pd
 import logging
+import plotly.graph_objects as go
 from components.unified_filter_bar import create_unified_filter_bar
+from utils import format_player_label
 import config
 
 # Set up logging
@@ -49,7 +51,8 @@ def create_opponent_layout(data_service, team_context=None):
 
         # Unified filter bar with opponent selection
         create_unified_filter_bar(
-            screen_specific_controls=opponent_dropdown
+            screen_specific_controls=opponent_dropdown,
+            show_recent_games=False
         ),
 
         # Store for opponent selection
@@ -57,6 +60,9 @@ def create_opponent_layout(data_service, team_context=None):
 
         # Main content container
         html.Div([
+            # H2H donut chart
+            html.Div(id='opponent-h2h-chart-container'),
+
             # Head-to-head summary (with loading)
             dcc.Loading(
                 id="opponent-head-to-head-loading",
@@ -327,7 +333,7 @@ def create_player_table(players, is_coach=False):
             # Coaches see plus/minus
             table_data = [
                 {
-                    'Player': f"#{p['player']['JerseyNumber']}",
+                    'Player': format_player_label(p['player']),
                     'G': p['goals'],
                     'A': p['assists'],
                     'P': p['points'],
@@ -346,7 +352,7 @@ def create_player_table(players, is_coach=False):
             # Players don't see plus/minus
             table_data = [
                 {
-                    'Player': f"#{p['player']['JerseyNumber']}",
+                    'Player': format_player_label(p['player']),
                     'G': p['goals'],
                     'A': p['assists'],
                     'P': p['points']
@@ -397,7 +403,7 @@ def create_goalie_stats_card(opponent_name, goalies):
     try:
         table_data = [
             {
-                'Player': f"#{g['player']['JerseyNumber']}",
+                'Player': format_player_label(g['player']),
                 'GP': g['games_played'],
                 'W': g['wins'],
                 'L': g['losses'],
@@ -502,8 +508,7 @@ def register_opponent_callbacks(app, data_service):
     # Callback 2: Store opponent selection
     @app.callback(
         dash.dependencies.Output('opponent-selection-store', 'data'),
-        [dash.dependencies.Input('opponent-selection-dropdown', 'value')],
-        prevent_initial_call=True
+        [dash.dependencies.Input('opponent-selection-dropdown', 'value')]
     )
     def store_opponent_selection(opponent_name):
         """Store selected opponent in session store."""
@@ -511,7 +516,8 @@ def register_opponent_callbacks(app, data_service):
 
     # Callback 3: Update all stats when opponent or game type changes
     @app.callback(
-        [dash.dependencies.Output('opponent-head-to-head-container', 'children'),
+        [dash.dependencies.Output('opponent-h2h-chart-container', 'children'),
+         dash.dependencies.Output('opponent-head-to-head-container', 'children'),
          dash.dependencies.Output('opponent-game-log-container', 'children'),
          dash.dependencies.Output('opponent-player-leaders-container', 'children'),
          dash.dependencies.Output('opponent-goalie-stats-container', 'children')],
@@ -522,14 +528,14 @@ def register_opponent_callbacks(app, data_service):
         """Update all opponent statistics displays."""
         # Skip if no opponent selected
         if not opponent_name or opponent_name == '':
-            return html.Div(), html.Div(), html.Div(), html.Div()
+            return html.Div(), html.Div(), html.Div(), html.Div(), html.Div()
 
         # Get team_id and coach status from session
         team_id = session.get('team_id') if session.get('authenticated') else None
         is_coach = session.get('is_coach', False)
 
         if not team_id:
-            return html.Div(), html.Div(), html.Div(), html.Div()
+            return html.Div(), html.Div(), html.Div(), html.Div(), html.Div()
 
         # Parse game type
         game_type = game_type_data if isinstance(game_type_data, str) else None
@@ -557,15 +563,39 @@ def register_opponent_callbacks(app, data_service):
             defense = data_service.get_opponent_player_leaderboard(opponent_name, team_id, game_type, stat='points', position='D', limit=10)
             goalies = data_service.get_opponent_goalie_stats(opponent_name, team_id, game_type)
 
+            # Build H2H donut chart
+            h2h = head_to_head or {}
+            wins = h2h.get('wins', 0)
+            losses = h2h.get('losses', 0)
+            ties = h2h.get('ties', 0)
+
+            if h2h.get('games_played', 0) > 0:
+                fig = go.Figure(go.Pie(
+                    values=[wins, losses, ties],
+                    labels=['W', 'L', 'T'],
+                    hole=0.6,
+                    marker_colors=['#00843d', '#c8102e', '#eca200'],
+                ))
+                fig.update_layout(
+                    height=200,
+                    margin=dict(l=20, r=20, t=20, b=20),
+                    showlegend=True,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white'
+                )
+                h2h_chart = dcc.Graph(figure=fig, config={'displayModeBar': False})
+            else:
+                h2h_chart = html.Div()
+
             # Build components (pass is_coach for conditional plus/minus display)
             head_to_head_card = create_head_to_head_card(opponent_name, head_to_head)
             game_log_card = create_game_log_card(opponent_name, games)
             player_leaders_card = create_player_leaders_card(opponent_name, forwards, defense, is_coach)
             goalie_stats_card = create_goalie_stats_card(opponent_name, goalies)
 
-            return head_to_head_card, game_log_card, player_leaders_card, goalie_stats_card
+            return h2h_chart, head_to_head_card, game_log_card, player_leaders_card, goalie_stats_card
 
         except Exception as e:
             logger.error(f"Error updating opponent stats: {e}")
             error_msg = dbc.Alert(f"Error loading opponent statistics: {str(e)}", color="danger")
-            return error_msg, html.Div(), html.Div(), html.Div()
+            return html.Div(), error_msg, html.Div(), html.Div(), html.Div()
