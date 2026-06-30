@@ -1,45 +1,139 @@
-/* Hockey Stats Web Application Styles */
+/* ============================================================
+   NHL Design Language — Hockey Stats Viewer
+   Tokens extracted from nhl.com/stats via designlang
+   ============================================================ */
 
-/* Global Styles */
+:root {
+  --nhl-bg-dark:       #000000;
+  --nhl-bg-dark-2:     #1a1a1a;
+  --nhl-bg-light:      #ffffff;
+  --nhl-bg-light-2:    #f8f8f8;
+  --nhl-primary:       #0042bb;
+  --nhl-primary-hover: #001e8c;
+  --nhl-text-primary:  #121212;
+  --nhl-text-secondary:#6f6f6f;
+  --nhl-text-muted:    #98989e;
+  --nhl-border:        #e0e0e0;
+  --nhl-border-light:  #f2f2f2;
+  --nhl-accent:        #eca200;
+  --nhl-positive:      #00843d;
+  --nhl-negative:      #c8102e;
+  --nhl-shadow-card:   rgba(0,0,0,.08) 0px 16px 32px 0px,
+                       rgba(0,0,0,.16) 0px 8px 16px 0px,
+                       rgba(0,0,0,.24) 0px 4px 8px 0px;
+}
+
+/* Global */
 body {
-    font-family: 'Arial', sans-serif;
-    background-color: #f8f9fa;
-    color: #212529;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--nhl-bg-light);
+  color: var(--nhl-text-primary);
+  margin: 0;
 }
 
-/* Blue and White Theme (Toronto Maple Leafs inspired) */
-.navbar-dark.bg-primary {
-    background-color: #00205b !important; /* Maple Leafs blue */
-}
-
+/* Bootstrap primary color overrides */
 .btn-primary {
-    background-color: #00205b !important;
-    border-color: #00205b !important;
+  background-color: var(--nhl-primary) !important;
+  border-color: var(--nhl-primary) !important;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  border-radius: 0;
+  padding: 10px 32px;
 }
 
 .btn-primary:hover {
-    background-color: #001a4d !important;
-    border-color: #001a4d !important;
+  background-color: var(--nhl-primary-hover) !important;
+  border-color: var(--nhl-primary-hover) !important;
 }
 
 .btn-outline-primary {
-    color: #00205b !important;
-    border-color: #00205b !important;
+  color: var(--nhl-primary) !important;
+  border-color: var(--nhl-primary) !important;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  border-radius: 0;
 }
 
-.btn-outline-primary:hover {
-    background-color: #00205b !important;
-    color: white !important;
-}
-
+.btn-outline-primary:hover,
 .btn-outline-primary.active {
-    background-color: #00205b !important;
-    color: white !important;
+  background-color: var(--nhl-primary) !important;
+  color: white !important;
 }
 
 .card-header {
-    background-color: #f1f1f1;
-    border-bottom: 2px solid #00205b;
+  background-color: var(--nhl-bg-light-2);
+  border-bottom: 2px solid var(--nhl-primary);
+}
+
+/* ============================================================
+   Navigation
+   ============================================================ */
+.nhl-navbar {
+  background-color: var(--nhl-bg-dark) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0 24px;
+  min-height: 52px;
+}
+
+.nhl-navbar-brand {
+  color: #ffffff !important;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  margin-right: 24px;
+}
+
+.nhl-navbar .nav-link {
+  color: var(--nhl-text-muted) !important;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 14px !important;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.nhl-navbar .nav-link:hover {
+  color: #ffffff !important;
+}
+
+.nhl-navbar .nav-link.active {
+  color: #ffffff !important;
+  border-bottom: 2px solid var(--nhl-primary);
+}
+
+.nhl-navbar-logout {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: var(--nhl-text-muted) !important;
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  border-radius: 4px !important;
+}
+
+.nhl-navbar-logout:hover {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Mobile navbar toggler */
+.nhl-navbar .navbar-toggler {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 768px) {
+  .nhl-navbar .nav-link {
+    height: auto;
+    padding: 12px 14px !important;
+    border-bottom: none;
+    border-left: 2px solid transparent;
+  }
+  .nhl-navbar .nav-link.active {
+    border-bottom: none;
+    border-left: 2px solid var(--nhl-primary);
+  }
 }
 
 /* Table Styles */
@@ -68,7 +162,7 @@ body {
 }
 
 .table-hover tbody tr:hover {
-    background-color: rgba(0, 32, 91, 0.075);
+    background-color: rgba(0, 66, 187, 0.08);
 }
 
 /* Result Colors */
@@ -87,8 +181,9 @@ body {
 /* Card Styles */
 .card {
     border: none;
-    border-radius: 0.5rem;
+    border-radius: 24px;
     overflow: hidden;
+    box-shadow: var(--nhl-shadow-card) !important;
 }
 
 .card-body {
@@ -96,13 +191,13 @@ body {
 }
 
 .shadow-sm {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+    box-shadow: var(--nhl-shadow-card) !important;
 }
 
 /* Dropdown Styles */
 .Select-control, .dash-dropdown .Select-control {
     border-radius: 0.25rem;
-    border: 2px solid #00205b;
+    border: 2px solid var(--nhl-primary);
     height: 44px;
     font-size: 1.1rem;
     background-color: #f8f9fa;
@@ -111,7 +206,7 @@ body {
 .Select-menu-outer, .dash-dropdown .Select-menu-outer {
     border-bottom-right-radius: 0.25rem;
     border-bottom-left-radius: 0.25rem;
-    border: 2px solid #00205b;
+    border: 2px solid var(--nhl-primary);
     border-top: none;
     font-size: 1.1rem;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -140,11 +235,11 @@ body {
 }
 
 .Select-option:hover, .dash-dropdown .Select-option:hover {
-    background-color: rgba(0, 32, 91, 0.1);
+    background-color: rgba(0, 66, 187, 0.1);
 }
 
 .Select-option.is-selected, .dash-dropdown .Select-option.is-selected {
-    background-color: rgba(0, 32, 91, 0.2);
+    background-color: rgba(0, 66, 187, 0.2);
 }
 
 /* Mobile Optimizations */
