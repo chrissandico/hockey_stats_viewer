@@ -1,541 +1,401 @@
 import dash
-from dash import html, dcc, dash_table
+from dash import html, dcc, dash_table, Output, Input, ALL, callback_context, no_update
 import dash_bootstrap_components as dbc
-import pandas as pd
+import plotly.graph_objects as go
+import json
 import logging
-from components.period_breakdown import create_period_breakdown_component
-from components.game_type_filter import create_game_type_badge
+from flask import session as flask_session
 import config
+from utils import format_player_label
+from components.unified_filter_bar import create_unified_filter_bar
+
+logger = logging.getLogger(__name__)
+
 
 def create_game_layout(data_service, team_context=None):
     """
-    Create the game statistics layout.
-    
+    Create the game statistics layout with scrollable scorecard list.
+
     Args:
         data_service (DataService): The data service for retrieving game data
         team_context (dict, optional): Team context containing team_id and team_name
-        
+
     Returns:
         dash.html.Div: The game statistics layout
     """
-    # Get team-filtered games for the dropdown - will be filtered by game type in callback
-    team_id = team_context['team_id'] if team_context else None
-    games = data_service.get_games(team_id, game_type=None)  # Default to All Games
-    
-    # Show all games (past and future) - users want to see upcoming games too
-    games = data_service._filter_games_by_date(games, include_future=True)
-    
-    # Create enhanced radio options with date, opponent, result, and game type
-    radio_options = []
-    for _, game in games.iterrows():
-        try:
-            # Safely access Result column with fallback
-            result = game.get('Result', 'Unknown')
-            goals_for = game.get('GoalsFor', 0)
-            goals_against = game.get('GoalsAgainst', 0)
-            game_type = game.get('GameType', 'E')
-            game_type_name = config.get_game_type_name(game_type)
-            
-            label = f"{game['Date']} vs {game['Opponent']} ({result} {goals_for}-{goals_against}) - {game_type_name}"
-            radio_options.append({'label': label, 'value': game['ID']})
-        except Exception as e:
-            # Fallback to basic label if there's any error
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Error creating game label for game {game.get('ID', 'Unknown')}: {e}")
-            label = f"{game.get('Date', 'Unknown')} vs {game.get('Opponent', 'Unknown')}"
-            radio_options.append({'label': label, 'value': game.get('ID', 'Unknown')})
-    
-    # Sort by date (descending order - most recent first)
-    radio_options.sort(key=lambda x: games[games['ID'] == x['value']]['Date'].iloc[0], reverse=True)
-    
     return html.Div([
-        # Title
-        html.H1("Game Statistics", className="text-center mt-4"),
-
-        # Game selection
-        dbc.Card([
-            dbc.CardHeader(html.H4("Select Game", className="card-title")),
-            dbc.CardBody([
-                html.Label("Choose a game:", className="form-label fw-bold mb-2"),
-                html.Div(id='game-dropdown-container', children=[
-                    # This will be populated by the callback
-                    html.P("Loading games...", className="text-muted")
-                ])
-            ])
-        ], className="mb-4 shadow-sm"),
-        
-        # Game summary with loading
-        dcc.Loading(
-            id="game-summary-loading",
-            type="default",
-            color="#00205b",
-            children=[
-                html.Div(id='game-summary-container', className="mb-4")
-            ]
-        ),
-        
-        # Position filter for player stats with loading
-        dbc.Card([
-            dbc.CardHeader(html.H4("Player Performance", className="card-title")),
-            dbc.CardBody([
-                html.P("Filter by position:"),
-                dbc.ButtonGroup([
-                    dbc.Button("All", id="btn-all", color="primary", outline=True, active=True, className="me-1"),
-                    dbc.Button("Forwards", id="btn-forwards", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Defense", id="btn-defense", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Goalies", id="btn-goalies", color="primary", outline=True)
-                ], className="mb-3"),
-                dcc.Loading(
-                    id="game-player-stats-loading",
-                    type="default",
-                    color="#00205b",
-                    children=[
-                        html.Div(id='game-player-stats-container')
-                    ]
-                )
-            ])
-        ], className="mb-4 shadow-sm")
+        dcc.Store(id='game-selected-store'),
+        create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
+        dbc.Container([
+            html.H1("Games", className="fw-bold mb-4"),
+            dcc.Loading(html.Div(id='game-list-container', className="mb-4")),
+            html.Div(id='game-detail-container'),
+        ], fluid=True),
     ])
 
-# Callbacks for game statistics
+
 def register_game_callbacks(app, data_service, team_context=None):
     """
     Register callbacks for the game statistics layout.
-    
+
     Args:
         app (dash.Dash): The Dash application
         data_service (DataService): The data service for retrieving game data
         team_context (dict, optional): Team context containing team_id and team_name
     """
-    # Extract team_id from context for use in callbacks
     team_id = team_context['team_id'] if team_context else None
-    
-    # Callback to update game dropdown - show all games (no game type filtering)
-    @app.callback(
-        dash.dependencies.Output('game-dropdown-container', 'children'),
-        [dash.dependencies.Input('url', 'pathname')]  # Trigger on page load
-    )
-    def update_game_dropdown(pathname):
-        # Show all games regardless of type
-        game_type = None
-        
-        # Get team context from session (import here to avoid circular imports)
-        from flask import session
-        from datetime import datetime, date
 
-        # Get team_id from session for proper filtering
-        session_team_id = None
-        if session.get('authenticated', False):
-            session_team_id = session.get('team_id')
-        
-        # Use session team_id if available, otherwise fall back to passed team_id
+    # ------------------------------------------------------------------ #
+    # Callback 1: Populate the scrollable game scorecard list              #
+    # ------------------------------------------------------------------ #
+    @app.callback(
+        Output('game-list-container', 'children'),
+        Input('game-type-session-store', 'data'),
+        Input('url', 'pathname'),
+    )
+    def update_game_list(game_type_data, pathname):
+        if pathname != '/game':
+            return no_update
+
+        session_team_id = flask_session.get('team_id')
         effective_team_id = session_team_id if session_team_id else team_id
-        
-        # Get team-filtered games with game type filter
-        games = data_service.get_games(effective_team_id, game_type=game_type)
-        
-        # Show all games (past and future) - users want to see upcoming games too
-        games = data_service._filter_games_by_date(games, include_future=True)
-        
+
+        if not effective_team_id or not data_service:
+            return html.P("No data available.", className="text-muted")
+
+        # Resolve game_type from the session store value ('all', 'E', 'R', 'T', 'P', or None)
+        game_type = None
+        if game_type_data and game_type_data != 'all':
+            game_type = game_type_data
+
+        try:
+            games = data_service.get_games(effective_team_id, game_type=game_type)
+            games = data_service._filter_games_by_date(games, include_future=True)
+        except Exception as e:
+            logger.error(f"Error fetching games for game list: {e}")
+            return html.P("Error loading games.", className="text-muted text-danger")
+
         if games.empty:
-            return html.P("No games found for the selected filters.", className="text-muted")
-        
-        # Split games into past and future based on current date
-        current_date = date.today()
-        past_games = []
-        future_games = []
-        
-        for _, game in games.iterrows():
-            try:
-                # Parse the game date
-                game_date = datetime.strptime(game['Date'], '%Y-%m-%d').date()
-                
-                # Create game info
-                result = game.get('Result', 'Unknown')
-                goals_for = game.get('GoalsFor', 0)
-                goals_against = game.get('GoalsAgainst', 0)
-                game_type_code = game.get('GameType', 'E')
-                game_type_name = config.get_game_type_name(game_type_code)
-                
-                game_info = {
-                    'id': game['ID'],
-                    'date': game['Date'],
-                    'date_obj': game_date,
-                    'opponent': game['Opponent'],
-                    'result': result,
-                    'goals_for': goals_for,
-                    'goals_against': goals_against,
-                    'game_type_name': game_type_name
-                }
-                
-                # Categorize as past or future
-                if game_date <= current_date:
-                    past_games.append(game_info)
-                else:
-                    future_games.append(game_info)
-                    
-            except Exception as e:
-                # Fallback for games with parsing errors
-                logger.warning(f"Error processing game {game.get('ID', 'Unknown')}: {e}")
-                game_info = {
-                    'id': game.get('ID', 'Unknown'),
-                    'date': game.get('Date', 'Unknown'),
-                    'date_obj': None,
-                    'opponent': game.get('Opponent', 'Unknown'),
-                    'result': 'Unknown',
-                    'goals_for': 0,
-                    'goals_against': 0,
-                    'game_type_name': 'Unknown'
-                }
-                # Default to past games for error cases
-                past_games.append(game_info)
-        
-        # Sort past games (most recent first)
-        past_games.sort(key=lambda x: x['date_obj'] if x['date_obj'] else date.min, reverse=True)
-        
-        # Sort future games (earliest first)
-        future_games.sort(key=lambda x: x['date_obj'] if x['date_obj'] else date.max)
-        
-        # Combine all games into a single list with section headers
-        all_options = []
-        
-        # Add completed games with section header
-        if past_games:
-            # Add a disabled option as section header
-            all_options.append({
-                'label': f"📅 Completed Games ({len(past_games)})",
-                'value': 'header-past',
-                'disabled': True
-            })
-            
-            # Add past games with scores
-            for game in past_games:
-                if game['result'] != 'Unknown' and (game['goals_for'] > 0 or game['goals_against'] > 0):
-                    # Show actual scores for completed games
-                    label = f"  {game['date']} vs {game['opponent']} ({game['result']} {game['goals_for']}-{game['goals_against']}) - {game['game_type_name']}"
-                else:
-                    # Show without scores for games without results
-                    label = f"  {game['date']} vs {game['opponent']} - {game['game_type_name']}"
-                all_options.append({'label': label, 'value': game['id']})
-        
-        # Add upcoming games with section header
-        if future_games:
-            # Add a disabled option as section header
-            all_options.append({
-                'label': f"🗓️ Upcoming Games ({len(future_games)})",
-                'value': 'header-future',
-                'disabled': True
-            })
-            
-            # Add future games without scores
-            for game in future_games:
-                label = f"  {game['date']} vs {game['opponent']} - {game['game_type_name']}"
-                all_options.append({'label': label, 'value': game['id']})
-        
-        # If no games, show a message
-        if not all_options:
             return html.P("No games found.", className="text-muted")
 
-        # Add placeholder option at the beginning
-        all_options.insert(0, {'label': '-- Select a Game --', 'value': '', 'disabled': True})
-
-        # Create a dropdown (Select) instead of radio buttons
-        return dbc.Select(
-            id='game-dropdown',
-            options=all_options,
-            value='',  # No game selected by default
-            className="form-select"
-        )
-    
-    # Callback for game summary
-    @app.callback(
-        dash.dependencies.Output('game-summary-container', 'children'),
-        [dash.dependencies.Input('game-dropdown', 'value')]
-    )
-    def update_game_summary(game_id):
-        # Skip empty/placeholder values and header values
-        if not game_id or game_id == '' or str(game_id).startswith('header-'):
-            return html.Div()
-
-        # Convert game_id to appropriate type (dropdown returns strings)
-        # Try to convert to int if it looks like a number, otherwise keep as string
+        # Sort most-recent first
         try:
-            game_id = int(game_id)
-        except (ValueError, TypeError):
-            pass  # Keep as string if conversion fails
+            games = games.sort_values('Date', ascending=False)
+        except Exception:
+            pass
 
-        # Get team context from session (import here to avoid circular imports)
-        from flask import session
-        
-        # Get team_id and coach status from session for proper filtering
-        session_team_id = None
-        is_coach = False
-        if session.get('authenticated', False):
-            session_team_id = session.get('team_id')
-            is_coach = session.get('is_coach', False)
-        
-        # Use session team_id if available, otherwise fall back to passed team_id
-        effective_team_id = session_team_id if session_team_id else team_id
-        
-        # Get game summary - pass effective_team_id for consistency
-        summary = data_service.get_game_summary(game_id, effective_team_id)
-        if summary is None:
-            return html.Div(dbc.Alert("Game not found", color="danger"))
-        
-        # Get period breakdown data
-        period_data = data_service.get_period_breakdown(game_id, effective_team_id)
-        
-        # Create game summary card
-        game = summary['game']
-        # Safely access Result column with fallback
-        result = game.get('Result', 'Unknown')
-        result_color = "success" if result == 'W' else "danger" if result == 'L' else "warning"
-        
-        # Get game type for badge
-        game_type = game.get('GameType', 'E')
-        
-        # Create the main game summary components
-        game_summary_components = [
-            dbc.Card([
-                dbc.CardHeader([
-                    html.Div([
-                        html.H4(f"Game Summary: {game['Date']} vs {game['Opponent']}", className="card-title d-inline-block me-2"),
-                        create_game_type_badge(game_type)
-                    ], className="d-flex align-items-center")
-                ]),
-                dbc.CardBody([
-                    dbc.Row([
-                        # Game details
-                        dbc.Col([
-                            html.H5("Game Details"),
-                            html.Div([
-                                html.Div([
-                                    html.Span("Date: ", className="fw-bold"),
-                                    html.Span(f"{game['Date']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Opponent: ", className="fw-bold"),
-                                    html.Span(f"{game['Opponent']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Location: ", className="fw-bold"),
-                                    html.Span(f"{game['Location']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Result: ", className="fw-bold"),
-                                    html.Span(f"{result}", className=f"text-{result_color}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Score: ", className="fw-bold"),
-                                    html.Span(f"{game['GoalsFor']} - {game['GoalsAgainst']}")
-                                ], className="mb-1"),
-                            ])
-                        ], md=6),
-                        
-                        # Shots and penalties
-                        dbc.Col([
-                            html.H5("Shots & Penalties"),
-                            html.Div([
-                                # Always show shots
-                                html.Div([
-                                    html.Span("Your Team Shots: ", className="fw-bold"),
-                                    html.Span(f"{summary['your_team_shots']}")
-                                ], className="mb-1"),
-                                html.Div([
-                                    html.Span("Opponent Shots: ", className="fw-bold"),
-                                    html.Span(f"{summary['opponent_shots']}")
-                                ], className="mb-1"),
-                                
-                                # Only show PIM for coaches
-                                *([
-                                    html.Div([
-                                        html.Span("Your Team PIM: ", className="fw-bold"),
-                                        html.Span(f"{summary['your_team_pim']}")
-                                    ], className="mb-1"),
-                                    html.Div([
-                                        html.Span("Opponent PIM: ", className="fw-bold"),
-                                        html.Span(f"{summary['opponent_pim']}")
-                                    ], className="mb-1"),
-                                ] if is_coach or not config.is_coaches_only_stat('your_team_pim') else []),
-                            ])
-                        ], md=6),
-                    ])
-                ])
-            ], className="shadow-sm")
-        ]
-        
-        # Add period breakdown component if data is available
-        if period_data:
-            period_breakdown_component = create_period_breakdown_component(
-                period_data, 
-                title="Period Breakdown", 
-                show_title=True
+        gt_colors = {'E': 'info', 'R': 'primary', 'T': 'warning', 'P': 'secondary'}
+
+        cards = []
+        for _, row in games.iterrows():
+            result_str = str(row.get('Result', '') or '')
+            result_upper = result_str.upper()
+            if 'W' in result_upper:
+                badge_color, result_letter = 'success', 'W'
+            elif 'L' in result_upper:
+                badge_color, result_letter = 'danger', 'L'
+            else:
+                badge_color, result_letter = 'warning', 'T'
+
+            game_type_val = str(row.get('GameType', '') or '')
+            gt_color = gt_colors.get(game_type_val, 'secondary')
+            game_id_val = str(row.get('ID', row.name))
+
+            cards.append(
+                dbc.Card(
+                    dbc.CardBody(
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div(str(row.get('Date', '')), className="text-muted small"),
+                                html.Div(f"vs {row.get('Opponent', '')}", className="fw-bold"),
+                            ], width=5),
+                            dbc.Col(
+                                html.Div(
+                                    f"{row.get('GoalsFor', 0)} — {row.get('GoalsAgainst', 0)}",
+                                    className="game-score text-center"
+                                ),
+                                width=3,
+                            ),
+                            dbc.Col([
+                                dbc.Badge(result_letter, color=badge_color, className="me-1"),
+                                dbc.Badge(game_type_val, color=gt_color),
+                            ], width=4, className="text-end"),
+                        ], align='center')
+                    ),
+                    id={'type': 'game-card', 'index': game_id_val},
+                    className="game-scorecard mb-2",
+                    style={'cursor': 'pointer'},
+                )
             )
-            game_summary_components.append(period_breakdown_component)
-        
-        return html.Div(game_summary_components)
-    
-    # Callback for position filter buttons
+
+        return cards
+
+    # ------------------------------------------------------------------ #
+    # Callback 2: Pattern-matching — store which card was clicked          #
+    # ------------------------------------------------------------------ #
     @app.callback(
-        [dash.dependencies.Output('btn-all', 'active'),
-         dash.dependencies.Output('btn-forwards', 'active'),
-         dash.dependencies.Output('btn-defense', 'active'),
-         dash.dependencies.Output('btn-goalies', 'active')],
-        [dash.dependencies.Input('btn-all', 'n_clicks'),
-         dash.dependencies.Input('btn-forwards', 'n_clicks'),
-         dash.dependencies.Input('btn-defense', 'n_clicks'),
-         dash.dependencies.Input('btn-goalies', 'n_clicks')]
+        Output('game-selected-store', 'data'),
+        Input({'type': 'game-card', 'index': ALL}, 'n_clicks'),
+        prevent_initial_call=True,
     )
-    def update_position_filter(all_clicks, forwards_clicks, defense_clicks, goalies_clicks):
-        ctx = dash.callback_context
-        if not ctx.triggered:
-            return True, False, False, False
-        
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        
-        if button_id == 'btn-all':
-            return True, False, False, False
-        elif button_id == 'btn-forwards':
-            return False, True, False, False
-        elif button_id == 'btn-defense':
-            return False, False, True, False
-        elif button_id == 'btn-goalies':
-            return False, False, False, True
-        
-        return True, False, False, False
-    
-    # Callback for player stats
+    def select_game(n_clicks_list):
+        if not callback_context.triggered:
+            return no_update
+        triggered_prop = callback_context.triggered[0]['prop_id']
+        try:
+            return json.loads(triggered_prop.split('.')[0])['index']
+        except Exception:
+            return no_update
+
+    # ------------------------------------------------------------------ #
+    # Callback 3: Render game detail — score, shots chart, player table   #
+    # ------------------------------------------------------------------ #
     @app.callback(
-        dash.dependencies.Output('game-player-stats-container', 'children'),
-        [dash.dependencies.Input('game-dropdown', 'value'),
-         dash.dependencies.Input('btn-all', 'active'),
-         dash.dependencies.Input('btn-forwards', 'active'),
-         dash.dependencies.Input('btn-defense', 'active'),
-         dash.dependencies.Input('btn-goalies', 'active')]
+        Output('game-detail-container', 'children'),
+        Input('game-selected-store', 'data'),
     )
-    def update_player_stats(game_id, all_active, forwards_active, defense_active, goalies_active):
-        # Skip empty/placeholder values and header values
-        if not game_id or game_id == '' or str(game_id).startswith('header-'):
+    def update_game_detail(game_id):
+        if not game_id:
+            return html.P(
+                "Select a game above to view details.",
+                className="text-muted text-center py-4",
+            )
+
+        session_team_id = flask_session.get('team_id')
+        effective_team_id = session_team_id if session_team_id else team_id
+        is_coach = flask_session.get('is_coach', False)
+
+        if not effective_team_id or not data_service:
             return html.Div()
 
-        # Convert game_id to appropriate type (dropdown returns strings)
-        # Try to convert to int if it looks like a number, otherwise keep as string
+        # Try integer conversion for numeric IDs
         try:
-            game_id = int(game_id)
+            game_id_typed = int(game_id)
         except (ValueError, TypeError):
-            pass  # Keep as string if conversion fails
+            game_id_typed = game_id
 
-        # Get team context from session (import here to avoid circular imports)
-        from flask import session
-        
-        # Get team_id and coach status from session for proper filtering
-        session_team_id = None
-        is_coach = False
-        if session.get('authenticated', False):
-            session_team_id = session.get('team_id')
-            is_coach = session.get('is_coach', False)
-        
-        # Use session team_id if available, otherwise fall back to passed team_id
-        effective_team_id = session_team_id if session_team_id else team_id
-        
-        # Determine position filter
-        position = None
-        if forwards_active:
-            position = 'F'
-        elif defense_active:
-            position = 'D'
-        elif goalies_active:
-            position = 'G'
-        
-        # Get player stats for the game - pass effective_team_id to filter only logged-in team players
-        player_stats = data_service.get_game_player_stats(game_id, position, effective_team_id)
-        
-        if not player_stats:
-            return html.Div(dbc.Alert("No player statistics found", color="warning"))
-        
-        # Create player stats table
-        if position == 'G':
-            # Use the existing goalie game stats calculation from data service
-            goalie_game_stats = []
-            for stats in player_stats:
-                # Handle different possible ID column names for backward compatibility
-                player = stats['player']
-                player_id = None
-                if 'ID' in player.index:
-                    player_id = player['ID']
-                elif 'Unnamed: 0' in player.index:
-                    player_id = player['Unnamed: 0']
-                elif '' in player.index:
-                    player_id = player['']
-                else:
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"No player ID column found in game layout. Available columns: {list(player.index)}")
-                    continue
-                
-                # Use the data service method which has proper team identifier mapping
-                goalie_stats = data_service.calculate_goalie_game_stats(player_id, game_id, effective_team_id)
-                if goalie_stats:
-                    goalie_game_stats.append(goalie_stats)
-            
-            # Goalie stats table
-            return html.Table([
-                html.Thead(
-                    html.Tr([
-                        html.Th("Goalie", className="text-start"),
-                        html.Th("Shots Against", className="text-center"),
-                        html.Th("Saves", className="text-center"),
-                        html.Th("Goals Against", className="text-center"),
-                        html.Th("Save %", className="text-center")
-                    ])
+        try:
+            # ---- Game summary (header data + team shots totals) ----
+            summary = data_service.get_game_summary(game_id_typed, effective_team_id)
+            if summary is None:
+                return dbc.Alert("Game not found.", color="danger")
+
+            game = summary['game']
+            result_str = str(game.get('Result', '') or '')
+            result_upper = result_str.upper()
+            if 'W' in result_upper:
+                result_color, result_letter = 'success', 'W'
+            elif 'L' in result_upper:
+                result_color, result_letter = 'danger', 'L'
+            else:
+                result_color, result_letter = 'warning', 'T'
+
+            game_type_val = str(game.get('GameType', '') or '')
+            gt_colors = {'E': 'info', 'R': 'primary', 'T': 'warning', 'P': 'secondary'}
+            gt_color = gt_colors.get(game_type_val, 'secondary')
+
+            # ---- Score header card ----
+            score_header = dbc.Card(
+                dbc.CardBody(
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div(str(game.get('Date', '')), className="text-muted small"),
+                            html.H4(f"vs {game.get('Opponent', '')}", className="mb-0"),
+                            html.Div(str(game.get('Location', '')), className="text-muted small mt-1"),
+                        ], xs=12, md=5),
+                        dbc.Col(
+                            html.Div(
+                                html.Span(
+                                    f"{game.get('GoalsFor', 0)} — {game.get('GoalsAgainst', 0)}",
+                                    className="game-score",
+                                ),
+                                className="text-center",
+                            ),
+                            xs=12, md=4,
+                        ),
+                        dbc.Col([
+                            dbc.Badge(result_letter, color=result_color, className="me-2 fs-6"),
+                            dbc.Badge(game_type_val, color=gt_color, className="fs-6"),
+                        ], xs=12, md=3, className="d-flex align-items-center justify-content-end"),
+                    ], align='center')
                 ),
-                html.Tbody([
-                    html.Tr([
-                        html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                        html.Td(f"{stats['shots_against']}", className="text-center"),
-                        html.Td(f"{stats['saves']}", className="text-center"),
-                        html.Td(f"{stats['goals_against']}", className="text-center"),
-                        html.Td(f"{stats['save_percentage']:.3f}", className="text-center")
-                    ]) for stats in goalie_game_stats
+                className="mb-3 shadow-sm",
+            )
+
+            # ---- Shots-by-period chart ----
+            period_data = data_service.get_period_breakdown(game_id_typed, effective_team_id)
+            shots_chart = None
+            if period_data:
+                periods = ['P1', 'P2', 'P3']
+                your_shots = period_data['your_team'].get('shots', [0, 0, 0])
+                opp_shots = period_data['opponent'].get('shots', [0, 0, 0])
+                your_name = period_data['your_team'].get('name', 'Your Team')
+                opp_name = period_data['opponent'].get('name', 'Opponent')
+
+                fig = go.Figure(data=[
+                    go.Bar(
+                        name=your_name,
+                        x=periods,
+                        y=your_shots,
+                        marker_color='#0042bb',
+                    ),
+                    go.Bar(
+                        name=opp_name,
+                        x=periods,
+                        y=opp_shots,
+                        marker_color='#c8102e',
+                    ),
                 ])
-            ], className="table table-striped table-hover")
-        else:
-            # Skater stats table - conditionally include coaches-only columns
-            header_cells = [
-                html.Th("Player", className="text-start"),
-                html.Th("Pos", className="text-center"),
-                html.Th("G", className="text-center"),
-                html.Th("A", className="text-center"),
-                html.Th("P", className="text-center"),
+                fig.update_layout(
+                    barmode='group',
+                    height=220,
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    legend=dict(orientation='h', y=1.1),
+                    yaxis=dict(title='Shots'),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                )
+                shots_chart = dbc.Card(
+                    dbc.CardBody([
+                        html.H5("Shots by Period", className="card-title"),
+                        dcc.Graph(figure=fig, config={'displayModeBar': False}),
+                    ]),
+                    className="mb-3 shadow-sm",
+                )
+
+            # ---- Player stats ----
+            # Skaters: get all player stats, then exclude goalies
+            all_player_stats = data_service.get_game_player_stats(
+                game_id_typed, None, effective_team_id
+            )
+            skater_stats = [
+                s for s in all_player_stats
+                if s['player'].get('Position') != 'G'
             ]
-            
-            # Only add coaches-only columns if user is a coach
+
+            # Goalies: get goalie list then calc per-game goalie stats
+            goalie_list = data_service.get_game_player_stats(
+                game_id_typed, 'G', effective_team_id
+            )
+            goalie_stats = []
+            for s in goalie_list:
+                player_series = s['player']
+                player_id_val = None
+                if 'ID' in player_series.index:
+                    player_id_val = player_series['ID']
+                elif 'Unnamed: 0' in player_series.index:
+                    player_id_val = player_series['Unnamed: 0']
+                elif '' in player_series.index:
+                    player_id_val = player_series['']
+                if player_id_val is not None:
+                    gs = data_service.calculate_goalie_game_stats(
+                        player_id_val, game_id_typed, effective_team_id
+                    )
+                    if gs:
+                        goalie_stats.append(gs)
+
+            # Shared DataTable style
+            table_kwargs = dict(
+                style_table={'overflowX': 'auto'},
+                style_cell={'textAlign': 'center', 'padding': '6px 12px'},
+                style_header={'fontWeight': 'bold', 'backgroundColor': '#f8f9fa'},
+                style_data_conditional=[
+                    {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8f9fa'}
+                ],
+                sort_action='native',
+            )
+
+            # Skater DataTable
+            skater_cols = [
+                {'name': 'Player', 'id': 'player_label'},
+                {'name': 'Pos', 'id': 'position'},
+                {'name': 'G', 'id': 'goals'},
+                {'name': 'A', 'id': 'assists'},
+                {'name': 'Pts', 'id': 'points'},
+            ]
             if is_coach or not config.is_coaches_only_stat('plus_minus'):
-                header_cells.append(html.Th("+/-", className="text-center"))
-            
+                skater_cols.append({'name': '+/-', 'id': 'plus_minus'})
             if is_coach or not config.is_coaches_only_stat('PIM'):
-                header_cells.append(html.Th("PIM", className="text-center"))
-            
-            # Create rows with conditional cells
-            rows = []
-            for stats in player_stats:
-                row_cells = [
-                    html.Td(f"#{stats['player']['JerseyNumber']}", className="text-start"),
-                    html.Td(f"{stats['player']['Position']}", className="text-center"),
-                    html.Td(f"{stats['goals']}", className="text-center"),
-                    html.Td(f"{stats['assists']}", className="text-center"),
-                    html.Td(f"{stats['points']}", className="text-center"),
-                ]
-                
-                # Only add coaches-only cells if user is a coach
-                if is_coach or not config.is_coaches_only_stat('plus_minus'):
-                    row_cells.append(html.Td(f"{stats['plus_minus']}", className="text-center"))
-                
-                if is_coach or not config.is_coaches_only_stat('PIM'):
-                    row_cells.append(html.Td(f"{stats['penalty_minutes']}", className="text-center"))
-                
-                rows.append(html.Tr(row_cells))
-            
-            return html.Table([
-                html.Thead(html.Tr(header_cells)),
-                html.Tbody(rows)
-            ], className="table table-striped table-hover")
+                skater_cols.append({'name': 'PIM', 'id': 'penalty_minutes'})
+
+            skater_data = [
+                {
+                    'player_label': format_player_label(s['player']),
+                    'position': s['player'].get('Position', ''),
+                    'goals': s.get('goals', 0),
+                    'assists': s.get('assists', 0),
+                    'points': s.get('points', 0),
+                    'plus_minus': s.get('plus_minus', 0),
+                    'penalty_minutes': s.get('penalty_minutes', 0),
+                }
+                for s in skater_stats
+            ]
+
+            # Goalie DataTable
+            goalie_cols = [
+                {'name': 'Goalie', 'id': 'player_label'},
+                {'name': 'SA', 'id': 'shots_against'},
+                {'name': 'SV', 'id': 'saves'},
+                {'name': 'GA', 'id': 'goals_against'},
+                {'name': 'SV%', 'id': 'save_pct'},
+            ]
+            goalie_data = [
+                {
+                    'player_label': format_player_label(gs['player']),
+                    'shots_against': gs.get('shots_against', 0),
+                    'saves': gs.get('saves', 0),
+                    'goals_against': gs.get('goals_against', 0),
+                    'save_pct': f"{gs.get('save_percentage', 0):.3f}",
+                }
+                for gs in goalie_stats
+            ]
+
+            player_section_children = []
+            if skater_data:
+                player_section_children.append(
+                    html.H5("Skaters", className="mt-3 mb-2")
+                )
+                player_section_children.append(
+                    dash_table.DataTable(
+                        data=skater_data,
+                        columns=skater_cols,
+                        page_size=20,
+                        **table_kwargs,
+                    )
+                )
+            if goalie_data:
+                player_section_children.append(
+                    html.H5("Goalies", className="mt-3 mb-2")
+                )
+                player_section_children.append(
+                    dash_table.DataTable(
+                        data=goalie_data,
+                        columns=goalie_cols,
+                        **table_kwargs,
+                    )
+                )
+            if not skater_data and not goalie_data:
+                player_section_children.append(
+                    dbc.Alert(
+                        "No player statistics found for this game.", color="warning"
+                    )
+                )
+
+            player_card = dbc.Card(
+                dbc.CardBody([
+                    html.H5("Player Performance", className="card-title"),
+                    *player_section_children,
+                ]),
+                className="mb-3 shadow-sm",
+            )
+
+            detail_children = [score_header]
+            if shots_chart:
+                detail_children.append(shots_chart)
+            detail_children.append(player_card)
+
+            return html.Div(detail_children)
+
+        except Exception as e:
+            logger.error(f"Error loading game detail for game_id={game_id}: {e}")
+            return html.P("Could not load game details.", className="text-muted")
