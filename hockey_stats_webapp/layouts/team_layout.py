@@ -50,10 +50,16 @@ def create_team_layout(data_service, team_context=None):
 
         # Position tabs
         dbc.Tabs([
-            dbc.Tab(label="Forwards", tab_id="forwards"),
-            dbc.Tab(label="Defense",  tab_id="defense"),
-            dbc.Tab(label="Goalies",  tab_id="goalies"),
-        ], id='team-position-tabs', active_tab="forwards", className="mb-3"),
+            dbc.Tab(label="Forwards", tab_id="forwards",
+                    label_style={"fontWeight": "600", "fontSize": "15px"},
+                    active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+            dbc.Tab(label="Defense",  tab_id="defense",
+                    label_style={"fontWeight": "600", "fontSize": "15px"},
+                    active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+            dbc.Tab(label="Goalies",  tab_id="goalies",
+                    label_style={"fontWeight": "600", "fontSize": "15px"},
+                    active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+        ], id='team-position-tabs', active_tab="forwards", className="mb-3 border-bottom border-2"),
 
         # Season goals trend chart - callback will populate
         html.Div(id='team-trend-chart-container', className="mb-4"),

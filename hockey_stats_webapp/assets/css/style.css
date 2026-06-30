@@ -243,6 +243,26 @@ body {
 .nhl-footer { background-color: var(--nhl-bg-dark-2); color: #fff;
               font-size: 14px; padding: 24px 0; margin-top: 3rem; text-align: center; }
 
+/* Position tab active indicator */
+.nav-tabs .nav-link.active {
+  border-bottom: 3px solid var(--nhl-primary) !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  background: transparent !important;
+}
+.nav-tabs .nav-link {
+  border: none !important;
+  border-bottom: 3px solid transparent !important;
+  color: var(--nhl-text-secondary);
+  padding: 10px 20px;
+  transition: color .15s;
+}
+.nav-tabs .nav-link:hover {
+  color: var(--nhl-primary);
+  border-bottom-color: rgba(0,66,187,.3) !important;
+}
+
 /* Dropdown Styles */
 .Select-control, .dash-dropdown .Select-control {
     border-radius: 0.25rem;
