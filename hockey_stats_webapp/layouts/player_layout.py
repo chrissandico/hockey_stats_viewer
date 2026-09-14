@@ -66,21 +66,22 @@ def create_player_layout(data_service, team_context=None):
                             html.P(pos,
                                    className="text-muted text-center mb-0",
                                    style={"fontSize": "11px"}),
-                        ]),
-                        className="player-card mb-3",
+                        ], className="player-card-body"),
+                        className="player-card mb-2",
                     ),
                     id={'type': 'player-card', 'index': str(row['JerseyNumber'])},
                     n_clicks=0,
                 ),
-                xs=6, sm=4, md=3, lg=2,
+                xs=4, sm=3, md=2, lg=2,
             ))
 
-    roster_grid = dbc.Row(cards) if cards else html.P(
+    roster_grid = dbc.Row(cards, className="g-2") if cards else html.P(
         "No players found.", className="text-muted"
     )
 
     return html.Div([
         dcc.Store(id='player-selected-store'),
+        html.Div(id='player-scroll-dummy', style={'display': 'none'}),
         create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
         dbc.Container([
             html.H1("Players", className="fw-bold mb-4"),
@@ -124,6 +125,29 @@ def register_player_callbacks(app, data_service):
             return no_update
         triggered_id = triggered[0]['prop_id']
         return json.loads(triggered_id.split('.')[0])['index']
+
+    # ------------------------------------------------------------------
+    # Auto-scroll to the stats section as soon as a card is tapped, so the
+    # roster grid (which can run long on mobile) doesn't have to be
+    # scrolled past manually to see the selected player's stats.
+    # ------------------------------------------------------------------
+
+    app.clientside_callback(
+        """
+        function(jerseyNumber) {
+            if (jerseyNumber) {
+                setTimeout(function() {
+                    var el = document.getElementById('player-info-container');
+                    if (el) { el.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+                }, 150);
+            }
+            return '';
+        }
+        """,
+        Output('player-scroll-dummy', 'children'),
+        Input('player-selected-store', 'data'),
+        prevent_initial_call=True,
+    )
 
     # ------------------------------------------------------------------
     # Player detail — info card + game log

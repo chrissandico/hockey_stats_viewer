@@ -211,6 +211,7 @@ body {
                         border: 2px solid transparent !important; }
 .player-card:hover    { transform: translateY(-3px); }
 .player-card.selected { border-color: var(--nhl-primary) !important; }
+.player-card-body     { padding: 10px 6px !important; }
 .player-initials      { width: 52px; height: 52px; border-radius: 50%;
                         background: var(--nhl-primary); color: #fff;
                         font-size: 18px; font-weight: 700;
@@ -218,6 +219,14 @@ body {
                         margin: 0 auto 8px; }
 .player-initials.goalie  { background: var(--nhl-accent); color: #000; }
 .player-initials.defense { background: var(--nhl-bg-dark-2); color: #fff; }
+
+/* Compact roster tiles on mobile — more cards per row, less scroll before
+   reaching a selected player's stats. */
+@media (max-width: 768px) {
+    .player-initials { width: 38px; height: 38px; font-size: 14px; margin-bottom: 6px; }
+    .player-card-body { padding: 8px 4px !important; }
+    .player-card-body p.small { font-size: 11px; }
+}
 
 /* ============================================================
    Game Scorecards
@@ -610,6 +619,45 @@ footer {
 /* Loading Indicators - Hockey Theme */
 .dash-spinner {
     border-color: #00205b !important;
+}
+
+/* Spinning hockey puck — replaces Dash's default bouncing bars/dots/ring.
+   Works for type="default" (.dash-default-spinner), type="circle"
+   (.dash-sk-circle) and type="dot" (.dash-dot-spinner) since none of the
+   dcc.Loading() call sites in this app pin a specific type. */
+.dash-default-spinner,
+.dash-sk-circle,
+.dash-dot-spinner {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.dash-default-spinner > div,
+.dash-sk-circle > div,
+.dash-dot-spinner > div {
+    display: none !important;
+}
+
+.dash-default-spinner::after,
+.dash-sk-circle::after,
+.dash-dot-spinner::after {
+    content: "";
+    display: block;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background:
+        conic-gradient(from 0deg,
+            #111 0deg 165deg,
+            #fff 165deg 195deg,
+            #111 195deg 360deg);
+    box-shadow: 0 0 0 2px var(--nhl-accent, #eca200);
+    animation: puck-spin 0.85s linear infinite;
+}
+
+@keyframes puck-spin {
+    to { transform: rotate(360deg); }
 }
 
 /* Custom loading messages */

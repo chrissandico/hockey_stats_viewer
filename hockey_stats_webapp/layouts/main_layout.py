@@ -3,6 +3,7 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
 from utils import format_player_label
+import config
 
 
 def create_main_layout(team_context=None):
@@ -33,6 +34,14 @@ def create_main_layout(team_context=None):
             ], className="mb-4"),
         ], fluid=True),
     ])
+
+
+def _top_performer_item(label, entry, stat_key, signed=False):
+    name = format_player_label(entry['player'])
+    value = entry.get(stat_key, 0)
+    if signed:
+        value = f"+{value}" if value >= 0 else str(value)
+    return dbc.ListGroupItem([html.Strong(f"{label}: "), f"{name}  ({value})"])
 
 
 def _quick_card(title, desc, href):
@@ -153,8 +162,10 @@ def register_dashboard_callbacks(app, data_service):
                         f"{last.get('GoalsFor', 0)} — {last.get('GoalsAgainst', 0)}",
                         className="fw-bold mb-2",
                     ),
-                    dbc.Badge(badge_text, color=badge_color, className="me-2"),
-                    html.Span(str(last.get('Date', '')), className="text-muted small"),
+                    html.Div([
+                        dbc.Badge(badge_text, color=badge_color, className="me-2"),
+                        html.Span(str(last.get('Date', '')), className="fw-semibold"),
+                    ]),
                 ]))
             else:
                 last_game = html.Div()
@@ -162,26 +173,37 @@ def register_dashboard_callbacks(app, data_service):
             last_game = html.Div()
 
         # ── Top performers ────────────────────────────────────────────────────
+        # One leaderboard call fetches every skater's full stat line (goals,
+        # assists, points, plus_minus) in a single pass; goals/assists/points
+        # leaders are then derived in-memory instead of issuing three separate
+        # full-roster leaderboard calls.
         try:
             items = []
-            for stat_key, label in [('goals', 'Goals'), ('assists', 'Assists'), ('points', 'Points')]:
-                try:
-                    leaders = data_service.get_team_leaderboard(
-                        stat=stat_key,
-                        position=None,
-                        limit=1,
-                        team_id=team_id,
-                        game_type=None,
-                    )
-                    if leaders:
-                        top = leaders[0]
-                        name = format_player_label(top['player'])
-                        value = top.get(stat_key, 0)
-                        items.append(dbc.ListGroupItem(
-                            [html.Strong(f"{label}: "), f"{name}  ({value})"]
+            leaderboard = data_service.get_team_leaderboard(
+                stat='points',
+                position=None,
+                limit=None,
+                team_id=team_id,
+                game_type=None,
+            )
+            skaters = [p for p in leaderboard if p.get('player', {}).get('Position') != 'G']
+
+            if skaters:
+                top_points = skaters[0]  # leaderboard is already sorted by points desc
+                top_goals = max(skaters, key=lambda p: p.get('goals', 0))
+                top_assists = max(skaters, key=lambda p: p.get('assists', 0))
+                items.append(_top_performer_item('Goals', top_goals, 'goals'))
+                items.append(_top_performer_item('Assists', top_assists, 'assists'))
+                items.append(_top_performer_item('Points', top_points, 'points'))
+
+                is_coach = flask_session.get('is_coach', False)
+                if is_coach or not config.is_coaches_only_stat('plus_minus'):
+                    defensemen = [p for p in skaters if p.get('player', {}).get('Position') == 'D']
+                    if defensemen:
+                        top_plus_minus = max(defensemen, key=lambda p: p.get('plus_minus', 0))
+                        items.append(_top_performer_item(
+                            'Plus/Minus (D)', top_plus_minus, 'plus_minus', signed=True
                         ))
-                except Exception:
-                    pass
 
             top_performers = dbc.Card(dbc.CardBody([
                 html.H6("Top Performers", className="text-muted mb-2"),
