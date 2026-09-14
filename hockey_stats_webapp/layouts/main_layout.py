@@ -19,13 +19,15 @@ def create_main_layout(team_context=None):
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
                 html.P("Season Statistics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
-            dcc.Loading(html.Div(id='dashboard-kpi-row', className="mb-4")),
-            html.Div(id='dashboard-form-row', className="text-center mb-4"),
-            dbc.Row([
-                dbc.Col(dcc.Loading(html.Div(id='dashboard-last-game')), md=5),
-                dbc.Col(dcc.Loading(html.Div(id='dashboard-top-performers')), md=7),
-            ], className="mb-4"),
-            dcc.Loading(html.Div(id='dashboard-chart', className="mb-4")),
+            dcc.Loading(html.Div([
+                html.Div(id='dashboard-kpi-row', className="mb-4"),
+                html.Div(id='dashboard-form-row', className="text-center mb-4"),
+                dbc.Row([
+                    dbc.Col(html.Div(id='dashboard-last-game'), md=5),
+                    dbc.Col(html.Div(id='dashboard-top-performers'), md=7),
+                ], className="mb-4"),
+                html.Div(id='dashboard-chart', className="mb-4"),
+            ])),
             dbc.Row([
                 _quick_card("Players",   "Individual stats and game logs",    "/player"),
                 _quick_card("Games",     "Results, period breakdowns, shots", "/game"),

@@ -39,16 +39,9 @@ def create_team_layout(data_service, team_context=None):
             recent_games_store_id='team-recent-games-store'
         ),
 
-        # **OPTIMIZED**: Empty containers filled by callback
-        # Team season summary - callback will populate
-        dcc.Loading(
-            id="team-stats-loading",
-            type="default",
-            color="#00205b",
-            children=[html.Div(id='team-summary-container')]
-        ),
-
-        # Position tabs
+        # Position tabs — grouped with the filters above since, together with
+        # the game-type filter, it's an Input to the callback that fills
+        # everything below.
         dbc.Tabs([
             dbc.Tab(label="Forwards", tab_id="forwards",
                     label_style={"fontWeight": "600", "fontSize": "15px"},
@@ -61,15 +54,18 @@ def create_team_layout(data_service, team_context=None):
                     active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
         ], id='team-position-tabs', active_tab="forwards", className="mb-3 border-bottom border-2"),
 
-        # Season goals trend chart - callback will populate
-        html.Div(id='team-trend-chart-container', className="mb-4"),
-
-        # Leaderboards - callback will populate
+        # **OPTIMIZED**: Empty containers filled by callback. Summary, trend
+        # chart, and leaderboards are all outputs of the same callback, so
+        # one shared spinner covers them instead of each flashing its own.
         dcc.Loading(
-            id="team-leaderboards-loading",
+            id="team-stats-loading",
             type="default",
             color="#00205b",
-            children=[html.Div(id='team-leaderboards-container')]
+            children=[html.Div([
+                html.Div(id='team-summary-container'),
+                html.Div(id='team-trend-chart-container', className="mb-4"),
+                html.Div(id='team-leaderboards-container'),
+            ])]
         ),
     ])
 

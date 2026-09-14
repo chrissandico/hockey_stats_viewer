@@ -90,24 +90,18 @@ def _create_recent_games_content():
         create_game_type_session_store(),
         dcc.Store(id='recent-games-count-store', storage_type='session', data=5),
 
-        # Team performance section
+        # Team performance + player leaderboards sections — two separate
+        # callbacks, but both keyed off the same recent-games-count and
+        # game-type inputs, so they always reload together. One shared
+        # spinner covers both instead of each flashing its own.
         dcc.Loading(
-            id="team-perf-loading",
+            id="recent-games-loading",
             type="default",
             color="#00205b",
-            children=[
-                html.Div(id='team-performance-section')
-            ]
-        ),
-
-        # Player leaderboards section
-        dcc.Loading(
-            id="leaderboards-loading",
-            type="default",
-            color="#00205b",
-            children=[
-                html.Div(id='player-leaderboards-section')
-            ]
+            children=[html.Div([
+                html.Div(id='team-performance-section'),
+                html.Div(id='player-leaderboards-section'),
+            ])]
         )
     ], fluid=True)
 

@@ -87,8 +87,10 @@ def create_player_layout(data_service, team_context=None):
             html.H1("Players", className="fw-bold mb-4"),
             roster_grid,
             html.Hr(className="my-4"),
-            dcc.Loading(html.Div(id='player-info-container')),
-            dcc.Loading(html.Div(id='player-game-log-container')),
+            dcc.Loading(html.Div([
+                html.Div(id='player-info-container'),
+                html.Div(id='player-game-log-container'),
+            ])),
         ], fluid=True),
     ])
 
