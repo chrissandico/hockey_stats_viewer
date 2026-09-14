@@ -57,17 +57,19 @@ def create_player_layout(data_service, team_context=None):
         for _, row in players_df.iterrows():
             pos = str(row.get('Position', 'F') or 'F')
             cards.append(dbc.Col(
-                dbc.Card(
-                    dbc.CardBody([
-                        html.Div(_initials(row), className=_initials_class(pos)),
-                        html.P(format_player_label(row),
-                               className="fw-bold mb-0 text-center small"),
-                        html.P(pos,
-                               className="text-muted text-center mb-0",
-                               style={"fontSize": "11px"}),
-                    ]),
+                html.Div(
+                    dbc.Card(
+                        dbc.CardBody([
+                            html.Div(_initials(row), className=_initials_class(pos)),
+                            html.P(format_player_label(row),
+                                   className="fw-bold mb-0 text-center small"),
+                            html.P(pos,
+                                   className="text-muted text-center mb-0",
+                                   style={"fontSize": "11px"}),
+                        ]),
+                        className="player-card mb-3",
+                    ),
                     id={'type': 'player-card', 'index': str(row['JerseyNumber'])},
-                    className="player-card mb-3",
                     n_clicks=0,
                 ),
                 xs=6, sm=4, md=3, lg=2,

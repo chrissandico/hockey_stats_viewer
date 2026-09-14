@@ -102,29 +102,32 @@ def register_game_callbacks(app, data_service, team_context=None):
             game_id_val = str(row.get('ID', row.name))
 
             cards.append(
-                dbc.Card(
-                    dbc.CardBody(
-                        dbc.Row([
-                            dbc.Col([
-                                html.Div(str(row.get('Date', '')), className="text-muted small"),
-                                html.Div(f"vs {row.get('Opponent', '')}", className="fw-bold"),
-                            ], width=5),
-                            dbc.Col(
-                                html.Div(
-                                    f"{row.get('GoalsFor', 0)} — {row.get('GoalsAgainst', 0)}",
-                                    className="game-score text-center"
+                html.Div(
+                    dbc.Card(
+                        dbc.CardBody(
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div(str(row.get('Date', '')), className="text-muted small"),
+                                    html.Div(f"vs {row.get('Opponent', '')}", className="fw-bold"),
+                                ], width=5),
+                                dbc.Col(
+                                    html.Div(
+                                        f"{row.get('GoalsFor', 0)} — {row.get('GoalsAgainst', 0)}",
+                                        className="game-score text-center"
+                                    ),
+                                    width=3,
                                 ),
-                                width=3,
-                            ),
-                            dbc.Col([
-                                dbc.Badge(result_letter, color=badge_color, className="me-1"),
-                                dbc.Badge(game_type_val, color=gt_color),
-                            ], width=4, className="text-end"),
-                        ], align='center')
+                                dbc.Col([
+                                    dbc.Badge(result_letter, color=badge_color, className="me-1"),
+                                    dbc.Badge(game_type_val, color=gt_color),
+                                ], width=4, className="text-end"),
+                            ], align='center')
+                        ),
+                        className="game-scorecard mb-2",
+                        style={'cursor': 'pointer'},
                     ),
                     id={'type': 'game-card', 'index': game_id_val},
-                    className="game-scorecard mb-2",
-                    style={'cursor': 'pointer'},
+                    n_clicks=0,
                 )
             )
 
