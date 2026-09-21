@@ -4349,13 +4349,24 @@ class DataService:
                 team_sf += c.get('shots_for', 0)
                 team_sa += c.get('shots_against', 0)
 
-        # 6. Team Possession (Corsi)
+        # 6. Team Possession (Corsi) & Total Shots
+        your_tot_shots = sum(period_digest.get('your_shots_by_period', [0, 0, 0])) if period_digest else team_sf
+        opp_tot_shots = sum(period_digest.get('opp_shots_by_period', [0, 0, 0])) if period_digest else team_sa
+
+        gf_val = int(game.get('GoalsFor', 0))
+        shooting_pct = f"{(gf_val / your_tot_shots * 100.0):.1f}%" if your_tot_shots > 0 else "0.0%"
+
+        game_meta['ShotsFor'] = your_tot_shots
+        game_meta['ShotsAgainst'] = opp_tot_shots
+        game_meta['ShootingPercentage'] = shooting_pct
+
         tot_shots = team_sf + team_sa
         possession_pct = f"{(team_sf / tot_shots * 100.0):.1f}%" if tot_shots > 0 else "50.0%"
         possession_digest = {
-            'shots_for': team_sf,
-            'shots_against': team_sa,
-            'shot_share_pct': possession_pct
+            'shots_for': your_tot_shots if your_tot_shots > 0 else team_sf,
+            'shots_against': opp_tot_shots if opp_tot_shots > 0 else team_sa,
+            'shot_share_pct': possession_pct,
+            'shooting_percentage': shooting_pct
         }
 
         # 7. Goalie Performance

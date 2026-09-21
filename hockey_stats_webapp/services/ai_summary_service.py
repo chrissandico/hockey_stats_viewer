@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import config
+from dotenv import load_dotenv, find_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class AISummaryService:
     """
 
     def __init__(self, cache_dir=None):
+        load_dotenv(find_dotenv())
         self.api_key = os.environ.get('ANTHROPIC_API_KEY')
         self.model = getattr(config, 'ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022')
         self._cache = {}
@@ -121,11 +123,13 @@ class AISummaryService:
         return summary_text
 
     def _generate_fallback_summary(self, digest: dict, mode: str) -> str:
-        """Generate a structured, deterministic summary when API is unavailable."""
+        """Generate a structured, data-grounded summary using actual game statistics."""
         game = digest.get('game', {})
         opp = game.get('Opponent', 'Opponent')
         gf = game.get('GoalsFor', 0)
         ga = game.get('GoalsAgainst', 0)
+        sf = game.get('ShotsFor', digest.get('possession', {}).get('shots_for', 0))
+        sa = game.get('ShotsAgainst', digest.get('possession', {}).get('shots_against', 0))
         res = str(game.get('Result', '')).upper()
         date_str = game.get('Date', '')
 
@@ -133,37 +137,63 @@ class AISummaryService:
         st = digest.get('special_teams', {})
         possession = digest.get('possession', {})
         scorers = digest.get('top_scorers', [])
-        scorers_str = ", ".join(scorers) if scorers else "team effort"
+        scorers_str = ", ".join(scorers) if scorers else ""
 
         if mode == 'coach':
-            p1 = (
-                f"Game Recap ({date_str}): The team {result_phrase} against {opp} with a final score of {gf}-{ga}. "
-                f"The overall game flow reflected competitive play across all periods, with {gf} total goals produced on offensive opportunities."
-            )
-            p2 = (
-                f"Analytics Breakdown: On special teams, the Power Play operated at {st.get('pp_pct', '0%')} "
-                f"({st.get('pp_goals', 0)} goals) with {st.get('pp_shots_per_opp', 0)} shots per PP opportunity. "
-                f"The Penalty Kill held a {st.get('pk_pct', '100%')} efficiency rating. "
-                f"In 5v5 puck possession, team Corsi reached {possession.get('shot_share_pct', '50%')} "
-                f"({possession.get('shots_for', 0)} shots for vs {possession.get('shots_against', 0)} shots against)."
-            )
-            p3 = (
-                f"Tactical Focus & Key Performers: Leading contributors included {scorers_str}. "
-                f"For upcoming practices, primary video focus areas include zone exit support, defensive gap control, "
-                f"and rapid puck movement during power play entries."
-            )
+            if gf == 0:
+                p1 = (
+                    f"Game Recap ({date_str}): The team was shut out {gf}-{ga} against {opp}. "
+                    f"Despite putting {sf} shots on goal (vs. {sa} shots allowed), the offense generated zero goals and struggled to create high-danger scoring chances."
+                )
+                p2 = (
+                    f"Analytics & Possession: On special teams, the Power Play was {st.get('pp_pct', '0%')} "
+                    f"({st.get('pp_goals', 0)}/{st.get('pp_opportunities', 0)}) with {st.get('pp_shots_per_opp', 0)} shots per PP opportunity. "
+                    f"The Penalty Kill was {st.get('pk_pct', '100%')}. "
+                    f"At 5v5, Corsi shot share was {possession.get('shot_share_pct', '50%')} ({sf} shots for vs {sa} shots against)."
+                )
+                p3 = (
+                    f"Tactical Focus: Video breakdown must focus on net-front presence, generating high-danger scoring chances, "
+                    f"and improving shot conversion, as {sf} perimeter shots produced no goals."
+                )
+            else:
+                p1 = (
+                    f"Game Recap ({date_str}): The team {result_phrase} against {opp} with a final score of {gf}-{ga} "
+                    f"(outshooting opponent {sf}-{sa})."
+                )
+                p2 = (
+                    f"Analytics & Possession: Power Play operated at {st.get('pp_pct', '0%')} "
+                    f"({st.get('pp_goals', 0)}/{st.get('pp_opportunities', 0)}) with {st.get('pp_shots_per_opp', 0)} shots/PP. "
+                    f"Penalty Kill held a {st.get('pk_pct', '100%')} efficiency. "
+                    f"5v5 Corsi shot share reached {possession.get('shot_share_pct', '50%')} ({sf} SF vs {sa} SA)."
+                )
+                p3 = (
+                    f"Tactical Focus & Scorers: Key contributors: {scorers_str or 'balanced team effort'}. "
+                    f"Practice focus areas: gap control, zone exit support, and power play puck movement."
+                )
             return f"{p1}\n\n{p2}\n\n{p3}"
         else:
-            p1 = (
-                f"What a great effort on {date_str}! Our team took the ice against {opp} in an exciting contest, "
-                f"finishing with a final score of {gf}-{ga}. Both teams brought high energy and hustle to every single shift!"
-            )
-            p2 = (
-                f"Game Highlights: Exciting play was led by great teamwork and scoring contributions from {scorers_str}. "
-                f"The team showed fantastic communication and relentless hustle on defense and in goal."
-            )
-            p3 = (
-                f"Looking Ahead: Every player showed incredible growth and support for their teammates. "
-                f"Great job team, and let's keep building this momentum for the next game!"
-            )
+            if gf == 0:
+                p1 = (
+                    f"Game Recap ({date_str}): Our team faced {opp} in a tough contest, finishing with a final score of {gf}-{ga}. "
+                    f"While the team was held goalless, the players fought hard and generated {sf} shot attempts."
+                )
+                p2 = (
+                    f"Game Highlights: Goaltending and defense faced {sa} shots against, showing strong communication and relentless hustle under pressure."
+                )
+                p3 = (
+                    f"Looking Ahead: The team showed great determination and resilience despite the score. "
+                    f"Let's build on the {sf}-shot effort and get ready for the next game!"
+                )
+            else:
+                p1 = (
+                    f"Game Recap ({date_str}): Our team took the ice against {opp} in an exciting contest, "
+                    f"finishing with a final score of {gf}-{ga} ({sf} total shots)."
+                )
+                p2 = (
+                    f"Game Highlights: Offense was led by {scorers_str or 'great teamwork'}. "
+                    f"The team showed fantastic communication and energy on defense and in goal."
+                )
+                p3 = (
+                    f"Looking Ahead: Great effort across all shifts! Let's keep building this momentum for the next game."
+                )
             return f"{p1}\n\n{p2}\n\n{p3}"
