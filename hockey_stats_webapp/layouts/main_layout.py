@@ -95,36 +95,43 @@ def register_dashboard_callbacks(app, data_service):
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:
             stats = data_service.calculate_team_stats(team_id, game_type=game_type)
-            win_pct = f"{stats['win_percentage']:.0%}"
-            kpi_row = dbc.Row([
-                dbc.Col(html.Div([
-                    html.Div(str(stats['wins']),         className="kpi-value"),
-                    html.Div("Wins",                     className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-                dbc.Col(html.Div([
-                    html.Div(str(stats['losses']),       className="kpi-value"),
-                    html.Div("Losses",                   className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-                dbc.Col(html.Div([
-                    html.Div(str(stats['ties']),         className="kpi-value"),
-                    html.Div("Ties",                     className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-                dbc.Col(html.Div([
-                    html.Div(win_pct,                    className="kpi-value"),
-                    html.Div("Win %",                    className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-                dbc.Col(html.Div([
-                    html.Div(str(stats['goals_for']),    className="kpi-value"),
-                    html.Div("Goals For",                className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-                dbc.Col(html.Div([
-                    html.Div(str(stats['goals_against']), className="kpi-value"),
-                    html.Div("Goals Against",            className="kpi-label"),
-                ], className="kpi-tile"), xs=6, md=2),
-            ], className="g-2 justify-content-center")
+            if stats['games_played'] == 0:
+                gt_name = config.get_game_type_name(game_type) if game_type else 'selected filter'
+                kpi_row = dbc.Alert([
+                    html.I(className="fas fa-exclamation-triangle me-2"),
+                    f"No completed {gt_name} games found for your team. Please select another filter above (e.g. Regular Season, Tournament, or All Games)."
+                ], color="warning", className="text-center my-2")
+            else:
+                win_pct = f"{stats['win_percentage']:.0%}"
+                kpi_row = dbc.Row([
+                    dbc.Col(html.Div([
+                        html.Div(str(stats['wins']),         className="kpi-value"),
+                        html.Div("Wins",                     className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                    dbc.Col(html.Div([
+                        html.Div(str(stats['losses']),       className="kpi-value"),
+                        html.Div("Losses",                   className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                    dbc.Col(html.Div([
+                        html.Div(str(stats['ties']),         className="kpi-value"),
+                        html.Div("Ties",                     className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                    dbc.Col(html.Div([
+                        html.Div(win_pct,                    className="kpi-value"),
+                        html.Div("Win %",                    className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                    dbc.Col(html.Div([
+                        html.Div(str(stats['goals_for']),    className="kpi-value"),
+                        html.Div("Goals For",                className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                    dbc.Col(html.Div([
+                        html.Div(str(stats['goals_against']), className="kpi-value"),
+                        html.Div("Goals Against",            className="kpi-label"),
+                    ], className="kpi-tile"), xs=6, md=2),
+                ], className="g-2 justify-content-center")
 
             is_coach = flask_session.get('is_coach', False)
-            if is_coach:
+            if is_coach and stats['games_played'] > 0:
                 try:
                     st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
                     st_index = st_stats.get('combined_st_index', 100.0)
