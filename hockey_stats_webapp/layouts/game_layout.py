@@ -8,8 +8,10 @@ from flask import session as flask_session
 import config
 from utils import format_player_label
 from components.unified_filter_bar import create_unified_filter_bar
+from services.ai_summary_service import AISummaryService
 
 logger = logging.getLogger(__name__)
+ai_summary_service = AISummaryService()
 
 
 def create_game_layout(data_service, team_context=None):
@@ -462,7 +464,49 @@ def register_game_callbacks(app, data_service, team_context=None):
                 className="mb-3 shadow-sm",
             )
 
+            # ---- AI Analyst Summary Card ----
+            ai_summary_card = None
+            try:
+                digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id)
+                if digest:
+                    mode = 'coach' if is_coach else 'parent'
+                    summary_text = ai_summary_service.generate_summary(digest, mode=mode)
+
+                    paragraphs = [html.P(p.strip(), className="mb-2") for p in summary_text.split('\n\n') if p.strip()]
+
+                    if is_coach:
+                        card_header = dbc.CardHeader([
+                            html.Div([
+                                html.H5([
+                                    html.I(className="fas fa-robot text-primary me-2"),
+                                    "AI Game Analyst Summary"
+                                ], className="card-title mb-0 d-inline-block"),
+                                dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 float-end")
+                            ], className="d-flex justify-content-between align-items-center")
+                        ])
+                    else:
+                        card_header = dbc.CardHeader([
+                            html.Div([
+                                html.H5([
+                                    html.I(className="fas fa-bullhorn text-success me-2"),
+                                    "AI Game Highlights & Recap"
+                                ], className="card-title mb-0 d-inline-block"),
+                                dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 float-end")
+                            ], className="d-flex justify-content-between align-items-center")
+                        ])
+
+                    ai_summary_card = dbc.Card([
+                        card_header,
+                        dbc.CardBody([
+                            html.Div(paragraphs, className="lh-base text-dark")
+                        ])
+                    ], className="mb-3 shadow-sm border-primary")
+            except Exception as e:
+                logger.error(f"Error generating AI summary card: {e}")
+
             detail_children = [score_header]
+            if ai_summary_card:
+                detail_children.append(ai_summary_card)
             if shots_chart:
                 detail_children.append(shots_chart)
             if game_st_card:

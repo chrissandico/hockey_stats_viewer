@@ -4255,3 +4255,132 @@ class DataService:
         print(f"  {opponent_name} Shots: {period_data['opponent']['shots']} (Total: {period_data['opponent']['total_shots']})")
         
         return period_data
+
+    def get_game_summary_digest(self, game_id, team_id=None):
+        """
+        Extract an ultra-compact, storyline-rich game digest for AI summary generation.
+        Includes game metadata, period evolution, special teams, Corsi possession,
+        top scorers, goalie performance, and storyline turning points.
+
+        Args:
+            game_id (str/int): Game ID
+            team_id (str, optional): Team ID
+
+        Returns:
+            dict: Structured compact game digest payload
+        """
+        try:
+            game_id_typed = int(game_id) if str(game_id).isdigit() else game_id
+        except Exception:
+            game_id_typed = game_id
+
+        game = self.get_game_by_id(game_id_typed, team_id)
+        if game is None:
+            return None
+
+        effective_team_id = team_id or game.get('TeamID', 'your_team')
+        team_identifier = self._get_team_identifier_for_events(effective_team_id)
+
+        # 1. Game Metadata
+        game_meta = {
+            'ID': str(game.get('ID', game_id)),
+            'Opponent': str(game.get('Opponent', 'Opponent')),
+            'Date': str(game.get('Date', '')),
+            'Location': str(game.get('Location', '')),
+            'Result': str(game.get('Result', '')).upper(),
+            'GoalsFor': int(game.get('GoalsFor', 0)),
+            'GoalsAgainst': int(game.get('GoalsAgainst', 0)),
+            'GameType': str(game.get('GameType', 'E'))
+        }
+
+        # 2. Period Breakdown
+        period_data = self.get_period_breakdown(game_id_typed, effective_team_id)
+        period_digest = {}
+        if period_data:
+            period_digest = {
+                'your_goals_by_period': period_data['your_team'].get('goals', [0, 0, 0]),
+                'opp_goals_by_period': period_data['opponent'].get('goals', [0, 0, 0]),
+                'your_shots_by_period': period_data['your_team'].get('shots', [0, 0, 0]),
+                'opp_shots_by_period': period_data['opponent'].get('shots', [0, 0, 0]),
+            }
+
+        # 3. Special Teams
+        st_stats = self.calculate_special_teams_stats(team_id=effective_team_id, game_id=game_id_typed)
+        st_digest = {
+            'pp_goals': st_stats.get('pp_goals', 0),
+            'pp_opportunities': st_stats.get('pp_opportunities', 0),
+            'pp_pct': f"{st_stats.get('pp_percentage', 0.0):.1f}%",
+            'pp_shots_per_opp': st_stats.get('pp_shots_per_opp', 0.0),
+            'pk_goals_conceded': st_stats.get('pk_goals_conceded', 0),
+            'pk_opportunities': st_stats.get('pk_opportunities', 0),
+            'pk_pct': f"{st_stats.get('pk_percentage', 100.0):.1f}%",
+            'pk_shots_allowed_per_opp': st_stats.get('pk_shots_allowed_per_opp', 0.0),
+            'net_special_teams_goals': st_stats.get('net_special_teams_goals', 0),
+            'net_penalties': st_stats.get('net_penalties', 0)
+        }
+
+        # 4. Game Events for Corsi & Scorers
+        all_events = self.get_events()
+        game_events = all_events[all_events['GameID'].astype(str) == str(game_id_typed)] if all_events is not None and not all_events.empty else pd.DataFrame()
+
+        # 5. Skaters & Top Scorers
+        all_game_player_stats = self.get_game_player_stats(game_id_typed, None, effective_team_id)
+        skater_stats = [s for s in all_game_player_stats if s['player'].get('Position') != 'G']
+
+        top_scorers = []
+        team_sf = 0
+        team_sa = 0
+
+        from utils import format_player_label
+
+        for s in skater_stats:
+            p_series = s['player']
+            p_id = self._get_player_id_from_series(p_series)
+            p_label = format_player_label(p_series)
+            g = s.get('goals', 0)
+            a = s.get('assists', 0)
+            pts = s.get('points', 0)
+
+            if pts > 0 or g > 0:
+                top_scorers.append(f"{p_label} ({g}G, {a}A)")
+
+            if p_id is not None and not game_events.empty:
+                c = self.calculate_player_corsi_for_events(p_id, game_events, team_identifier)
+                team_sf += c.get('shots_for', 0)
+                team_sa += c.get('shots_against', 0)
+
+        # 6. Team Possession (Corsi)
+        tot_shots = team_sf + team_sa
+        possession_pct = f"{(team_sf / tot_shots * 100.0):.1f}%" if tot_shots > 0 else "50.0%"
+        possession_digest = {
+            'shots_for': team_sf,
+            'shots_against': team_sa,
+            'shot_share_pct': possession_pct
+        }
+
+        # 7. Goalie Performance
+        goalie_list = self.get_game_player_stats(game_id_typed, 'G', effective_team_id)
+        goalie_digest = []
+        for g in goalie_list:
+            p_series = g['player']
+            p_id = self._get_player_id_from_series(p_series)
+            if p_id is not None:
+                gs = self.calculate_goalie_game_stats(p_id, game_id_typed, effective_team_id)
+                if gs:
+                    p_label = format_player_label(p_series)
+                    goalie_digest.append({
+                        'goalie': p_label,
+                        'saves': gs.get('saves', 0),
+                        'shots_against': gs.get('shots_against', 0),
+                        'goals_against': gs.get('goals_against', 0),
+                        'save_percentage': f"{gs.get('save_percentage', 0.0):.3f}"
+                    })
+
+        return {
+            'game': game_meta,
+            'period_breakdown': period_digest,
+            'special_teams': st_digest,
+            'possession': possession_digest,
+            'top_scorers': top_scorers[:5],
+            'goalies': goalie_digest
+        }

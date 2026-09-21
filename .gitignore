@@ -38,6 +38,8 @@ credentials.json
 .env
 **/credentials.json
 **/config/credentials.json
+hockey_stats_webapp/data/
+summaries_cache.json
 
 # Test files with potential secrets
 test_*_with_secrets.py
