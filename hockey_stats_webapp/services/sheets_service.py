@@ -148,23 +148,13 @@ class SheetsService:
             df = pd.DataFrame(data)
             
             # Handle game type data from column F
-            # If GameType column doesn't exist or has empty values, default to DEFAULT_GAME_TYPE ('R' Regular Season)
-            from config import is_valid_game_type, DEFAULT_GAME_TYPE
+            from config import normalize_game_type, DEFAULT_GAME_TYPE
             if 'GameType' not in df.columns:
                 print("GameType column not found in Games sheet, adding default values")
                 df['GameType'] = DEFAULT_GAME_TYPE  # Default to Regular Season
             else:
-                # Fill empty/null game type values with default
-                df['GameType'] = df['GameType'].fillna(DEFAULT_GAME_TYPE)
-                df['GameType'] = df['GameType'].replace('', DEFAULT_GAME_TYPE)
-                
-                # Validate game type values and replace invalid ones with default
-                invalid_mask = ~df['GameType'].apply(is_valid_game_type)
-                if invalid_mask.any():
-                    invalid_count = invalid_mask.sum()
-                    print(f"Found {invalid_count} invalid game type values, replacing with default '{DEFAULT_GAME_TYPE}'")
-                    df.loc[invalid_mask, 'GameType'] = DEFAULT_GAME_TYPE
-                
+                # Normalize all game type values (e.g. 'Exhibition', 'exhibition' -> 'E', 'Regular Season' -> 'R')
+                df['GameType'] = df['GameType'].apply(normalize_game_type)
                 print(f"Game type distribution: {df['GameType'].value_counts().to_dict()}")
             
             self.cache[key] = df

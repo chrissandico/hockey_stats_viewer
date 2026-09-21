@@ -603,7 +603,7 @@ class DataService:
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
-            game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
+            game_type (str, optional): Game type to filter by (E, R, T, P). If None, returns all games.
             
         Returns:
             pd.DataFrame: Filtered DataFrame containing only games of the specified type
@@ -615,9 +615,12 @@ class DataService:
             print("WARNING: No GameType column found in games data. Returning all games.")
             return games
         
-        # Filter by game type
-        filtered_games = games[games['GameType'] == game_type]
-        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
+        from config import normalize_game_type
+        target_type = normalize_game_type(game_type)
+
+        normalized_types = games['GameType'].apply(normalize_game_type)
+        filtered_games = games[normalized_types == target_type]
+        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} match game type '{game_type}' ({target_type})")
         
         return filtered_games
     
@@ -671,16 +674,18 @@ class DataService:
             # Apply game type filtering if specified
             if game_type_filter is not None:
                 try:
-                    # Validate game type filter
-                    valid_game_types = ['E', 'R', 'T']
-                    if game_type_filter not in valid_game_types:
+                    from config import normalize_game_type
+                    target_type = normalize_game_type(game_type_filter)
+                    valid_game_types = ['E', 'R', 'T', 'P']
+                    if target_type not in valid_game_types:
                         self.logger.warning(f"Invalid game type filter '{game_type_filter}' for game {game_id}. Valid types: {valid_game_types}")
                         # Continue with unfiltered events as fallback
                     else:
                         # Filter events to only include those matching the game type filter
                         if 'GameType' in game_events.columns:
                             original_count = len(game_events)
-                            game_events = game_events[game_events['GameType'] == game_type_filter]
+                            normalized_event_types = game_events['GameType'].apply(normalize_game_type)
+                            game_events = game_events[normalized_event_types == target_type]
                             filtered_count = len(game_events)
                             self.logger.info(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events (from {original_count})")
                             print(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events")
@@ -800,8 +805,10 @@ class DataService:
                 return events_df
             
             # Validate game type parameter
-            valid_game_types = ['E', 'R', 'T']  # Exhibition, Regular Season, Tournament
-            if game_type_filter not in valid_game_types:
+            from config import normalize_game_type
+            target_type = normalize_game_type(game_type_filter)
+            valid_game_types = ['E', 'R', 'T', 'P']  # Exhibition, Regular Season, Tournament, Playoffs
+            if target_type not in valid_game_types:
                 self.logger.warning(f"Invalid game type filter '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
                 print(f"WARNING: Invalid game type '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
                 return events_df
@@ -816,7 +823,8 @@ class DataService:
             # Filter by specific game type
             try:
                 original_count = len(events_df)
-                filtered_events = events_df[events_df['GameType'] == game_type_filter]
+                normalized_types = events_df['GameType'].apply(normalize_game_type)
+                filtered_events = events_df[normalized_types == target_type]
                 filtered_count = len(filtered_events)
                 
                 self.logger.info(f"Event filtering: {filtered_count} events out of {original_count} match game type '{game_type_filter}'")
@@ -2498,7 +2506,7 @@ class DataService:
                     
                     # Get player games for each game type individually and combine
                     all_player_games = []
-                    for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
+                    for gt in ['E', 'R', 'T', 'P']:  # Exhibition, Regular Season, Tournament, Playoffs
                         gt_games = self.get_player_games(player_id, team_id, game_type=gt)
                         if not gt_games.empty:
                             all_player_games.append(gt_games)
