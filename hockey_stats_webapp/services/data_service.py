@@ -858,14 +858,20 @@ class DataService:
         Get the currently selected game type from the Flask session.
         
         Returns:
-            str: The selected game type code, or None if not set
+            str: The selected game type code, or None if set to 'all'
         """
         try:
             from flask import session
-            return session.get('selected_game_type')
+            from config import DEFAULT_GAME_TYPE, is_valid_game_type
+            val = session.get('selected_game_type')
+            if val == 'all':
+                return None
+            if val and is_valid_game_type(val):
+                return val
+            return DEFAULT_GAME_TYPE
         except RuntimeError:
-            # Working outside of request context (e.g., in tests)
-            return None
+            from config import DEFAULT_GAME_TYPE
+            return DEFAULT_GAME_TYPE
     
     def _set_game_type_in_session(self, game_type):
         """
@@ -877,13 +883,14 @@ class DataService:
         from flask import session
         from config import is_valid_game_type, DEFAULT_GAME_TYPE
         
-        # Validate game type
-        if game_type and is_valid_game_type(game_type):
+        if game_type == 'all' or game_type is None:
+            session['selected_game_type'] = 'all'
+        elif game_type and is_valid_game_type(game_type):
             session['selected_game_type'] = game_type
         else:
             session['selected_game_type'] = DEFAULT_GAME_TYPE
         
-        print(f"Set game type in session: {session['selected_game_type']}")
+        print(f"Set game type in session: {session.get('selected_game_type')}")
     
     def get_players(self, team_id=None):
         """
@@ -4290,7 +4297,7 @@ class DataService:
             'Result': str(game.get('Result', '')).upper(),
             'GoalsFor': int(game.get('GoalsFor', 0)),
             'GoalsAgainst': int(game.get('GoalsAgainst', 0)),
-            'GameType': str(game.get('GameType', 'E'))
+            'GameType': str(game.get('GameType', 'R'))
         }
 
         # 2. Period Breakdown

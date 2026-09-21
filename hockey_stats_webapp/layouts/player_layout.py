@@ -188,12 +188,16 @@ def register_player_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
 
-        # Resolve game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type_data and isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type')
-        if game_type == 'all':
+        # Resolve game type (default to 'R' Regular Season)
+        if game_type_data == 'all':
             game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
+            game_type = game_type_data
+        elif isinstance(game_type_data, dict) and game_type_data.get('game_type'):
+            gt = game_type_data.get('game_type')
+            game_type = None if gt == 'all' else gt
+        else:
+            game_type = 'R'
 
         # ---------------------------------------------------------------
         # Cache management: clear stale entries when player or game type
@@ -455,7 +459,7 @@ def register_player_callbacks(app, data_service):
                 if is_goalie:
                     game_log_data.append({
                         'Date': game_stats['game']['Date'],
-                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'R')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['result'],
                         'SA': game_stats['shots_against'],
@@ -467,7 +471,7 @@ def register_player_callbacks(app, data_service):
                 else:
                     entry = {
                         'Date': game_stats['game']['Date'],
-                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'R')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['game']['Result'],
                         'Goals': game_stats['goals'],

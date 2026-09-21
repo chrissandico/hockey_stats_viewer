@@ -86,11 +86,15 @@ def register_dashboard_callbacks(app, data_service):
             return [html.Div()] * 5
 
         # Resolve selected game type (default to 'R' Regular Season)
-        game_type = game_type_data if isinstance(game_type_data, str) else 'R'
-        if game_type_data and isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type', 'R')
-        if game_type == 'all' or not game_type:
+        if game_type_data == 'all':
             game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
+            game_type = game_type_data
+        elif isinstance(game_type_data, dict) and game_type_data.get('game_type'):
+            gt = game_type_data.get('game_type')
+            game_type = None if gt == 'all' else gt
+        else:
+            game_type = 'R'
 
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:

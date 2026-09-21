@@ -36,7 +36,7 @@ GAME_TYPES = {
 }
 
 # Default game type
-DEFAULT_GAME_TYPE = 'E'
+DEFAULT_GAME_TYPE = 'R'
 
 def is_coaches_only_stat(stat_name):
     """

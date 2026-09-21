@@ -65,10 +65,13 @@ def register_game_callbacks(app, data_service, team_context=None):
         if not effective_team_id or not data_service:
             return html.P("No data available.", className="text-muted")
 
-        # Resolve game_type from the session store value ('all', 'E', 'R', 'T', 'P', or None)
-        game_type = None
-        if game_type_data and game_type_data != 'all':
+        # Resolve game_type from the session store value (default to 'R' Regular Season)
+        if game_type_data == 'all':
+            game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
             game_type = game_type_data
+        else:
+            game_type = 'R'
 
         try:
             games = data_service.get_games(effective_team_id, game_type=game_type)

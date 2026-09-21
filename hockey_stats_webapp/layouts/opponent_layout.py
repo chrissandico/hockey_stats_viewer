@@ -35,9 +35,9 @@ def create_opponent_layout(data_service, team_context=None):
             dbc.Alert("Please log in to view opponent statistics.", color="warning", className="m-4")
         ])
 
-    # Get opponents for initial load (all game types)
+    # Get opponents for initial load (default to Regular Season)
     try:
-        opponents = data_service.get_unique_opponents(team_id, game_type=None)
+        opponents = data_service.get_unique_opponents(team_id, game_type='R')
     except Exception as e:
         logger.error(f"Error loading opponents: {e}")
         opponents = []
@@ -219,7 +219,7 @@ def create_game_log_card(opponent_name, games):
             'Location': game.get('Location', 'N/A'),
             'Result': game['Result'],
             'Score': f"{game['GoalsFor']} - {game['GoalsAgainst']}",
-            'Game Type': config.get_game_type_name(game.get('GameType', 'E'))
+            'Game Type': config.get_game_type_name(game.get('GameType', 'R'))
         })
 
     return dbc.Card([
@@ -443,10 +443,13 @@ def register_opponent_callbacks(app, data_service):
     )
     def update_opponent_dropdown(game_type_data):
         """Update opponent dropdown options based on game type filter."""
-        # Parse game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type == "all":
+        # Parse game type (default to 'R' Regular Season)
+        if game_type_data == 'all':
             game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
+            game_type = game_type_data
+        else:
+            game_type = 'R'
 
         # Get team_id from session
         team_id = session.get('team_id') if session.get('authenticated') else None
@@ -515,10 +518,13 @@ def register_opponent_callbacks(app, data_service):
         if not team_id:
             return html.Div(), html.Div(), html.Div(), html.Div(), html.Div()
 
-        # Parse game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type == "all":
+        # Parse game type (default to 'R' Regular Season)
+        if game_type_data == 'all':
             game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
+            game_type = game_type_data
+        else:
+            game_type = 'R'
 
         # Cache management (track previous values)
         previous_game_type = session.get('opponent_previous_game_type')
