@@ -4263,7 +4263,7 @@ class DataService:
         
         return period_data
 
-    def get_game_summary_digest(self, game_id, team_id=None):
+    def get_game_summary_digest(self, game_id, team_id=None, force_refresh=False):
         """
         Extract an ultra-compact, storyline-rich game digest for AI summary generation.
         Includes game metadata, period evolution, special teams, Corsi possession,
@@ -4272,10 +4272,19 @@ class DataService:
         Args:
             game_id (str/int): Game ID
             team_id (str, optional): Team ID
+            force_refresh (bool): Force live refresh from Google Sheets
 
         Returns:
             dict: Structured compact game digest payload
         """
+        if force_refresh and hasattr(self, 'sheets_service') and self.sheets_service:
+            try:
+                self.sheets_service.get_games(force_refresh=True)
+                self.sheets_service.get_events(force_refresh=True)
+                self.clear_games_cache()
+            except Exception as e:
+                self.logger.warning(f"Could not force refresh Google Sheets data: {e}")
+
         try:
             game_id_typed = int(game_id) if str(game_id).isdigit() else game_id
         except Exception:

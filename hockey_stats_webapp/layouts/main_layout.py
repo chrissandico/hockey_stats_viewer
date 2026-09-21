@@ -242,7 +242,7 @@ def register_dashboard_callbacks(app, data_service):
                 ai_summary_service = AISummaryService()
                 ai_summary_text = ""
                 try:
-                    digest = data_service.get_game_summary_digest(last_game_id, team_id)
+                    digest = data_service.get_game_summary_digest(last_game_id, team_id, force_refresh=force_refresh_summary)
                     if digest:
                         ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_refresh_summary)
                 except Exception as e:

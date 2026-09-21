@@ -493,7 +493,7 @@ def register_game_callbacks(app, data_service, team_context=None):
             # ---- AI Analyst Summary Card ----
             ai_summary_card = None
             try:
-                digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id)
+                digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id, force_refresh=force_refresh_summary)
                 if digest:
                     mode = 'coach' if is_coach else 'parent'
                     summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_refresh_summary)
