@@ -14,6 +14,7 @@ def create_main_layout(team_context=None):
     team_name = (team_context or {}).get('team_name', 'Your Team')
     return html.Div([
         dcc.Store(id='dashboard-trigger', data=True),
+        dcc.Store(id='dashboard-regenerate-summary-store', data=0),
         dbc.Container([
             html.Div([
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
@@ -72,17 +73,36 @@ def register_dashboard_callbacks(app, data_service):
     """
 
     @app.callback(
+        Output('dashboard-regenerate-summary-store', 'data'),
+        Input('dashboard-regenerate-btn', 'n_clicks'),
+        dash.dependencies.State('dashboard-regenerate-summary-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def handle_dashboard_regenerate(n_clicks, current_count):
+        if not n_clicks:
+            return dash.no_update
+        return (current_count or 0) + 1
+
+    @app.callback(
         Output('dashboard-kpi-row', 'children'),
         Output('dashboard-form-row', 'children'),
         Output('dashboard-last-game', 'children'),
         Output('dashboard-top-performers', 'children'),
         Output('dashboard-chart', 'children'),
         [Input('dashboard-trigger', 'data'),
-         Input('game-type-session-store', 'data')]
+         Input('game-type-session-store', 'data'),
+         Input('dashboard-regenerate-summary-store', 'data')]
     )
-    def populate_dashboard(_trigger, game_type_data):
+    def populate_dashboard(_trigger, game_type_data, refresh_trigger):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
+            return [html.Div()] * 5
+
+        force_refresh_summary = False
+        if dash.callback_context.triggered:
+            triggered_prop = dash.callback_context.triggered[0]['prop_id']
+            if 'dashboard-regenerate-summary-store' in triggered_prop:
+                force_refresh_summary = True
             return [html.Div()] * 5
 
         # Resolve selected game type (default to 'R' Regular Season)
@@ -224,11 +244,16 @@ def register_dashboard_callbacks(app, data_service):
                 try:
                     digest = data_service.get_game_summary_digest(last_game_id, team_id)
                     if digest:
-                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode)
+                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_refresh_summary)
                 except Exception as e:
                     pass
 
                 summary_paragraphs = [html.P(p.strip(), className="small text-dark mb-2") for p in ai_summary_text.split('\n\n') if p.strip()]
+
+                regenerate_btn = dbc.Button([
+                    html.I(className="fas fa-sync-alt me-1"),
+                    "Regenerate"
+                ], id='dashboard-regenerate-btn', color="outline-primary" if is_coach else "outline-success", size="sm", className="ms-2 float-end")
 
                 last_game = dbc.Card(dbc.CardBody([
                     html.Div([
@@ -245,7 +270,10 @@ def register_dashboard_callbacks(app, data_service):
                         html.Span(str(last.get('Date', '')), className="fw-semibold"),
                     ], className="mb-3 border-bottom pb-2"),
                     html.Div([
-                        html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2"),
+                        html.Div([
+                            html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2 d-inline-block") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2 d-inline-block"),
+                            regenerate_btn
+                        ], className="d-flex justify-content-between align-items-center mb-2"),
                         html.Div(summary_paragraphs if summary_paragraphs else "Summary unavailable.")
                     ], className="bg-light p-3 rounded border")
                 ]), className="shadow-sm mb-3")

@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import hashlib
 import config
 from dotenv import load_dotenv, find_dotenv
 
@@ -58,6 +59,21 @@ class AISummaryService:
         except Exception as e:
             logger.warning(f"Error saving AI summary disk cache: {e}")
 
+    def clear_cache(self, game_id=None):
+        """
+        Clear cached summaries.
+        If game_id is provided, clears entries for that game.
+        Otherwise, clears all cached summaries.
+        """
+        if game_id is None:
+            self._cache = {}
+        else:
+            str_id = str(game_id)
+            keys_to_remove = [k for k in self._cache if k.startswith(f"{str_id}:")]
+            for k in keys_to_remove:
+                self._cache.pop(k, None)
+        self._save_disk_cache()
+
     def generate_summary(self, game_digest: dict, mode: str = 'coach', force_refresh: bool = False) -> str:
         """
         Generate or retrieve a game analyst summary for the given game digest and mode.
@@ -74,7 +90,10 @@ class AISummaryService:
             return "No game data available for summary analysis."
 
         game_id = str(game_digest['game'].get('ID', 'unknown'))
-        cache_key = f"{game_id}:{mode}"
+        # Generate hash of digest content so any change in stats automatically invalidates cache
+        digest_str = json.dumps(game_digest, sort_keys=True)
+        digest_hash = hashlib.md5(digest_str.encode('utf-8')).hexdigest()[:8]
+        cache_key = f"{game_id}:{mode}:{digest_hash}"
 
         # 1. Return from cache if available
         if not force_refresh and cache_key in self._cache:
