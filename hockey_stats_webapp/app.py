@@ -289,6 +289,8 @@ def create_login_layout():
     State('password-input', 'value')
 )
 def login(n_clicks, password):
+    global services_initialized, sheets_service, auth_service, data_service
+
     print(f"=== LOGIN CALLBACK TRIGGERED ===")
     print(f"n_clicks: {n_clicks}")
     print(f"password: {password}")
@@ -297,16 +299,27 @@ def login(n_clicks, password):
         print("n_clicks is None, returning no_update")
         return dash.no_update, dash.no_update
     
-    # Check if services are available
+    # Check if services are available, attempt lazy initialization if missing
     if not services_initialized or sheets_service is None or auth_service is None:
-        print("Services not initialized - cannot authenticate (missing credentials)")
-        return dash.no_update, "Authentication service unavailable. This typically occurs when credentials are missing in local development."
+        print("Services not initialized - attempting lazy re-initialization...")
+        try:
+            sheets_service = SheetsService()
+            auth_service = AuthService(sheets_service)
+            data_service = DataService(sheets_service, force_refresh=False)
+            services_initialized = True
+            print("Lazy service initialization SUCCESSFUL!")
+        except Exception as lazy_e:
+            print(f"Lazy service initialization failed: {lazy_e}")
+            return dash.no_update, f"Authentication service unavailable: {str(lazy_e)}"
     
     try:
-        # Force refresh teams data to get the latest passwords from Google Sheets
-        print("Forcing refresh of teams data to get latest passwords...")
-        sheets_service.get_teams(force_refresh=True)
-        
+        # Try to refresh teams data to get latest passwords from Google Sheets, fall back to cache on quota/network error
+        try:
+            print("Refreshing teams data to get latest passwords...")
+            sheets_service.get_teams(force_refresh=True)
+        except Exception as refresh_e:
+            print(f"Warning: Could not force refresh teams data, using cached teams: {refresh_e}")
+
         print(f"Attempting to verify password: {password}")
         team_info = auth_service.verify_password(password)
         print(f"Auth service returned: {team_info}")
