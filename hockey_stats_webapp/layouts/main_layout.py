@@ -23,10 +23,10 @@ def create_main_layout(team_context=None):
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
                 html.Div(id='dashboard-form-row', className="text-center mb-4"),
                 dbc.Row([
-                    dbc.Col(html.Div(id='dashboard-last-game'), md=5),
-                    dbc.Col(html.Div(id='dashboard-top-performers'), md=7),
+                    dbc.Col(html.Div(id='dashboard-last-game'), md=6, xs=12),
+                    dbc.Col(html.Div(id='dashboard-top-performers'), md=6, xs=12),
                 ], className="mb-4"),
-                html.Div(id='dashboard-chart', className="mb-4"),
+                html.Div(id='dashboard-chart', style={'display': 'none'}),
             ])),
             dbc.Row([
                 _quick_card("Players",   "Individual stats and game logs",    "/player"),
@@ -170,7 +170,7 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             form_row = html.Div()
 
-        # ── Last game card ────────────────────────────────────────────────────
+        # ── Last game card with AI Summary ───────────────────────────────────
         try:
             if games_df is not None and not games_df.empty:
                 last = games_df.iloc[0]
@@ -184,9 +184,29 @@ def register_dashboard_callbacks(app, data_service):
                 else:
                     badge_color = 'secondary'
                     badge_text = 'T'
+
+                is_coach = flask_session.get('is_coach', False)
+                mode = 'coach' if is_coach else 'parent'
+                last_game_id = last.get('ID')
+
+                from services.ai_summary_service import AISummaryService
+                ai_summary_service = AISummaryService()
+                ai_summary_text = ""
+                try:
+                    digest = data_service.get_game_summary_digest(last_game_id, team_id)
+                    if digest:
+                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode)
+                except Exception as e:
+                    pass
+
+                summary_paragraphs = [html.P(p.strip(), className="small text-dark mb-2") for p in ai_summary_text.split('\n\n') if p.strip()]
+
                 last_game = dbc.Card(dbc.CardBody([
-                    html.H6("Last Game", className="text-muted mb-2"),
-                    html.H4(str(last.get('Opponent', 'Unknown')), className="mb-1"),
+                    html.Div([
+                        html.H6("Last Game", className="text-muted mb-0 d-inline-block"),
+                        dbc.Badge("AI Game Summary", color="primary" if is_coach else "success", className="float-end small")
+                    ], className="d-flex justify-content-between align-items-center mb-2"),
+                    html.H4(f"vs {last.get('Opponent', 'Unknown')}", className="mb-1"),
                     html.H3(
                         f"{last.get('GoalsFor', 0)} — {last.get('GoalsAgainst', 0)}",
                         className="fw-bold mb-2",
@@ -194,18 +214,18 @@ def register_dashboard_callbacks(app, data_service):
                     html.Div([
                         dbc.Badge(badge_text, color=badge_color, className="me-2"),
                         html.Span(str(last.get('Date', '')), className="fw-semibold"),
-                    ]),
-                ]))
+                    ], className="mb-3 border-bottom pb-2"),
+                    html.Div([
+                        html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2"),
+                        html.Div(summary_paragraphs if summary_paragraphs else "Summary unavailable.")
+                    ], className="bg-light p-3 rounded border")
+                ]), className="shadow-sm mb-3")
             else:
                 last_game = html.Div()
         except Exception:
             last_game = html.Div()
 
         # ── Top performers ────────────────────────────────────────────────────
-        # One leaderboard call fetches every skater's full stat line (goals,
-        # assists, points, plus_minus) in a single pass; goals/assists/points
-        # leaders are then derived in-memory instead of issuing three separate
-        # full-roster leaderboard calls.
         try:
             items = []
             leaderboard = data_service.get_team_leaderboard(
@@ -250,42 +270,7 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             top_performers = html.Div()
 
-        # ── Season goals trend chart ──────────────────────────────────────────
-        try:
-            if games_df is not None and not games_df.empty and 'Date' in games_df.columns:
-                import pandas as pd
-                chart_df = games_df.copy()
-                chart_df['_sort_date'] = pd.to_datetime(chart_df['Date'], errors='coerce')
-                chart_df = chart_df.sort_values('_sort_date').dropna(subset=['_sort_date'])
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=chart_df['Date'],
-                    y=chart_df['GoalsFor'],
-                    name='Goals For',
-                    mode='lines+markers',
-                    line=dict(color='#00843d'),
-                ))
-                fig.add_trace(go.Scatter(
-                    x=chart_df['Date'],
-                    y=chart_df['GoalsAgainst'],
-                    name='Goals Against',
-                    mode='lines+markers',
-                    line=dict(color='#c8102e'),
-                ))
-                fig.update_layout(
-                    height=260,
-                    paper_bgcolor='white',
-                    plot_bgcolor='white',
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                    margin=dict(l=40, r=20, t=30, b=40),
-                    xaxis_title='Game Date',
-                    yaxis_title='Goals',
-                )
-                season_chart = dcc.Graph(figure=fig, config={'displayModeBar': False})
-            else:
-                season_chart = html.Div()
-        except Exception:
-            season_chart = html.Div()
+        # ── Goals trend chart removed as requested ─────────────────────────────
+        season_chart = html.Div()
 
         return kpi_row, form_row, last_game, top_performers, season_chart
