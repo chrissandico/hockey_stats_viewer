@@ -104,6 +104,33 @@ def register_dashboard_callbacks(app, data_service):
                     html.Div("Goals Against",            className="kpi-label"),
                 ], className="kpi-tile"), xs=6, md=2),
             ], className="g-2 justify-content-center")
+
+            is_coach = flask_session.get('is_coach', False)
+            if is_coach:
+                try:
+                    st_stats = data_service.calculate_special_teams_stats(team_id)
+                    st_index = st_stats.get('combined_st_index', 100.0)
+                    pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%"
+                    pk_pct = f"{st_stats.get('pk_percentage', 100.0):.1f}%"
+
+                    st_kpi = dbc.Row([
+                        dbc.Col(html.Div([
+                            html.Div(f"{st_index:.1f}%", className="kpi-value text-primary"),
+                            html.Div("ST Index (PP% + PK%)", className="kpi-label"),
+                        ], className="kpi-tile border-primary"), xs=12, md=4),
+                        dbc.Col(html.Div([
+                            html.Div(pp_pct, className="kpi-value text-success"),
+                            html.Div("Power Play (PP%)", className="kpi-label"),
+                        ], className="kpi-tile"), xs=6, md=4),
+                        dbc.Col(html.Div([
+                            html.Div(pk_pct, className="kpi-value text-danger"),
+                            html.Div("Penalty Kill (PK%)", className="kpi-label"),
+                        ], className="kpi-tile"), xs=6, md=4),
+                    ], className="g-2 justify-content-center mt-2")
+
+                    kpi_row = html.Div([kpi_row, st_kpi])
+                except Exception as e:
+                    pass
         except Exception:
             kpi_row = html.Div()
 
@@ -206,6 +233,15 @@ def register_dashboard_callbacks(app, data_service):
                         items.append(_top_performer_item(
                             'Plus/Minus (D)', top_plus_minus, 'plus_minus', signed=True
                         ))
+                if is_coach:
+                    top_corsi = max(skaters, key=lambda p: p.get('on_ice_shot_share_pct', 0.0))
+                    if top_corsi and top_corsi.get('on_ice_shot_share_pct', 0.0) > 0:
+                        c_val = f"{top_corsi.get('on_ice_shot_share_pct', 0.0):.1f}%"
+                        c_name = format_player_label(top_corsi['player'])
+                        items.append(dbc.ListGroupItem([
+                            html.Strong("Shot Share Leader (Corsi): "),
+                            f"{c_name}  ({c_val})"
+                        ]))
 
             top_performers = dbc.Card(dbc.CardBody([
                 html.H6("Top Performers", className="text-muted mb-2"),

@@ -266,6 +266,59 @@ def register_game_callbacks(app, data_service, team_context=None):
                     className="mb-3 shadow-sm",
                 )
 
+            # ---- Special Teams & Discipline Card (Coaches only) ----
+            game_st_card = None
+            if is_coach:
+                try:
+                    gst = data_service.calculate_special_teams_stats(team_id=effective_team_id, game_id=game_id_typed)
+                    game_st_card = dbc.Card([
+                        dbc.CardHeader(html.H5([
+                            html.I(className="fas fa-bolt text-warning me-2"),
+                            "Coaches Analytics: Special Teams & Discipline"
+                        ], className="card-title mb-0")),
+                        dbc.CardBody([
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div("Power Play", className="fw-bold text-primary mb-1 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("PP%: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('pp_percentage', 0.0):.1f}%"),
+                                        html.Span(f" ({gst.get('pp_goals', 0)}/{gst.get('pp_opportunities', 0)})", className="small text-muted ms-1")
+                                    ]),
+                                    html.Div([
+                                        html.Span("S/PP: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('pp_shots_per_opp', 0.0):.1f}")
+                                    ])
+                                ], md=4, xs=12, className="mb-2 mb-md-0"),
+                                dbc.Col([
+                                    html.Div("Penalty Kill", className="fw-bold text-danger mb-1 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("PK%: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('pk_percentage', 100.0):.1f}%"),
+                                        html.Span(f" ({gst.get('pk_successes', 0)}/{gst.get('pk_opportunities', 0)})", className="small text-muted ms-1")
+                                    ]),
+                                    html.Div([
+                                        html.Span("SA/PK: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('pk_shots_allowed_per_opp', 0.0):.1f}")
+                                    ])
+                                ], md=4, xs=12, className="mb-2 mb-md-0"),
+                                dbc.Col([
+                                    html.Div("Impact & Discipline", className="fw-bold text-info mb-1 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("Net ST Goals: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('net_special_teams_goals', 0):+d}")
+                                    ]),
+                                    html.Div([
+                                        html.Span("Net Penalties: ", className="text-muted"),
+                                        html.Strong(f"{gst.get('net_penalties', 0):+d}")
+                                    ])
+                                ], md=4, xs=12)
+                            ])
+                        ])
+                    ], className="mb-3 shadow-sm border-warning")
+                except Exception as e:
+                    logger.error(f"Error building game special teams card: {e}")
+
             # ---- Player stats ----
             # Skaters: get all player stats, then exclude goalies
             all_player_stats = data_service.get_game_player_stats(
@@ -320,19 +373,36 @@ def register_game_callbacks(app, data_service, team_context=None):
                 skater_cols.append({'name': '+/-', 'id': 'plus_minus'})
             if is_coach or not config.is_coaches_only_stat('PIM'):
                 skater_cols.append({'name': 'PIM', 'id': 'penalty_minutes'})
+            if is_coach:
+                skater_cols.extend([
+                    {'name': 'SF', 'id': 'on_ice_sf'},
+                    {'name': 'SA', 'id': 'on_ice_sa'},
+                    {'name': 'SF%', 'id': 'on_ice_sf_pct'}
+                ])
 
-            skater_data = [
-                {
-                    'player_label': format_player_label(s['player']),
-                    'position': s['player'].get('Position', ''),
+            all_events = data_service.get_events()
+            game_events = all_events[all_events['GameID'].astype(str) == str(game_id_typed)] if all_events is not None and not all_events.empty else pd.DataFrame()
+            team_identifier = data_service._get_team_identifier_for_events(effective_team_id)
+
+            skater_data = []
+            for s in skater_stats:
+                p_series = s['player']
+                p_id = data_service._get_player_id_from_series(p_series)
+                entry = {
+                    'player_label': format_player_label(p_series),
+                    'position': p_series.get('Position', ''),
                     'goals': s.get('goals', 0),
                     'assists': s.get('assists', 0),
                     'points': s.get('points', 0),
                     'plus_minus': s.get('plus_minus', 0),
                     'penalty_minutes': s.get('penalty_minutes', 0),
                 }
-                for s in skater_stats
-            ]
+                if is_coach and p_id is not None:
+                    corsi_game = data_service.calculate_player_corsi_for_events(p_id, game_events, team_identifier)
+                    entry['on_ice_sf'] = corsi_game.get('shots_for', 0)
+                    entry['on_ice_sa'] = corsi_game.get('shots_against', 0)
+                    entry['on_ice_sf_pct'] = f"{corsi_game.get('shot_share_pct', 0.0):.1f}%"
+                skater_data.append(entry)
 
             # Goalie DataTable
             goalie_cols = [
@@ -395,6 +465,8 @@ def register_game_callbacks(app, data_service, team_context=None):
             detail_children = [score_header]
             if shots_chart:
                 detail_children.append(shots_chart)
+            if game_st_card:
+                detail_children.append(game_st_card)
             detail_children.append(player_card)
 
             return html.Div(detail_children)

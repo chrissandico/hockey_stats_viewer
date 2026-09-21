@@ -276,6 +276,74 @@ def register_team_callbacks(app, data_service):
                 ])
             ], className="mb-4 shadow-sm")
 
+            # --- Build Special Teams Analytics Card for Coaches ---
+            special_teams_card = None
+            if is_coach:
+                try:
+                    st_stats = data_service.calculate_special_teams_stats(team_id, game_type)
+                    st_index = st_stats.get('combined_st_index', 100.0)
+
+                    if st_index >= 105.0:
+                        badge_color, badge_text = 'success', 'Elite'
+                    elif st_index >= 100.0:
+                        badge_color, badge_text = 'primary', 'Target'
+                    else:
+                        badge_color, badge_text = 'warning', 'Below Benchmark'
+
+                    special_teams_card = dbc.Card([
+                        dbc.CardHeader([
+                            html.Div([
+                                html.H5([
+                                    html.I(className="fas fa-bolt text-warning me-2"),
+                                    "Coaches Analytics: Special Teams & Discipline"
+                                ], className="card-title mb-0 d-inline-block me-2"),
+                                dbc.Badge(f"ST Index: {st_index:.1f}% ({badge_text})", color=badge_color, className="fs-6 float-end")
+                            ], className="d-flex justify-content-between align-items-center")
+                        ]),
+                        dbc.CardBody([
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div("Power Play (PP)", className="fw-bold text-primary mb-2 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("PP%: ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('pp_percentage', 0.0):.1f}%"),
+                                        html.Span(f" ({st_stats.get('pp_goals', 0)} / {st_stats.get('pp_opportunities', 0)})", className="small text-muted ms-1")
+                                    ], className="mb-1"),
+                                    html.Div([
+                                        html.Span("S/PP (Shots per PP): ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('pp_shots_per_opp', 0.0):.1f}")
+                                    ], className="mb-1")
+                                ], md=4, xs=12, className="mb-3 mb-md-0"),
+                                dbc.Col([
+                                    html.Div("Penalty Kill (PK)", className="fw-bold text-danger mb-2 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("PK%: ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('pk_percentage', 100.0):.1f}%"),
+                                        html.Span(f" ({st_stats.get('pk_successes', 0)} / {st_stats.get('pk_opportunities', 0)})", className="small text-muted ms-1")
+                                    ], className="mb-1"),
+                                    html.Div([
+                                        html.Span("SA/PK (Shots Allowed): ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('pk_shots_allowed_per_opp', 0.0):.1f}")
+                                    ], className="mb-1")
+                                ], md=4, xs=12, className="mb-3 mb-md-0"),
+                                dbc.Col([
+                                    html.Div("Net Impact & Discipline", className="fw-bold text-info mb-2 border-bottom pb-1"),
+                                    html.Div([
+                                        html.Span("Net ST Goals: ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('net_special_teams_goals', 0):+d}")
+                                    ], className="mb-1"),
+                                    html.Div([
+                                        html.Span("Net Penalties (Drawn - Taken): ", className="text-muted"),
+                                        html.Strong(f"{st_stats.get('net_penalties', 0):+d}")
+                                    ], className="mb-1")
+                                ], md=4, xs=12)
+                            ])
+                        ])
+                    ], className="mb-4 shadow-sm border-primary")
+                except Exception as e:
+                    logging.error(f"Error building special teams card: {e}")
+                    special_teams_card = None
+
             # --- Build position-filtered leaderboard ---
             section_label = "Leaderboard" if is_coach else "Roster Stats"
             heading_text = f"{section_label} — {active_tab.title()}"
@@ -305,14 +373,24 @@ def register_team_callbacks(app, data_service):
                     {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
                     {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
                     {'name': 'P', 'id': 'Points', 'type': 'numeric'},
-                    *([{'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'}] if is_coach else [])
+                    *([
+                        {'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'},
+                        {'name': 'SF', 'id': 'SF', 'type': 'numeric'},
+                        {'name': 'SA', 'id': 'SA', 'type': 'numeric'},
+                        {'name': 'SF%', 'id': 'SFPct', 'type': 'numeric'}
+                    ] if is_coach else [])
                 ]
                 table_data = [{
                     'Player': format_player_label(stats['player']),
                     'Goals': stats['goals'],
                     'Assists': stats['assists'],
                     'Points': stats['points'],
-                    **({'PlusMinus': stats['plus_minus']} if is_coach else {})
+                    **({
+                        'PlusMinus': stats['plus_minus'],
+                        'SF': stats.get('on_ice_shots_for', 0),
+                        'SA': stats.get('on_ice_shots_against', 0),
+                        'SFPct': f"{stats.get('on_ice_shot_share_pct', 0.0):.1f}%"
+                    } if is_coach else {})
                 } for stats in active_leaders]
 
             if not active_leaders:
@@ -369,7 +447,8 @@ def register_team_callbacks(app, data_service):
             elapsed = time.time() - start_time
             logging.info(f"Team stats callback completed in {elapsed:.2f} seconds")
 
-            return summary_card, leaderboard_card, trend_chart
+            summary_content = html.Div([summary_card, special_teams_card]) if special_teams_card else summary_card
+            return summary_content, leaderboard_card, trend_chart
 
         except Exception as e:
             logging.error(f"Error in team stats callback: {e}")

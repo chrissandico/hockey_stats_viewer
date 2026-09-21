@@ -2123,6 +2123,69 @@ class DataService:
         print(f"Final plus/minus for player {player_id}: {plus_minus}")
         return plus_minus
 
+    def calculate_player_corsi_for_events(self, player_id, events, team_identifier):
+        """
+        Calculate Corsi (On-Ice Shots For / Against / Share) for a player based on events.
+
+        Args:
+            player_id (str): The player ID
+            events (pd.DataFrame): Events data to analyze
+            team_identifier (str): Team identifier for filtering events
+
+        Returns:
+            dict: Corsi statistics (shots_for, shots_against, net_shots, shot_share_pct)
+        """
+        if events is None or events.empty or player_id is None:
+            return {
+                'shots_for': 0,
+                'shots_against': 0,
+                'net_shots': 0,
+                'shot_share_pct': 0.0
+            }
+
+        # Filter to shot/goal events FIRST before doing string search for maximum speed
+        if 'EventType' in events.columns:
+            shot_events = events[events['EventType'].isin(['Shot', 'Goal']) | (events.get('IsGoal', False) == True)]
+        elif 'IsGoal' in events.columns:
+            shot_events = events[events['IsGoal'] == True]
+        else:
+            shot_events = events
+
+        if shot_events.empty:
+            return {
+                'shots_for': 0,
+                'shots_against': 0,
+                'net_shots': 0,
+                'shot_share_pct': 0.0
+            }
+
+        # Check on-ice players using vectorized string search on pre-filtered shot events
+        pid_str = str(player_id)
+        has_on_ice_col = 'YourTeamPlayersOnIce' in shot_events.columns
+
+        if has_on_ice_col:
+            on_ice_mask = shot_events['YourTeamPlayersOnIce'].astype(str).str.contains(pid_str, regex=False, na=False)
+        else:
+            on_ice_mask = pd.Series(False, index=shot_events.index)
+
+        if 'PrimaryPlayerID' in shot_events.columns:
+            on_ice_mask = on_ice_mask | (shot_events['PrimaryPlayerID'].astype(str) == pid_str)
+
+        on_ice_shots = shot_events[on_ice_mask]
+
+        shots_for = len(on_ice_shots[on_ice_shots['Team'] == team_identifier])
+        shots_against = len(on_ice_shots[on_ice_shots['Team'] != team_identifier])
+        net_shots = shots_for - shots_against
+        total_shots = shots_for + shots_against
+        shot_share_pct = round((shots_for / total_shots * 100.0), 1) if total_shots > 0 else 0.0
+
+        return {
+            'shots_for': shots_for,
+            'shots_against': shots_against,
+            'net_shots': net_shots,
+            'shot_share_pct': shot_share_pct
+        }
+
     def calculate_goals_for_events(self, player_id, events):
         """
         Calculate goals for a player based on events with enhanced error handling.
@@ -2557,6 +2620,13 @@ class DataService:
                 self.logger.error(f"Error calculating goals_per_game for player '{player_id}': {str(e)}")
                 goals_per_game = 0.0
             
+            # Calculate Corsi stats
+            try:
+                corsi = self.calculate_player_corsi_for_events(player_id, events, team_identifier)
+            except Exception as e:
+                self.logger.error(f"Error calculating Corsi for player '{player_id}': {e}")
+                corsi = {'shots_for': 0, 'shots_against': 0, 'net_shots': 0, 'shot_share_pct': 0.0}
+
             # Log calculation summary
             self.logger.info(f"Player stats calculated for '{player_id}': G={goals}, A={assists}, P={points}, +/-={plus_minus}, S={shots}, PIM={penalty_minutes}, GP={games_played}")
             
@@ -2571,7 +2641,11 @@ class DataService:
                     'shots': int(shots),
                     'penalty_minutes': int(penalty_minutes),
                     'games_played': int(games_played),
-                    'goals_per_game': float(goals_per_game)
+                    'goals_per_game': float(goals_per_game),
+                    'on_ice_shots_for': int(corsi.get('shots_for', 0)),
+                    'on_ice_shots_against': int(corsi.get('shots_against', 0)),
+                    'on_ice_net_shots': int(corsi.get('net_shots', 0)),
+                    'on_ice_shot_share_pct': float(corsi.get('shot_share_pct', 0.0))
                 }
                 
                 self.logger.debug(f"Returning stats dictionary for player '{player_id}': {stats_dict}")
@@ -2873,6 +2947,223 @@ class DataService:
             'goals_for': goals_for,
             'goals_against': goals_against,
             'win_percentage': win_percentage
+        }
+
+    def calculate_special_teams_stats(self, team_id=None, game_type=None, game_id=None):
+        """
+        Calculate Special Teams metrics (PP%, PK%, S/PP, SA/PK, Net ST Goals, Combined ST Index, Discipline Index)
+        following WEB_APP_STATS_SPEC.md.
+
+        Args:
+            team_id (str, optional): Team ID
+            game_type (str, optional): Game type (E, R, T, P)
+            game_id (str/int, optional): Specific game ID
+
+        Returns:
+            dict: Special teams statistics
+        """
+        events = self.get_events()
+        if events is None or events.empty:
+            return self._empty_special_teams_summary()
+
+        # Filter events by game_id if provided
+        if game_id is not None:
+            try:
+                game_id_str = str(game_id)
+                events = events[events['GameID'].astype(str) == game_id_str]
+            except Exception as e:
+                print(f"Error filtering events by game_id {game_id}: {e}")
+
+        # Filter by game type if game_id not provided
+        elif game_type is not None:
+            all_games_of_type = self.get_games(team_id, game_type)
+            if not all_games_of_type.empty:
+                game_ids_of_type = all_games_of_type['ID'].astype(str).tolist()
+                events = events[events['GameID'].astype(str).isin(game_ids_of_type)]
+            else:
+                events = pd.DataFrame()
+
+        elif team_id is not None:
+            all_games = self.get_games(team_id)
+            if not all_games.empty:
+                game_ids = all_games['ID'].astype(str).tolist()
+                events = events[events['GameID'].astype(str).isin(game_ids)]
+
+        if events.empty:
+            return self._empty_special_teams_summary()
+
+        team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
+
+        is_your_team = events['Team'] == team_identifier
+        is_opponent = events['Team'] != team_identifier
+
+        # Vectorized situation flags for maximum speed
+        sit_col = events['GoalSituation'].astype(str) if 'GoalSituation' in events.columns else pd.Series('', index=events.index)
+        is_pp_mask = sit_col.str.contains('Power Play', na=False)
+        if 'IsPowerPlay' in events.columns:
+            is_pp_mask = is_pp_mask | (events['IsPowerPlay'] == True)
+
+        is_pk_mask = sit_col.str.contains('Penalty Kill', na=False) | sit_col.str.contains('Short Handed', na=False)
+        if 'IsShortHanded' in events.columns:
+            is_pk_mask = is_pk_mask | (events['IsShortHanded'] == True)
+
+        is_shot_event = events['EventType'].isin(['Shot', 'Goal']) | (events.get('IsGoal', False) == True) if 'EventType' in events.columns else events['IsGoal'] == True
+
+        # PP Goals
+        pp_goals_mask = (events['IsGoal'] == True) & is_your_team & is_pp_mask
+        pp_goals = len(events[pp_goals_mask])
+
+        # PP Shots
+        pp_shots_mask = is_your_team & is_pp_mask & is_shot_event
+        pp_shots = len(events[pp_shots_mask])
+
+        # Opponent Penalties (Raw PP Opps)
+        raw_pp_opps = len(events[(events['EventType'] == 'Penalty') & is_opponent])
+        pp_opps = max(raw_pp_opps, pp_goals)
+
+        # PK Goals Conceded (PPGA: Opponent PP goals)
+        pk_goals_conceded_mask = (events['IsGoal'] == True) & is_opponent & is_pp_mask
+        pk_goals_conceded = len(events[pk_goals_conceded_mask])
+
+        # Opponent PP Shots (Shots allowed on PK)
+        pk_shots_allowed_mask = is_opponent & is_pp_mask & is_shot_event
+        pk_shots_allowed = len(events[pk_shots_allowed_mask])
+
+        # Our Penalties (Raw PK Opps)
+        raw_pk_opps = len(events[(events['EventType'] == 'Penalty') & is_your_team])
+        pk_opps = max(raw_pk_opps, pk_goals_conceded)
+
+        # Short-handed goals
+        sh_goals_for_mask = (events['IsGoal'] == True) & is_your_team & is_pk_mask
+        sh_goals_for = len(events[sh_goals_for_mask])
+
+        sh_goals_against_mask = (events['IsGoal'] == True) & is_opponent & is_pk_mask
+        sh_goals_against = len(events[sh_goals_against_mask])
+
+        # Calculations
+        pp_pct = round((pp_goals / pp_opps * 100.0), 1) if pp_opps > 0 else 0.0
+        pp_shots_per_opp = round((pp_shots / pp_opps), 1) if pp_opps > 0 else 0.0
+
+        pk_successes = max(0, pk_opps - pk_goals_conceded)
+        pk_pct = round((pk_successes / pk_opps * 100.0), 1) if pk_opps > 0 else 100.0
+        pk_shots_allowed_per_opp = round((pk_shots_allowed / pk_opps), 1) if pk_opps > 0 else 0.0
+
+        net_st_goals = (pp_goals + sh_goals_for) - (pk_goals_conceded + sh_goals_against)
+        combined_st_index = round((pp_pct + pk_pct), 1)
+        net_penalties = raw_pp_opps - raw_pk_opps
+
+        return {
+            'pp_goals': pp_goals,
+            'pp_opportunities': pp_opps,
+            'pp_percentage': pp_pct,
+            'pp_shots': pp_shots,
+            'pp_shots_per_opp': pp_shots_per_opp,
+            'pk_goals_conceded': pk_goals_conceded,
+            'pk_opportunities': pk_opps,
+            'pk_successes': pk_successes,
+            'pk_percentage': pk_pct,
+            'pk_shots_allowed': pk_shots_allowed,
+            'pk_shots_allowed_per_opp': pk_shots_allowed_per_opp,
+            'sh_goals_for': sh_goals_for,
+            'sh_goals_against': sh_goals_against,
+            'net_special_teams_goals': net_st_goals,
+            'combined_st_index': combined_st_index,
+            'penalties_drawn': raw_pp_opps,
+            'penalties_taken': raw_pk_opps,
+            'net_penalties': net_penalties,
+        }
+
+    def _empty_special_teams_summary(self):
+        return {
+            'pp_goals': 0,
+            'pp_opportunities': 0,
+            'pp_percentage': 0.0,
+            'pp_shots': 0,
+            'pp_shots_per_opp': 0.0,
+            'pk_goals_conceded': 0,
+            'pk_opportunities': 0,
+            'pk_successes': 0,
+            'pk_percentage': 100.0,
+            'pk_shots_allowed': 0,
+            'pk_shots_allowed_per_opp': 0.0,
+            'sh_goals_for': 0,
+            'sh_goals_against': 0,
+            'net_special_teams_goals': 0,
+            'combined_st_index': 100.0,
+            'penalties_drawn': 0,
+            'penalties_taken': 0,
+            'net_penalties': 0,
+        }
+
+    def calculate_goalie_advanced_stats(self, player_id, team_id=None, game_type=None, game_id=None):
+        """
+        Calculate advanced situational and period save percentages for a goalie
+        following WEB_APP_STATS_SPEC.md.
+        """
+        player = self.get_player_by_id(player_id)
+        if player is None or player.get('Position') != 'G':
+            return None
+
+        events = self.get_events()
+        if events is None or events.empty:
+            return self._empty_goalie_advanced_summary()
+
+        games = self.get_player_games(player_id, team_id, game_type=game_type)
+        if game_id is not None and not games.empty:
+            games = games[games['ID'].astype(str) == str(game_id)]
+
+        if games.empty:
+            return self._empty_goalie_advanced_summary()
+
+        game_ids = games['ID'].astype(str).tolist()
+        goalie_game_events = events[events['GameID'].astype(str).isin(game_ids)]
+        goalie_events = self._filter_goalie_events(goalie_game_events, player_id)
+
+        if goalie_events.empty:
+            return self._empty_goalie_advanced_summary()
+
+        team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
+        opp_events = goalie_events[goalie_events['Team'] != team_identifier]
+
+        def get_sit_type(row):
+            sit = str(row.get('GoalSituation', '') or '')
+            if 'Power Play' in sit or 'Penalty Kill' in sit or bool(row.get('IsPowerPlay', False)):
+                return 'PK'
+            return 'ES'
+
+        es_events = opp_events[opp_events.apply(get_sit_type, axis=1) == 'ES'] if not opp_events.empty else pd.DataFrame()
+        pk_events = opp_events[opp_events.apply(get_sit_type, axis=1) == 'PK'] if not opp_events.empty else pd.DataFrame()
+
+        def calc_sv_block(df):
+            if df.empty:
+                return {'shots': 0, 'goals': 0, 'saves': 0, 'sv_pct': 0.0}
+            shots = len(df[df['EventType'].isin(['Shot', 'Goal']) | (df['IsGoal'] == True)])
+            goals = len(df[df['IsGoal'] == True])
+            saves = max(0, shots - goals)
+            sv_pct = round((saves / shots * 100.0), 1) if shots > 0 else 0.0
+            return {'shots': shots, 'goals': goals, 'saves': saves, 'sv_pct': sv_pct}
+
+        es_stats = calc_sv_block(es_events)
+        pk_stats = calc_sv_block(pk_events)
+
+        period_stats = {}
+        for p in [1, 2, 3, 4]:
+            label = f"P{p}" if p <= 3 else "OT"
+            p_events = opp_events[opp_events['Period'] == p] if not opp_events.empty else pd.DataFrame()
+            period_stats[label] = calc_sv_block(p_events)
+
+        return {
+            'even_strength': es_stats,
+            'penalty_kill': pk_stats,
+            'periods': period_stats,
+        }
+
+    def _empty_goalie_advanced_summary(self):
+        empty_block = {'shots': 0, 'goals': 0, 'saves': 0, 'sv_pct': 0.0}
+        return {
+            'even_strength': empty_block,
+            'penalty_kill': empty_block,
+            'periods': {'P1': empty_block, 'P2': empty_block, 'P3': empty_block, 'OT': empty_block},
         }
 
     # ============================================================================
@@ -3368,6 +3659,9 @@ class DataService:
         elif stat in ['points', 'goals', 'assists', 'plus_minus', 'shots', 'penalty_minutes', 'games_played', 'goals_per_game']:
             # Skater stats - sort descending (higher is better)
             player_stats.sort(key=lambda x: x[stat], reverse=True)
+        elif stat in ['corsi', 'shot_share', 'on_ice_shot_share_pct']:
+            # Corsi shot share percentage - sort descending
+            player_stats.sort(key=lambda x: x.get('on_ice_shot_share_pct', 0.0), reverse=True)
         elif stat in ['save_percentage', 'wins', 'shutouts']:
             # Goalie stats where higher is better - sort descending
             player_stats.sort(key=lambda x: x[stat], reverse=True)

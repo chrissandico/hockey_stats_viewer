@@ -350,6 +350,101 @@ def register_player_callbacks(app, data_service):
         ], className="mb-4 shadow-sm")
 
         # ---------------------------------------------------------------
+        # Coaches Analytics Card
+        # ---------------------------------------------------------------
+        coach_analytics_card = None
+        if is_coach:
+            if is_goalie:
+                try:
+                    adv_goalie = data_service.calculate_goalie_advanced_stats(player_id, team_id, game_type)
+                    if adv_goalie:
+                        es = adv_goalie.get('even_strength', {})
+                        pk = adv_goalie.get('penalty_kill', {})
+                        p = adv_goalie.get('periods', {})
+
+                        coach_analytics_card = dbc.Card([
+                            dbc.CardHeader([
+                                html.H5([
+                                    html.I(className="fas fa-shield-alt text-primary me-2"),
+                                    "Coaches Goalie Analytics"
+                                ], className="card-title mb-0")
+                            ]),
+                            dbc.CardBody([
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H6("Situational Save %", className="fw-bold border-bottom pb-1 text-secondary"),
+                                        html.Div([
+                                            html.Span("Even Strength SV%: ", className="text-muted"),
+                                            html.Strong(f"{es.get('sv_pct', 0.0):.1f}%"),
+                                            html.Span(f" ({es.get('saves', 0)} / {es.get('shots', 0)} saves)", className="small text-muted ms-1")
+                                        ], className="mb-1"),
+                                        html.Div([
+                                            html.Span("Penalty Kill SV%: ", className="text-muted"),
+                                            html.Strong(f"{pk.get('sv_pct', 0.0):.1f}%"),
+                                            html.Span(f" ({pk.get('saves', 0)} / {pk.get('shots', 0)} saves)", className="small text-muted ms-1")
+                                        ], className="mb-1")
+                                    ], md=6, xs=12, className="mb-3 mb-md-0"),
+                                    dbc.Col([
+                                        html.H6("Save % by Period", className="fw-bold border-bottom pb-1 text-secondary"),
+                                        dbc.Row([
+                                            dbc.Col([
+                                                html.Div(p_name, className="small text-muted fw-bold"),
+                                                html.Div(f"{p_data.get('sv_pct', 0.0):.1f}%", className="fw-bold"),
+                                                html.Div(f"{p_data.get('saves', 0)}/{p_data.get('shots', 0)}", className="small text-muted")
+                                            ], className="text-center") for p_name, p_data in p.items()
+                                        ])
+                                    ], md=6, xs=12)
+                                ])
+                            ])
+                        ], className="mb-4 shadow-sm border-primary")
+                except Exception as e:
+                    logger.error(f"Error calculating goalie advanced stats: {e}")
+            else:
+                try:
+                    sf = stats.get('on_ice_shots_for', 0)
+                    sa = stats.get('on_ice_shots_against', 0)
+                    net_shots = stats.get('on_ice_net_shots', 0)
+                    sf_pct = stats.get('on_ice_shot_share_pct', 0.0)
+
+                    sf_pct_color = 'success' if sf_pct >= 50.0 else 'warning'
+
+                    coach_analytics_card = dbc.Card([
+                        dbc.CardHeader([
+                            html.Div([
+                                html.H5([
+                                    html.I(className="fas fa-chart-line text-success me-2"),
+                                    "Coaches Analytics: On-Ice Corsi (Puck Possession)"
+                                ], className="card-title mb-0 d-inline-block"),
+                                dbc.Badge(f"Shot Share: {sf_pct:.1f}%", color=sf_pct_color, className="fs-6 float-end")
+                            ], className="d-flex justify-content-between align-items-center")
+                        ]),
+                        dbc.CardBody([
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div(str(sf), className="kpi-value text-success"),
+                                    html.Div("On-Ice Shots For (SF)", className="kpi-label")
+                                ], xs=6, md=3, className="text-center"),
+                                dbc.Col([
+                                    html.Div(str(sa), className="kpi-value text-danger"),
+                                    html.Div("On-Ice Shots Against (SA)", className="kpi-label")
+                                ], xs=6, md=3, className="text-center"),
+                                dbc.Col([
+                                    html.Div(f"{net_shots:+d}", className="kpi-value"),
+                                    html.Div("Net Shot Differential", className="kpi-label")
+                                ], xs=6, md=3, className="text-center"),
+                                dbc.Col([
+                                    html.Div(f"{sf_pct:.1f}%", className="kpi-value text-primary"),
+                                    html.Div("Shot Share % (SF%)", className="kpi-label")
+                                ], xs=6, md=3, className="text-center"),
+                            ])
+                        ])
+                    ], className="mb-4 shadow-sm border-success")
+                except Exception as e:
+                    logger.error(f"Error building player Corsi card: {e}")
+
+        full_player_info = html.Div([player_info, coach_analytics_card]) if coach_analytics_card else player_info
+
+        # ---------------------------------------------------------------
         # Game log
         # ---------------------------------------------------------------
         game_log = data_service.get_player_game_log(player_id, team_id, game_type)
@@ -492,4 +587,4 @@ def register_player_callbacks(app, data_service):
                 ]),
             ], className="shadow-sm")
 
-        return player_info, game_log_card
+        return full_player_info, game_log_card
