@@ -1,15 +1,9 @@
-from dash import html, dcc, Output, Input
-import dash_bootstrap_components as dbc
-import plotly.graph_objects as go
-from flask import session as flask_session
-from utils import format_player_label
-import config
+from components.unified_filter_bar import create_unified_filter_bar
 
 
 def create_main_layout(team_context=None):
     """
-    Create the dashboard home layout.  A dcc.Store fires once on load and
-    triggers register_dashboard_callbacks to populate all five sections.
+    Create the dashboard home layout with game type filtering (defaults to Regular Season).
     """
     team_name = (team_context or {}).get('team_name', 'Your Team')
     return html.Div([
@@ -17,8 +11,19 @@ def create_main_layout(team_context=None):
         dbc.Container([
             html.Div([
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
-                html.P("Season Statistics", className="text-muted mb-3"),
+                html.P("Season Dashboard & Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
+
+            # Game Type Filter Bar (defaults to Regular Season)
+            create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
+
+            # Informational Note
+            dbc.Alert([
+                html.I(className="fas fa-info-circle me-2"),
+                html.Strong("Default View: "),
+                "Showing ", html.Strong("Regular Season"), " statistics by default (Exhibition games excluded). Use the Filter dropdown above to select Tournament, Exhibition, or All Games."
+            ], color="info", className="py-2 mb-4 small text-center"),
+
             dcc.Loading(html.Div([
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
                 html.Div(id='dashboard-form-row', className="text-center mb-4"),
@@ -56,9 +61,8 @@ def _quick_card(title, desc, href):
 
 def register_dashboard_callbacks(app, data_service):
     """
-    Single callback that populates the five dashboard sections when the page
-    loads.  Each data call is wrapped in its own try/except so a failure in
-    one section does not blank the others.
+    Single callback that populates the dashboard sections when the page
+    loads or game type filter changes.
     """
 
     @app.callback(
@@ -67,16 +71,24 @@ def register_dashboard_callbacks(app, data_service):
         Output('dashboard-last-game', 'children'),
         Output('dashboard-top-performers', 'children'),
         Output('dashboard-chart', 'children'),
-        Input('dashboard-trigger', 'data'),
+        [Input('dashboard-trigger', 'data'),
+         Input('game-type-session-store', 'data')]
     )
-    def populate_dashboard(_trigger):
+    def populate_dashboard(_trigger, game_type_data):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
             return [html.Div()] * 5
 
+        # Resolve selected game type (default to 'R' Regular Season)
+        game_type = game_type_data if isinstance(game_type_data, str) else 'R'
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type', 'R')
+        if game_type == 'all' or not game_type:
+            game_type = None
+
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:
-            stats = data_service.calculate_team_stats(team_id)
+            stats = data_service.calculate_team_stats(team_id, game_type=game_type)
             win_pct = f"{stats['win_percentage']:.0%}"
             kpi_row = dbc.Row([
                 dbc.Col(html.Div([
@@ -108,7 +120,7 @@ def register_dashboard_callbacks(app, data_service):
             is_coach = flask_session.get('is_coach', False)
             if is_coach:
                 try:
-                    st_stats = data_service.calculate_special_teams_stats(team_id)
+                    st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
                     st_index = st_stats.get('combined_st_index', 100.0)
                     pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%"
                     pk_pct = f"{st_stats.get('pk_percentage', 100.0):.1f}%"
@@ -137,7 +149,7 @@ def register_dashboard_callbacks(app, data_service):
         # ── Fetch games once; shared by form-dots, last-game, and chart ───────
         games_df = None
         try:
-            games_df = data_service.get_games(team_id)
+            games_df = data_service.get_games(team_id, game_type=game_type)
         except Exception:
             pass
 
@@ -233,7 +245,7 @@ def register_dashboard_callbacks(app, data_service):
                 position=None,
                 limit=None,
                 team_id=team_id,
-                game_type=None,
+                game_type=game_type,
             )
             skaters = [p for p in leaderboard if p.get('player', {}).get('Position') != 'G']
 
