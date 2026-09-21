@@ -330,6 +330,7 @@ def login(n_clicks, password):
             session['team_id'] = team_info['team_id']
             session['team_name'] = team_info['team_name']
             session['is_coach'] = team_info.get('is_coach', False)  # Store coach flag
+            session['selected_game_type'] = 'R'  # Default to Regular Season games on fresh login
             print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']}, Coach: {session['is_coach']})")
             return '/', ''
         else:
@@ -371,9 +372,7 @@ def logout(n_clicks):
         return dash.no_update
     
     # Clear all session data
-    session['authenticated'] = False
-    session.pop('team_id', None)
-    session.pop('team_name', None)
+    session.clear()
     print("User logged out - session cleared")
     return '/login'
 
