@@ -71,7 +71,9 @@ class SheetsService:
             
             print(f"Connected to Google Sheet: {self.sheet.title}")
         except Exception as e:
-            print(f"Error connecting to Google Sheets: {e}")
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"Error connecting to Google Sheets: {e}\n{error_trace}")
             raise
     
     def _get_worksheet(self, name):

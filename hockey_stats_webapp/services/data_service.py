@@ -188,6 +188,7 @@ class DataService:
         
         if 'TeamID' not in df.columns:
             error_msg = f"TeamID column not found in data. Available columns: {df.columns.tolist()}"
+            self.logger.error(f"CRITICAL ERROR in _filter_by_team: {error_msg}")
             print(f"ERROR: {error_msg}")
             raise ValueError(error_msg)
         
@@ -1246,7 +1247,10 @@ class DataService:
             return games
             
         except Exception as e:
-            self.logger.error(f"Unexpected error in get_games: {str(e)}")
+            import traceback
+            error_trace = traceback.format_exc()
+            self.logger.error(f"Unexpected error in get_games: {str(e)}\n{error_trace}")
+            print(f"CRITICAL ERROR in get_games:\n{error_trace}")
             return pd.DataFrame()  # Return empty DataFrame as ultimate fallback
     
     def clear_games_cache(self, team_id=None, game_type=None):
