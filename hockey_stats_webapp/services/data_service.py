@@ -183,25 +183,17 @@ class DataService:
         Returns:
             pd.DataFrame: Filtered DataFrame
         """
-        if df.empty or team_id is None:
+        if df.empty:
             return df
         
-        # Find TeamID column flexibly
-        team_col = None
-        for col in df.columns:
-            col_clean = str(col).strip().replace(' ', '').replace('_', '').lower()
-            if col_clean in ['teamid', 'team']:
-                team_col = col
-                break
+        if 'TeamID' not in df.columns:
+            error_msg = f"TeamID column not found in data. Available columns: {df.columns.tolist()}"
+            print(f"ERROR: {error_msg}")
+            raise ValueError(error_msg)
         
-        if team_col is None:
-            self.logger.warning(f"TeamID column not found in data. Available columns: {list(df.columns)}. Returning unfiltered DataFrame.")
-            return df
-
-        # Filter by team ID (case-insensitive string comparison)
-        target_team = str(team_id).strip().lower()
-        filtered_df = df[df[team_col].astype(str).str.strip().str.lower() == target_team]
-        print(f"Filtered data: {len(filtered_df)} records for team '{team_id}' on column '{team_col}' (from {len(df)} total)")
+        # Filter by team ID
+        filtered_df = df[df['TeamID'] == team_id]
+        print(f"Filtered data: {len(filtered_df)} records for team {team_id} (from {len(df)} total)")
         
         return filtered_df
     
@@ -939,12 +931,12 @@ class DataService:
         """
         try:
             self.logger.info(f"Getting games with team_id='{team_id}', game_type='{game_type}'")
-
-            # Normalize game_type parameter if provided
-            if game_type is not None:
-                from config import normalize_game_type
-                game_type = normalize_game_type(game_type)
-
+            
+            # Validate input parameters
+            if team_id is not None and (not isinstance(team_id, str) or team_id.strip() == ''):
+                self.logger.error(f"Invalid team_id parameter: '{team_id}'. Must be a non-empty string or None.")
+                return pd.DataFrame()
+            
             if game_type is not None and game_type not in ['E', 'R', 'T', 'P']:
                 self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'E', 'R', 'T', 'P', or None.")
                 return pd.DataFrame()
@@ -960,43 +952,60 @@ class DataService:
             
             # Check if cache exists and is still valid
             if cache_key in self._games_calculated_cache:
+                # CRITICAL FIX: Evict empty dataframes so they don't get permanently stuck in cache
                 cached_games = self._games_calculated_cache[cache_key]
                 if cached_games is None or cached_games.empty:
-                    # Never serve an empty cached DataFrame - evict and recalculate
                     self._games_calculated_cache.pop(cache_key, None)
                     if hasattr(self, '_games_cache_timestamps'):
                         self._games_cache_timestamps.pop(cache_key, None)
                 else:
+                    # Check cache age
                     from datetime import datetime, timedelta
                     cache_timestamp = self._games_cache_timestamps.get(cache_key)
-                    if cache_timestamp:
-                        cache_age = datetime.now() - cache_timestamp
-                        has_recent_games = False
-                        if 'Date' in cached_games.columns:
-                            try:
-                                today = datetime.now().date()
-                                week_ago = today - timedelta(days=7)
-                                for game_date_str in cached_games['Date']:
-                                    try:
-                                        game_date = datetime.strptime(str(game_date_str), '%Y-%m-%d').date()
-                                        if game_date >= week_ago:
-                                            has_recent_games = True
-                                            break
-                                    except Exception:
-                                        pass
-                            except Exception as e:
-                                self.logger.warning(f"Error checking for recent games: {e}")
-
-                        cache_ttl = timedelta(minutes=5) if has_recent_games else timedelta(hours=1)
-                        if cache_age < cache_ttl:
-                            self.logger.debug(f"Using cached games data for {cache_key} (age: {cache_age}, TTL: {cache_ttl})")
-                            print(f"Using cached games data for {cache_key} (age: {cache_age.total_seconds():.0f}s)")
-                            return cached_games.copy()
-                        else:
-                            self._games_calculated_cache.pop(cache_key, None)
-                            self._games_cache_timestamps.pop(cache_key, None)
-                    else:
+                
+                if cache_timestamp:
+                    cache_age = datetime.now() - cache_timestamp
+                    
+                    # For recent games (within last 7 days), use shorter cache TTL (5 minutes)
+                    # For older games, use longer cache TTL (1 hour)
+                    cached_games = self._games_calculated_cache[cache_key]
+                    has_recent_games = False
+                    
+                    if not cached_games.empty and 'Date' in cached_games.columns:
+                        try:
+                            # Check if any games are recent (within last 7 days)
+                            today = datetime.now().date()
+                            week_ago = today - timedelta(days=7)
+                            
+                            for game_date_str in cached_games['Date']:
+                                try:
+                                    game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
+                                    if game_date >= week_ago:
+                                        has_recent_games = True
+                                        break
+                                except:
+                                    pass
+                        except Exception as e:
+                            self.logger.warning(f"Error checking for recent games: {e}")
+                    
+                    # Determine cache TTL based on whether there are recent games
+                    cache_ttl = timedelta(minutes=5) if has_recent_games else timedelta(hours=1)
+                    
+                    if cache_age < cache_ttl:
+                        self.logger.debug(f"Using cached games data for {cache_key} (age: {cache_age}, TTL: {cache_ttl})")
+                        print(f"Using cached games data for {cache_key} (age: {cache_age.total_seconds():.0f}s)")
                         return cached_games.copy()
+                    else:
+                        self.logger.info(f"Cache expired for {cache_key} (age: {cache_age}, TTL: {cache_ttl}), refreshing...")
+                        print(f"Cache expired for {cache_key}, refreshing...")
+                        # Remove expired cache
+                        del self._games_calculated_cache[cache_key]
+                        del self._games_cache_timestamps[cache_key]
+                else:
+                    # No timestamp, use cached data but log warning
+                    self.logger.warning(f"Using cached games data for {cache_key} (no timestamp)")
+                    print(f"Using cached games data for {cache_key}")
+                    return self._games_calculated_cache[cache_key].copy()
             
             # Get data from sheets service with error handling
             try:
@@ -1315,7 +1324,8 @@ class DataService:
     
     def clear_games_cache_optimized(self, team_id=None, game_type=None, force_clear=False):
         """
-        Optimized cache clearing strategy that clears target keys reliably.
+        Optimized cache clearing strategy that minimizes performance impact.
+        Only clears cache when necessary and implements selective clearing with size management.
         """
         try:
             self.clear_games_cache(team_id=team_id, game_type=game_type)
@@ -1324,6 +1334,134 @@ class DataService:
             self.logger.error(f"Error in clear_games_cache_optimized: {e}")
             return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "error"}
 
+    def _unused_legacy_clear_games_cache_optimized(self, team_id=None, game_type=None, force_clear=False):
+        """
+        Optimized cache clearing strategy that minimizes performance impact.
+        Only clears cache when necessary and implements selective clearing with size management.
+        
+        Args:
+            team_id (str, optional): If specified, only clear cache for this team
+            game_type (str, optional): If specified, only clear cache for this game type
+            force_clear (bool): If True, forces cache clearing regardless of optimization checks
+            
+        Returns:
+            dict: Information about the cache clearing operation including:
+                - cleared: Whether any cache was actually cleared
+                - entries_removed: Number of cache entries removed
+                - memory_freed: Amount of memory freed in bytes
+                - reason: Reason for clearing or not clearing
+        """
+        try:
+            if not hasattr(self, '_games_calculated_cache'):
+                self.logger.debug("Optimized cache clear: No cache to clear - not initialized")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_not_initialized"}
+            
+            if not self._games_calculated_cache:
+                self.logger.debug("Optimized cache clear: Cache is already empty")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_already_empty"}
+            
+            # Get current cache info for optimization decisions
+            cache_info = self.get_cache_info()
+            current_size = cache_info.get('cache_size', 0)
+            current_memory = cache_info.get('cache_memory_usage', 0)
+            performance_metrics = cache_info.get('cache_performance_metrics', {})
+            
+            # Define cache size thresholds for optimization
+            MAX_CACHE_ENTRIES = 50  # Maximum number of cache entries before forced cleanup
+            MAX_CACHE_MEMORY = 100 * 1024 * 1024  # 100MB maximum cache memory
+            MIN_EFFICIENCY_THRESHOLD = 70  # Minimum cache efficiency percentage
+            
+            # Check if cache clearing is necessary (unless forced)
+            if not force_clear:
+                # Skip clearing if cache is small and efficient
+                if (current_size <= 10 and 
+                    current_memory <= 10 * 1024 * 1024 and  # 10MB
+                    performance_metrics.get('memory_efficiency', 100) >= MIN_EFFICIENCY_THRESHOLD):
+                    self.logger.debug(f"Optimized cache clear: Skipping - cache is small and efficient "
+                                    f"(size={current_size}, memory={current_memory:,.0f}B, "
+                                    f"efficiency={performance_metrics.get('memory_efficiency', 100):.1f}%)")
+                    return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "cache_small_and_efficient"}
+                
+                # Check if we're clearing the same cache key that was recently cleared
+                cache_key = f"games_{team_id}_{game_type}"
+                if hasattr(self, '_last_cleared_keys'):
+                    if cache_key in self._last_cleared_keys:
+                        self.logger.debug(f"Optimized cache clear: Skipping - key '{cache_key}' was recently cleared")
+                        return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "recently_cleared"}
+                else:
+                    self._last_cleared_keys = set()
+            
+            # Determine clearing strategy based on cache state
+            original_cache_size = len(self._games_calculated_cache)
+            memory_before = current_memory
+            
+            if (current_size >= MAX_CACHE_ENTRIES or 
+                current_memory >= MAX_CACHE_MEMORY or 
+                performance_metrics.get('memory_efficiency', 100) < MIN_EFFICIENCY_THRESHOLD or
+                force_clear):
+                
+                # Aggressive clearing needed
+                if team_id is None and game_type is None:
+                    # Clear all cache and timestamps
+                    self._games_calculated_cache.clear()
+                    if hasattr(self, '_games_cache_timestamps'):
+                        self._games_cache_timestamps.clear()
+                    self._last_cleared_keys.clear() if hasattr(self, '_last_cleared_keys') else None
+                    entries_removed = original_cache_size
+                    reason = "full_clear_due_to_limits" if not force_clear else "full_clear_forced"
+                    self.logger.info(f"Optimized cache clear: Cleared all {entries_removed} entries "
+                                   f"(reason: {reason}, memory: {memory_before:,.0f}B)")
+                else:
+                    # Selective clearing with optimization
+                    entries_removed = self._selective_cache_clear_optimized(team_id, game_type)
+                    reason = "selective_clear_optimized"
+                    self.logger.info(f"Optimized cache clear: Selectively cleared {entries_removed} entries "
+                                   f"for team_id={team_id}, game_type={game_type}")
+            else:
+                # Minimal selective clearing
+                entries_removed = self._selective_cache_clear_optimized(team_id, game_type)
+                reason = "minimal_selective_clear"
+                self.logger.debug(f"Optimized cache clear: Minimal selective clearing - {entries_removed} entries removed")
+            
+            # Calculate memory freed
+            post_cache_info = self.get_cache_info()
+            memory_after = post_cache_info.get('cache_memory_usage', 0)
+            memory_freed = memory_before - memory_after
+            
+            # Track cleared keys to avoid redundant clearing
+            if team_id is not None or game_type is not None:
+                cache_key = f"games_{team_id}_{game_type}"
+                if not hasattr(self, '_last_cleared_keys'):
+                    self._last_cleared_keys = set()
+                self._last_cleared_keys.add(cache_key)
+                
+                # Limit the size of tracked keys to prevent memory growth
+                if len(self._last_cleared_keys) > 20:
+                    # Remove oldest entries (simple FIFO by converting to list and back)
+                    keys_list = list(self._last_cleared_keys)
+                    self._last_cleared_keys = set(keys_list[-15:])  # Keep last 15 entries
+            
+            return {
+                "cleared": entries_removed > 0,
+                "entries_removed": entries_removed,
+                "memory_freed": memory_freed,
+                "reason": reason,
+                "cache_size_before": original_cache_size,
+                "cache_size_after": post_cache_info.get('cache_size', 0),
+                "memory_before": memory_before,
+                "memory_after": memory_after
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in optimized cache clearing: {str(e)}")
+            # Fallback to regular cache clearing
+            try:
+                self.clear_games_cache(team_id, game_type)
+                return {"cleared": True, "entries_removed": -1, "memory_freed": -1, "reason": "fallback_to_regular_clear", "error": str(e)}
+            except Exception as fallback_error:
+                self.logger.error(f"Fallback cache clearing also failed: {str(fallback_error)}")
+                return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "clearing_failed", "error": str(e)}
+    
     def _selective_cache_clear_optimized(self, team_id=None, game_type=None):
         """
         Helper method for optimized selective cache clearing.

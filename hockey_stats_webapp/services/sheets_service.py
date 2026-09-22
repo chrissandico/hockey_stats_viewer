@@ -124,26 +124,7 @@ class SheetsService:
             worksheet = self._get_worksheet('Players')
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
-
-            # Flexible column normalization
-            rename_map = {}
-            for col in df.columns:
-                col_clean = str(col).strip().replace(' ', '').replace('_', '').lower()
-                if col_clean in ['playerid', 'id']:
-                    rename_map[col] = 'ID'
-                elif col_clean in ['jerseynumber', 'jersey', 'number', '#']:
-                    rename_map[col] = 'JerseyNumber'
-                elif col_clean in ['firstname', 'first']:
-                    rename_map[col] = 'FirstName'
-                elif col_clean in ['lastname', 'last']:
-                    rename_map[col] = 'LastName'
-                elif col_clean in ['position', 'pos']:
-                    rename_map[col] = 'Position'
-                elif col_clean in ['teamid', 'team']:
-                    rename_map[col] = 'TeamID'
-            if rename_map:
-                df = df.rename(columns=rename_map)
-
+            
             self.cache[key] = df
             self.last_refresh[key] = time.time()
         
@@ -166,37 +147,13 @@ class SheetsService:
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             
-            # Flexible column normalization
-            rename_map = {}
-            for col in df.columns:
-                col_clean = str(col).strip().replace(' ', '').replace('_', '').lower()
-                if col_clean in ['gameid', 'id']:
-                    rename_map[col] = 'ID'
-                elif col_clean in ['teamid', 'team']:
-                    rename_map[col] = 'TeamID'
-                elif col_clean in ['opponent', 'opp']:
-                    rename_map[col] = 'Opponent'
-                elif col_clean in ['date']:
-                    rename_map[col] = 'Date'
-                elif col_clean in ['location', 'loc']:
-                    rename_map[col] = 'Location'
-                elif col_clean in ['result', 'res']:
-                    rename_map[col] = 'Result'
-                elif col_clean in ['goalsfor', 'gf']:
-                    rename_map[col] = 'GoalsFor'
-                elif col_clean in ['goalsagainst', 'ga']:
-                    rename_map[col] = 'GoalsAgainst'
-                elif col_clean in ['gametype', 'type']:
-                    rename_map[col] = 'GameType'
-            if rename_map:
-                df = df.rename(columns=rename_map)
-
-            # Handle game type data
+            # Handle game type data from column F
             from config import normalize_game_type, DEFAULT_GAME_TYPE
             if 'GameType' not in df.columns:
                 print("GameType column not found in Games sheet, adding default values")
                 df['GameType'] = DEFAULT_GAME_TYPE  # Default to Regular Season
             else:
+                # Normalize all game type values (e.g. 'Exhibition', 'exhibition' -> 'E', 'Regular Season' -> 'R')
                 df['GameType'] = df['GameType'].apply(normalize_game_type)
                 print(f"Game type distribution: {df['GameType'].value_counts().to_dict()}")
             
@@ -336,19 +293,6 @@ class SheetsService:
                 worksheet = self._get_worksheet('Teams')
                 data = worksheet.get_all_records()
                 df = pd.DataFrame(data)
-
-                # Normalize column names flexibly
-                rename_map = {}
-                for col in df.columns:
-                    col_clean = str(col).strip().replace(' ', '').replace('_', '').lower()
-                    if col_clean in ['teamid', 'id']:
-                        rename_map[col] = 'TeamID'
-                    elif col_clean in ['teamname', 'name', 'team']:
-                        rename_map[col] = 'TeamName'
-                    elif col_clean in ['password', 'pass']:
-                        rename_map[col] = 'Password'
-                if rename_map:
-                    df = df.rename(columns=rename_map)
 
                 # Validate required columns
                 required_columns = ['TeamID', 'TeamName', 'Password']
