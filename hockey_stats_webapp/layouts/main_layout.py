@@ -1,4 +1,4 @@
-from dash import html, dcc, Output, Input
+from dash import html, dcc, Output, Input, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
@@ -75,7 +75,7 @@ def register_dashboard_callbacks(app, data_service):
     @app.callback(
         Output('dashboard-regenerate-summary-store', 'data'),
         Input('dashboard-regenerate-btn', 'n_clicks'),
-        dash.dependencies.State('dashboard-regenerate-summary-store', 'data'),
+        State('dashboard-regenerate-summary-store', 'data'),
         prevent_initial_call=True,
     )
     def handle_dashboard_regenerate(n_clicks, current_count):
