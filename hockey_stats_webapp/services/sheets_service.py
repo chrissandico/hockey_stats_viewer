@@ -71,9 +71,7 @@ class SheetsService:
             
             print(f"Connected to Google Sheet: {self.sheet.title}")
         except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            print(f"Error connecting to Google Sheets: {e}\n{error_trace}")
+            print(f"Error connecting to Google Sheets: {e}")
             raise
     
     def _get_worksheet(self, name):
@@ -150,13 +148,23 @@ class SheetsService:
             df = pd.DataFrame(data)
             
             # Handle game type data from column F
-            from config import normalize_game_type, DEFAULT_GAME_TYPE
+            # If GameType column doesn't exist or has empty values, default to 'E' (Exhibition)
             if 'GameType' not in df.columns:
                 print("GameType column not found in Games sheet, adding default values")
-                df['GameType'] = DEFAULT_GAME_TYPE  # Default to Regular Season
+                df['GameType'] = 'E'  # Default to Exhibition
             else:
-                # Normalize all game type values (e.g. 'Exhibition', 'exhibition' -> 'E', 'Regular Season' -> 'R')
-                df['GameType'] = df['GameType'].apply(normalize_game_type)
+                # Fill empty/null game type values with default
+                df['GameType'] = df['GameType'].fillna('E')
+                df['GameType'] = df['GameType'].replace('', 'E')
+                
+                # Validate game type values and replace invalid ones with default
+                from config import is_valid_game_type, DEFAULT_GAME_TYPE
+                invalid_mask = ~df['GameType'].apply(is_valid_game_type)
+                if invalid_mask.any():
+                    invalid_count = invalid_mask.sum()
+                    print(f"Found {invalid_count} invalid game type values, replacing with default '{DEFAULT_GAME_TYPE}'")
+                    df.loc[invalid_mask, 'GameType'] = DEFAULT_GAME_TYPE
+                
                 print(f"Game type distribution: {df['GameType'].value_counts().to_dict()}")
             
             self.cache[key] = df

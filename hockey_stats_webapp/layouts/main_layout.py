@@ -1,4 +1,4 @@
-from dash import html, dcc, Output, Input, State
+from dash import html, dcc, Output, Input
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
@@ -14,7 +14,6 @@ def create_main_layout(team_context=None):
     team_name = (team_context or {}).get('team_name', 'Your Team')
     return html.Div([
         dcc.Store(id='dashboard-trigger', data=True),
-        dcc.Store(id='dashboard-regenerate-summary-store', data=0),
         dbc.Container([
             html.Div([
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
@@ -73,88 +72,59 @@ def register_dashboard_callbacks(app, data_service):
     """
 
     @app.callback(
-        Output('dashboard-regenerate-summary-store', 'data'),
-        Input('dashboard-regenerate-btn', 'n_clicks'),
-        State('dashboard-regenerate-summary-store', 'data'),
-        prevent_initial_call=True,
-    )
-    def handle_dashboard_regenerate(n_clicks, current_count):
-        if not n_clicks:
-            return dash.no_update
-        return (current_count or 0) + 1
-
-    @app.callback(
         Output('dashboard-kpi-row', 'children'),
         Output('dashboard-form-row', 'children'),
         Output('dashboard-last-game', 'children'),
         Output('dashboard-top-performers', 'children'),
         Output('dashboard-chart', 'children'),
         [Input('dashboard-trigger', 'data'),
-         Input('game-type-session-store', 'data'),
-         Input('dashboard-regenerate-summary-store', 'data')]
+         Input('game-type-session-store', 'data')]
     )
-    def populate_dashboard(_trigger, game_type_data, refresh_trigger):
+    def populate_dashboard(_trigger, game_type_data):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
             return [html.Div()] * 5
 
-        force_refresh_summary = False
-        if dash.callback_context.triggered:
-            triggered_prop = dash.callback_context.triggered[0]['prop_id']
-            if 'dashboard-regenerate-summary-store' in triggered_prop:
-                force_refresh_summary = True
-
         # Resolve selected game type (default to 'R' Regular Season)
-        if game_type_data == 'all':
+        game_type = game_type_data if isinstance(game_type_data, str) else 'R'
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type', 'R')
+        if game_type == 'all' or not game_type:
             game_type = None
-        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
-            game_type = game_type_data
-        elif isinstance(game_type_data, dict) and game_type_data.get('game_type'):
-            gt = game_type_data.get('game_type')
-            game_type = None if gt == 'all' else gt
-        else:
-            game_type = 'R'
 
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:
             stats = data_service.calculate_team_stats(team_id, game_type=game_type)
-            if stats['games_played'] == 0:
-                gt_name = config.get_game_type_name(game_type) if game_type else 'selected filter'
-                kpi_row = dbc.Alert([
-                    html.I(className="fas fa-exclamation-triangle me-2"),
-                    f"No completed {gt_name} games found for your team. Please select another filter above (e.g. Regular Season, Tournament, or All Games)."
-                ], color="warning", className="text-center my-2")
-            else:
-                win_pct = f"{stats['win_percentage']:.0%}"
-                kpi_row = dbc.Row([
-                    dbc.Col(html.Div([
-                        html.Div(str(stats['wins']),         className="kpi-value"),
-                        html.Div("Wins",                     className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                    dbc.Col(html.Div([
-                        html.Div(str(stats['losses']),       className="kpi-value"),
-                        html.Div("Losses",                   className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                    dbc.Col(html.Div([
-                        html.Div(str(stats['ties']),         className="kpi-value"),
-                        html.Div("Ties",                     className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                    dbc.Col(html.Div([
-                        html.Div(win_pct,                    className="kpi-value"),
-                        html.Div("Win %",                    className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                    dbc.Col(html.Div([
-                        html.Div(str(stats['goals_for']),    className="kpi-value"),
-                        html.Div("Goals For",                className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                    dbc.Col(html.Div([
-                        html.Div(str(stats['goals_against']), className="kpi-value"),
-                        html.Div("Goals Against",            className="kpi-label"),
-                    ], className="kpi-tile"), xs=6, md=2),
-                ], className="g-2 justify-content-center")
+            win_pct = f"{stats['win_percentage']:.0%}"
+            kpi_row = dbc.Row([
+                dbc.Col(html.Div([
+                    html.Div(str(stats['wins']),         className="kpi-value"),
+                    html.Div("Wins",                     className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+                dbc.Col(html.Div([
+                    html.Div(str(stats['losses']),       className="kpi-value"),
+                    html.Div("Losses",                   className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+                dbc.Col(html.Div([
+                    html.Div(str(stats['ties']),         className="kpi-value"),
+                    html.Div("Ties",                     className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+                dbc.Col(html.Div([
+                    html.Div(win_pct,                    className="kpi-value"),
+                    html.Div("Win %",                    className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+                dbc.Col(html.Div([
+                    html.Div(str(stats['goals_for']),    className="kpi-value"),
+                    html.Div("Goals For",                className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+                dbc.Col(html.Div([
+                    html.Div(str(stats['goals_against']), className="kpi-value"),
+                    html.Div("Goals Against",            className="kpi-label"),
+                ], className="kpi-tile"), xs=6, md=2),
+            ], className="g-2 justify-content-center")
 
             is_coach = flask_session.get('is_coach', False)
-            if is_coach and stats['games_played'] > 0:
+            if is_coach:
                 try:
                     st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
                     st_index = st_stats.get('combined_st_index', 100.0)
@@ -241,18 +211,13 @@ def register_dashboard_callbacks(app, data_service):
                 ai_summary_service = AISummaryService()
                 ai_summary_text = ""
                 try:
-                    digest = data_service.get_game_summary_digest(last_game_id, team_id, force_refresh=force_refresh_summary)
+                    digest = data_service.get_game_summary_digest(last_game_id, team_id)
                     if digest:
-                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_refresh_summary)
+                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode)
                 except Exception as e:
                     pass
 
                 summary_paragraphs = [html.P(p.strip(), className="small text-dark mb-2") for p in ai_summary_text.split('\n\n') if p.strip()]
-
-                regenerate_btn = dbc.Button([
-                    html.I(className="fas fa-sync-alt me-1"),
-                    "Regenerate"
-                ], id='dashboard-regenerate-btn', color="outline-primary" if is_coach else "outline-success", size="sm", className="ms-2 float-end")
 
                 last_game = dbc.Card(dbc.CardBody([
                     html.Div([
@@ -269,10 +234,7 @@ def register_dashboard_callbacks(app, data_service):
                         html.Span(str(last.get('Date', '')), className="fw-semibold"),
                     ], className="mb-3 border-bottom pb-2"),
                     html.Div([
-                        html.Div([
-                            html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2 d-inline-block") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2 d-inline-block"),
-                            regenerate_btn
-                        ], className="d-flex justify-content-between align-items-center mb-2"),
+                        html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2"),
                         html.Div(summary_paragraphs if summary_paragraphs else "Summary unavailable.")
                     ], className="bg-light p-3 rounded border")
                 ]), className="shadow-sm mb-3")

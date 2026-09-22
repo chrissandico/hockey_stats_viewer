@@ -600,13 +600,8 @@ def register_recent_games_callbacks(app, data_service):
             if not team_id:
                 return dbc.Alert("No team selected", color="danger")
 
-            # Parse game type (default to 'R' Regular Season)
-            if game_type_data == 'all':
-                game_type = None
-            elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
-                game_type = game_type_data
-            else:
-                game_type = 'R'
+            # Parse game type
+            game_type = None if game_type_data == "all" else game_type_data
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
@@ -661,13 +656,8 @@ def register_recent_games_callbacks(app, data_service):
             if not team_id:
                 return dbc.Alert("No team selected", color="danger")
 
-            # Parse game type (default to 'R' Regular Season)
-            if game_type_data == 'all':
-                game_type = None
-            elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
-                game_type = game_type_data
-            else:
-                game_type = 'R'
+            # Parse game type
+            game_type = None if game_type_data == "all" else game_type_data
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)

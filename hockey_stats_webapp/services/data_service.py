@@ -188,7 +188,6 @@ class DataService:
         
         if 'TeamID' not in df.columns:
             error_msg = f"TeamID column not found in data. Available columns: {df.columns.tolist()}"
-            self.logger.error(f"CRITICAL ERROR in _filter_by_team: {error_msg}")
             print(f"ERROR: {error_msg}")
             raise ValueError(error_msg)
         
@@ -604,7 +603,7 @@ class DataService:
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
-            game_type (str, optional): Game type to filter by (E, R, T, P). If None, returns all games.
+            game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
             
         Returns:
             pd.DataFrame: Filtered DataFrame containing only games of the specified type
@@ -616,12 +615,9 @@ class DataService:
             print("WARNING: No GameType column found in games data. Returning all games.")
             return games
         
-        from config import normalize_game_type
-        target_type = normalize_game_type(game_type)
-
-        normalized_types = games['GameType'].apply(normalize_game_type)
-        filtered_games = games[normalized_types == target_type]
-        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} match game type '{game_type}' ({target_type})")
+        # Filter by game type
+        filtered_games = games[games['GameType'] == game_type]
+        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
         
         return filtered_games
     
@@ -675,18 +671,16 @@ class DataService:
             # Apply game type filtering if specified
             if game_type_filter is not None:
                 try:
-                    from config import normalize_game_type
-                    target_type = normalize_game_type(game_type_filter)
-                    valid_game_types = ['E', 'R', 'T', 'P']
-                    if target_type not in valid_game_types:
+                    # Validate game type filter
+                    valid_game_types = ['E', 'R', 'T']
+                    if game_type_filter not in valid_game_types:
                         self.logger.warning(f"Invalid game type filter '{game_type_filter}' for game {game_id}. Valid types: {valid_game_types}")
                         # Continue with unfiltered events as fallback
                     else:
                         # Filter events to only include those matching the game type filter
                         if 'GameType' in game_events.columns:
                             original_count = len(game_events)
-                            normalized_event_types = game_events['GameType'].apply(normalize_game_type)
-                            game_events = game_events[normalized_event_types == target_type]
+                            game_events = game_events[game_events['GameType'] == game_type_filter]
                             filtered_count = len(game_events)
                             self.logger.info(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events (from {original_count})")
                             print(f"Filtered events for game {game_id} by game type '{game_type_filter}': {filtered_count} events")
@@ -806,10 +800,8 @@ class DataService:
                 return events_df
             
             # Validate game type parameter
-            from config import normalize_game_type
-            target_type = normalize_game_type(game_type_filter)
-            valid_game_types = ['E', 'R', 'T', 'P']  # Exhibition, Regular Season, Tournament, Playoffs
-            if target_type not in valid_game_types:
+            valid_game_types = ['E', 'R', 'T']  # Exhibition, Regular Season, Tournament
+            if game_type_filter not in valid_game_types:
                 self.logger.warning(f"Invalid game type filter '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
                 print(f"WARNING: Invalid game type '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
                 return events_df
@@ -824,8 +816,7 @@ class DataService:
             # Filter by specific game type
             try:
                 original_count = len(events_df)
-                normalized_types = events_df['GameType'].apply(normalize_game_type)
-                filtered_events = events_df[normalized_types == target_type]
+                filtered_events = events_df[events_df['GameType'] == game_type_filter]
                 filtered_count = len(filtered_events)
                 
                 self.logger.info(f"Event filtering: {filtered_count} events out of {original_count} match game type '{game_type_filter}'")
@@ -867,20 +858,14 @@ class DataService:
         Get the currently selected game type from the Flask session.
         
         Returns:
-            str: The selected game type code, or None if set to 'all'
+            str: The selected game type code, or None if not set
         """
         try:
             from flask import session
-            from config import DEFAULT_GAME_TYPE, is_valid_game_type
-            val = session.get('selected_game_type')
-            if val == 'all':
-                return None
-            if val and is_valid_game_type(val):
-                return val
-            return DEFAULT_GAME_TYPE
+            return session.get('selected_game_type')
         except RuntimeError:
-            from config import DEFAULT_GAME_TYPE
-            return DEFAULT_GAME_TYPE
+            # Working outside of request context (e.g., in tests)
+            return None
     
     def _set_game_type_in_session(self, game_type):
         """
@@ -892,14 +877,13 @@ class DataService:
         from flask import session
         from config import is_valid_game_type, DEFAULT_GAME_TYPE
         
-        if game_type == 'all' or game_type is None:
-            session['selected_game_type'] = 'all'
-        elif game_type and is_valid_game_type(game_type):
+        # Validate game type
+        if game_type and is_valid_game_type(game_type):
             session['selected_game_type'] = game_type
         else:
             session['selected_game_type'] = DEFAULT_GAME_TYPE
         
-        print(f"Set game type in session: {session.get('selected_game_type')}")
+        print(f"Set game type in session: {session['selected_game_type']}")
     
     def get_players(self, team_id=None):
         """
@@ -953,18 +937,9 @@ class DataService:
             
             # Check if cache exists and is still valid
             if cache_key in self._games_calculated_cache:
-                # CRITICAL FIX: Evict empty dataframes so they don't get permanently stuck in cache
-                cached_games = self._games_calculated_cache[cache_key]
-                cache_timestamp = None
-                
-                if cached_games is None or cached_games.empty:
-                    self._games_calculated_cache.pop(cache_key, None)
-                    if hasattr(self, '_games_cache_timestamps'):
-                        self._games_cache_timestamps.pop(cache_key, None)
-                else:
-                    # Check cache age
-                    from datetime import datetime, timedelta
-                    cache_timestamp = self._games_cache_timestamps.get(cache_key)
+                # Check cache age
+                from datetime import datetime, timedelta
+                cache_timestamp = self._games_cache_timestamps.get(cache_key)
                 
                 if cache_timestamp:
                     cache_age = datetime.now() - cache_timestamp
@@ -1247,10 +1222,7 @@ class DataService:
             return games
             
         except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            self.logger.error(f"Unexpected error in get_games: {str(e)}\n{error_trace}")
-            print(f"CRITICAL ERROR in get_games:\n{error_trace}")
+            self.logger.error(f"Unexpected error in get_games: {str(e)}")
             return pd.DataFrame()  # Return empty DataFrame as ultimate fallback
     
     def clear_games_cache(self, team_id=None, game_type=None):
@@ -1329,18 +1301,6 @@ class DataService:
                 self.logger.error(f"Failed to clear cache even as fallback: {str(fallback_error)}")
     
     def clear_games_cache_optimized(self, team_id=None, game_type=None, force_clear=False):
-        """
-        Optimized cache clearing strategy that minimizes performance impact.
-        Only clears cache when necessary and implements selective clearing with size management.
-        """
-        try:
-            self.clear_games_cache(team_id=team_id, game_type=game_type)
-            return {"cleared": True, "entries_removed": 1, "memory_freed": 0, "reason": "target_cleared"}
-        except Exception as e:
-            self.logger.error(f"Error in clear_games_cache_optimized: {e}")
-            return {"cleared": False, "entries_removed": 0, "memory_freed": 0, "reason": "error"}
-
-    def _unused_legacy_clear_games_cache_optimized(self, team_id=None, game_type=None, force_clear=False):
         """
         Optimized cache clearing strategy that minimizes performance impact.
         Only clears cache when necessary and implements selective clearing with size management.
@@ -2531,7 +2491,7 @@ class DataService:
                     
                     # Get player games for each game type individually and combine
                     all_player_games = []
-                    for gt in ['E', 'R', 'T', 'P']:  # Exhibition, Regular Season, Tournament, Playoffs
+                    for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
                         gt_games = self.get_player_games(player_id, team_id, game_type=gt)
                         if not gt_games.empty:
                             all_player_games.append(gt_games)
@@ -4296,7 +4256,7 @@ class DataService:
         
         return period_data
 
-    def get_game_summary_digest(self, game_id, team_id=None, force_refresh=False):
+    def get_game_summary_digest(self, game_id, team_id=None):
         """
         Extract an ultra-compact, storyline-rich game digest for AI summary generation.
         Includes game metadata, period evolution, special teams, Corsi possession,
@@ -4305,19 +4265,10 @@ class DataService:
         Args:
             game_id (str/int): Game ID
             team_id (str, optional): Team ID
-            force_refresh (bool): Force live refresh from Google Sheets
 
         Returns:
             dict: Structured compact game digest payload
         """
-        if force_refresh and hasattr(self, 'sheets_service') and self.sheets_service:
-            try:
-                self.sheets_service.get_games(force_refresh=True)
-                self.sheets_service.get_events(force_refresh=True)
-                self.clear_games_cache()
-            except Exception as e:
-                self.logger.warning(f"Could not force refresh Google Sheets data: {e}")
-
         try:
             game_id_typed = int(game_id) if str(game_id).isdigit() else game_id
         except Exception:
@@ -4339,7 +4290,7 @@ class DataService:
             'Result': str(game.get('Result', '')).upper(),
             'GoalsFor': int(game.get('GoalsFor', 0)),
             'GoalsAgainst': int(game.get('GoalsAgainst', 0)),
-            'GameType': str(game.get('GameType', 'R'))
+            'GameType': str(game.get('GameType', 'E'))
         }
 
         # 2. Period Breakdown

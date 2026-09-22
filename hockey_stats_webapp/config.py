@@ -36,7 +36,7 @@ GAME_TYPES = {
 }
 
 # Default game type
-DEFAULT_GAME_TYPE = 'R'
+DEFAULT_GAME_TYPE = 'E'
 
 def is_coaches_only_stat(stat_name):
     """
@@ -101,59 +101,17 @@ def get_all_game_types():
     """
     return GAME_TYPES.copy()
 
-def normalize_game_type(val):
-    """
-    Normalize any game type string/code to a canonical game type code (E, R, T, P).
-    Handles strings like 'Exhibition', 'exhibition', 'Regular Season', 'Tournament', etc.
-
-    Args:
-        val (str): The raw game type string or code
-
-    Returns:
-        str: Canonical game type code ('E', 'R', 'T', 'P')
-    """
-    if not val:
-        return DEFAULT_GAME_TYPE
-
-    # Handle pandas NA / float / None
-    try:
-        import pandas as pd
-        if pd.isna(val):
-            return DEFAULT_GAME_TYPE
-    except Exception:
-        pass
-
-    val_str = str(val).strip().upper()
-
-    if val_str in GAME_TYPES:
-        return val_str
-    if 'EXHIBITION' in val_str or val_str in ['EX', 'E']:
-        return 'E'
-    if 'REGULAR' in val_str or 'SEASON' in val_str or val_str in ['REG', 'RS']:
-        return 'R'
-    if 'TOURNAMENT' in val_str or 'TOURNEY' in val_str or val_str == 'TOUR':
-        return 'T'
-    if 'PLAYOFF' in val_str or val_str == 'POST':
-        return 'P'
-
-    return DEFAULT_GAME_TYPE
-
 def is_valid_game_type(game_type_code):
     """
-    Check if a game type code or string is valid.
+    Check if a game type code is valid.
     
     Args:
-        game_type_code (str): The game type code or string to validate
+        game_type_code (str): The game type code to validate
         
     Returns:
-        bool: True if the game type code is valid or can be normalized, False otherwise
+        bool: True if the game type code is valid, False otherwise
     """
-    if not game_type_code:
-        return False
-    val_str = str(game_type_code).strip().upper()
-    if val_str in GAME_TYPES:
-        return True
-    return any(k in val_str for k in ['EXHIBITION', 'REGULAR', 'TOURNAMENT', 'PLAYOFF', 'EX', 'SEASON'])
+    return game_type_code in GAME_TYPES
 
 # Team identifier mappings for events data
 TEAM_IDENTIFIER_MAPPINGS = {

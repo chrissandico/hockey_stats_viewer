@@ -27,7 +27,6 @@ def create_game_layout(data_service, team_context=None):
     """
     return html.Div([
         dcc.Store(id='game-selected-store'),
-        dcc.Store(id='regenerate-summary-store', data=0),
         create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
         dbc.Container([
             html.H1("Games", className="fw-bold mb-4"),
@@ -66,13 +65,10 @@ def register_game_callbacks(app, data_service, team_context=None):
         if not effective_team_id or not data_service:
             return html.P("No data available.", className="text-muted")
 
-        # Resolve game_type from the session store value (default to 'R' Regular Season)
-        if game_type_data == 'all':
-            game_type = None
-        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
+        # Resolve game_type from the session store value ('all', 'E', 'R', 'T', 'P', or None)
+        game_type = None
+        if game_type_data and game_type_data != 'all':
             game_type = game_type_data
-        else:
-            game_type = 'R'
 
         try:
             games = data_service.get_games(effective_team_id, game_type=game_type)
@@ -157,40 +153,18 @@ def register_game_callbacks(app, data_service, team_context=None):
             return no_update
 
     # ------------------------------------------------------------------ #
-    # Callback 2.5: Handle Regenerate AI Summary button click              #
-    # ------------------------------------------------------------------ #
-    @app.callback(
-        Output('regenerate-summary-store', 'data'),
-        Input({'type': 'regenerate-summary-btn', 'index': ALL}, 'n_clicks'),
-        dash.dependencies.State('regenerate-summary-store', 'data'),
-        prevent_initial_call=True,
-    )
-    def trigger_regenerate_summary(n_clicks_list, current_count):
-        if not callback_context.triggered or not any(c for c in n_clicks_list if c):
-            return no_update
-        return (current_count or 0) + 1
-
-    # ------------------------------------------------------------------ #
     # Callback 3: Render game detail — score, shots chart, player table   #
     # ------------------------------------------------------------------ #
     @app.callback(
         Output('game-detail-container', 'children'),
         Input('game-selected-store', 'data'),
-        Input('regenerate-summary-store', 'data'),
     )
-    def update_game_detail(game_id, refresh_trigger):
+    def update_game_detail(game_id):
         if not game_id:
             return html.P(
                 "Select a game above to view details.",
                 className="text-muted text-center py-4",
             )
-
-        # Check if the summary regenerate button triggered this update
-        force_refresh_summary = False
-        if callback_context.triggered:
-            triggered_prop = callback_context.triggered[0]['prop_id']
-            if 'regenerate-summary-store' in triggered_prop:
-                force_refresh_summary = True
 
         session_team_id = flask_session.get('team_id')
         effective_team_id = session_team_id if session_team_id else team_id
@@ -493,19 +467,12 @@ def register_game_callbacks(app, data_service, team_context=None):
             # ---- AI Analyst Summary Card ----
             ai_summary_card = None
             try:
-                digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id, force_refresh=force_refresh_summary)
+                digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id)
                 if digest:
                     mode = 'coach' if is_coach else 'parent'
-                    summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_refresh_summary)
+                    summary_text = ai_summary_service.generate_summary(digest, mode=mode)
 
                     paragraphs = [html.P(p.strip(), className="mb-2") for p in summary_text.split('\n\n') if p.strip()]
-
-                    regenerate_btn = dbc.Button([
-                        html.I(className="fas fa-sync-alt me-1"),
-                        "Regenerate"
-                    ], id={'type': 'regenerate-summary-btn', 'index': str(game_id_typed)},
-                       color="outline-primary" if is_coach else "outline-success",
-                       size="sm", className="ms-2 float-end")
 
                     if is_coach:
                         card_header = dbc.CardHeader([
@@ -514,10 +481,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                     html.I(className="fas fa-robot text-primary me-2"),
                                     "AI Game Analyst Summary"
                                 ], className="card-title mb-0 d-inline-block"),
-                                html.Div([
-                                    dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 me-2"),
-                                    regenerate_btn
-                                ], className="float-end d-flex align-items-center")
+                                dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 float-end")
                             ], className="d-flex justify-content-between align-items-center")
                         ])
                     else:
@@ -527,10 +491,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                     html.I(className="fas fa-bullhorn text-success me-2"),
                                     "AI Game Highlights & Recap"
                                 ], className="card-title mb-0 d-inline-block"),
-                                html.Div([
-                                    dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 me-2"),
-                                    regenerate_btn
-                                ], className="float-end d-flex align-items-center")
+                                dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 float-end")
                             ], className="d-flex justify-content-between align-items-center")
                         ])
 

@@ -122,15 +122,17 @@ def register_team_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
 
-        # Get game type (default to 'R' Regular Season)
-        if game_type_data == 'all':
+        # Get game type
+        game_type = game_type_data if isinstance(game_type_data, str) else None
+        if game_type_data and isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type')
+
+        # Handle "All Games" selection
+        if game_type == "all":
             game_type = None
-        elif isinstance(game_type_data, str) and game_type_data in ['E', 'R', 'T', 'P']:
-            game_type = game_type_data
-        elif isinstance(game_type_data, dict) and game_type_data.get('game_type'):
-            gt = game_type_data.get('game_type')
-            game_type = None if gt == 'all' else gt
-        else:
+
+        # Default to Regular Season if no game type selected
+        if game_type == "" or game_type is False:
             game_type = 'R'
 
         logging.debug(f"Team callback: team_id={team_id}, is_coach={is_coach}, game_type={game_type}, active_tab={active_tab}")

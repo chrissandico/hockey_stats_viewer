@@ -45,11 +45,11 @@ def create_game_type_filter_component(selected_game_type=None, show_all_option=T
             )
         )
     
-    # Determine active tab - default to DEFAULT_GAME_TYPE ('R') when no specific type is selected
-    if original_selected_game_type is None:
-        active_tab = DEFAULT_GAME_TYPE
+    # Determine active tab - default to "all" when show_all_option is True and no specific type is selected
+    if show_all_option and original_selected_game_type is None:
+        active_tab = "all"
     else:
-        active_tab = original_selected_game_type
+        active_tab = original_selected_game_type or DEFAULT_GAME_TYPE
     
     return dbc.Card([
         dbc.CardHeader([
@@ -100,15 +100,14 @@ def register_game_type_filter_callbacks(app, data_service):
 
     @app.callback(
         dash.dependencies.Output('game-type-session-store', 'data'),
-        [dash.dependencies.Input('game-type-dropdown', 'value')],
-        prevent_initial_call=False
+        [dash.dependencies.Input('game-type-dropdown', 'value')],  # Changed from 'game-type-filter-tabs', 'active_tab'
+        prevent_initial_call=True
     )
-    def update_game_type_session(selected_value):
+    def update_game_type_session(selected_value):  # Changed parameter name from active_tab
         """Update the game type selection in the session."""
-        if not selected_value:
-            selected_value = DEFAULT_GAME_TYPE
+        # Set the game type in the session
         if selected_value == "all":
-            data_service._set_game_type_in_session("all")
+            data_service._set_game_type_in_session(None)
         else:
             data_service._set_game_type_in_session(selected_value)
 
@@ -116,10 +115,9 @@ def register_game_type_filter_callbacks(app, data_service):
 
 def create_game_type_session_store():
     """
-    Create a hidden store for game type selection in the session.
-    Defaults to 'R' (Regular Season).
+    Create a hidden div to store game type selection in the session.
     
     Returns:
         dash.dcc.Store: The session store component
     """
-    return dcc.Store(id='game-type-session-store', storage_type='session', data='R')
+    return dcc.Store(id='game-type-session-store', storage_type='session')
