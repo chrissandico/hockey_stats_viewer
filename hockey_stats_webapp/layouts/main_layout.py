@@ -181,20 +181,22 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             kpi_row = html.Div()
 
-        # ── Fetch games once; shared by form-dots and last-game ───────────────
+        # ── Fetch games once; filter to completed games for Last Game & Form ─
         games_df = None
+        completed_games = None
         try:
             games_df = data_service.get_games(team_id, game_type=game_type)
+            if games_df is not None and not games_df.empty:
+                completed_games = data_service._filter_games_by_date(games_df, include_future=False)
+                if completed_games is not None and not completed_games.empty and 'Date' in completed_games.columns:
+                    completed_games = completed_games.sort_values('Date', ascending=False).reset_index(drop=True)
         except Exception:
             pass
 
-        if games_df is not None and not games_df.empty and 'Date' in games_df.columns:
-            games_df = games_df.sort_values('Date', ascending=False).reset_index(drop=True)
-
         # ── Recent form dots ──────────────────────────────────────────────────
         try:
-            if games_df is not None and not games_df.empty:
-                recent = games_df.head(5)
+            if completed_games is not None and not completed_games.empty:
+                recent = completed_games.head(5)
                 dots = []
                 for _, row in recent.iterrows():
                     result = str(row.get('Result', '')).upper()
@@ -219,8 +221,8 @@ def register_dashboard_callbacks(app, data_service):
 
         # ── Last game card with AI Summary ───────────────────────────────────
         try:
-            if games_df is not None and not games_df.empty:
-                last = games_df.iloc[0]
+            if completed_games is not None and not completed_games.empty:
+                last = completed_games.iloc[0]
                 result = str(last.get('Result', '')).upper()
                 if 'W' in result:
                     badge_color = 'success'
@@ -267,7 +269,14 @@ def register_dashboard_callbacks(app, data_service):
                     ], className="bg-light p-3 rounded border")
                 ]), className="shadow-sm mb-3")
             else:
-                last_game = html.Div()
+                last_game = dbc.Card(dbc.CardBody([
+                    html.Div([
+                        html.H6("Last Game", className="text-muted mb-0 d-inline-block"),
+                        dbc.Badge("PRE-SEASON", color="secondary", className="float-end small")
+                    ], className="d-flex justify-content-between align-items-center mb-2"),
+                    html.H5("No Completed Regular Season Games", className="mb-1 text-muted"),
+                    html.P("Game stats and AI summaries will be displayed here once the regular season begins.", className="small text-muted mb-0")
+                ]), className="shadow-sm mb-3")
         except Exception:
             last_game = html.Div()
 
