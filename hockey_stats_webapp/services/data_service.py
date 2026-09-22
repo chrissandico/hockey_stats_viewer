@@ -616,13 +616,14 @@ class DataService:
             return games
         
         # Always exclude Exhibition games ('E')
-        non_exhibition = games[games['GameType'] != 'E']
+        clean_game_types = games['GameType'].astype(str).str.strip(' "\'').str.upper()
+        non_exhibition = games[clean_game_types != 'E']
 
         if game_type is None:
             return non_exhibition
 
         # Filter by specific game type
-        filtered_games = non_exhibition[non_exhibition['GameType'] == game_type]
+        filtered_games = non_exhibition[clean_game_types[clean_game_types != 'E'] == str(game_type).strip(' "\'').str.upper()]
         print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
         
         return filtered_games
@@ -4387,11 +4388,30 @@ class DataService:
                         'save_percentage': f"{gs.get('save_percentage', 0.0):.3f}"
                     })
 
+        # 8. Check if game is completed
+        from datetime import datetime, date
+        date_str = str(game.get('Date', ''))
+        is_completed = False
+        ga_val = int(game.get('GoalsAgainst', 0))
+
+        if not game_events.empty:
+            is_completed = True
+        elif date_str:
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y']:
+                try:
+                    parsed_date = datetime.strptime(date_str, fmt).date()
+                    if parsed_date <= date.today() and (gf_val > 0 or ga_val > 0 or your_tot_shots > 0 or opp_tot_shots > 0):
+                        is_completed = True
+                    break
+                except ValueError:
+                    continue
+
         return {
             'game': game_meta,
             'period_breakdown': period_digest,
             'special_teams': st_digest,
             'possession': possession_digest,
             'top_scorers': top_scorers[:5],
-            'goalies': goalie_digest
+            'goalies': goalie_digest,
+            'is_completed': is_completed
         }

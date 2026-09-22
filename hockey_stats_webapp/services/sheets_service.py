@@ -153,13 +153,13 @@ class SheetsService:
                 print("GameType column not found in Games sheet, adding default values")
                 df['GameType'] = 'R'  # Default to Regular Season
             else:
-                # Fill empty/null game type values with default
-                df['GameType'] = df['GameType'].fillna('R')
-                df['GameType'] = df['GameType'].replace('', 'R')
+                # Clean up GameType values: strip whitespace and surrounding quotes
+                df['GameType'] = df['GameType'].astype(str).str.strip().str.strip('"').str.strip("'").str.upper()
+                df['GameType'] = df['GameType'].replace(['', 'NAN', 'NONE'], 'R')
                 
                 # Replace truly invalid values (not in ['E', 'R', 'T', 'P']) with 'R'
                 valid_codes = ['E', 'R', 'T', 'P']
-                invalid_mask = ~df['GameType'].astype(str).str.upper().isin(valid_codes)
+                invalid_mask = ~df['GameType'].isin(valid_codes)
                 if invalid_mask.any():
                     invalid_count = invalid_mask.sum()
                     print(f"Found {invalid_count} invalid game type values, replacing with default 'R'")

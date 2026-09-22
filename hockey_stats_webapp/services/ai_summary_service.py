@@ -73,7 +73,26 @@ class AISummaryService:
         if not game_digest or 'game' not in game_digest:
             return "No game data available for summary analysis."
 
-        game_id = str(game_digest['game'].get('ID', 'unknown'))
+        game_info = game_digest.get('game', {})
+        game_id = str(game_info.get('ID', 'unknown'))
+        date_str = str(game_info.get('Date', ''))
+        opp = str(game_info.get('Opponent', 'Opponent'))
+
+        # Do not generate AI recaps for upcoming/unplayed games
+        is_completed = game_digest.get('is_completed', None)
+        if is_completed is None and date_str:
+            from datetime import datetime, date
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y']:
+                try:
+                    parsed_date = datetime.strptime(date_str, fmt).date()
+                    is_completed = (parsed_date <= date.today())
+                    break
+                except ValueError:
+                    continue
+
+        if is_completed is False:
+            return f"Upcoming Game vs {opp} ({date_str}): Game analysis will be available after the game is played."
+
         cache_key = f"{game_id}:{mode}"
 
         # 1. Return from cache if available

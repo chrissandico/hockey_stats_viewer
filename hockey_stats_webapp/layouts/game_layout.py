@@ -469,38 +469,54 @@ def register_game_callbacks(app, data_service, team_context=None):
             try:
                 digest = data_service.get_game_summary_digest(game_id_typed, effective_team_id)
                 if digest:
-                    mode = 'coach' if is_coach else 'parent'
-                    summary_text = ai_summary_service.generate_summary(digest, mode=mode)
-
-                    paragraphs = [html.P(p.strip(), className="mb-2") for p in summary_text.split('\n\n') if p.strip()]
-
-                    if is_coach:
-                        card_header = dbc.CardHeader([
-                            html.Div([
-                                html.H5([
-                                    html.I(className="fas fa-robot text-primary me-2"),
-                                    "AI Game Analyst Summary"
-                                ], className="card-title mb-0 d-inline-block"),
-                                dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 float-end")
-                            ], className="d-flex justify-content-between align-items-center")
-                        ])
+                    if digest.get('is_completed') is False:
+                        ai_summary_card = dbc.Card([
+                            dbc.CardHeader([
+                                html.Div([
+                                    html.H5([
+                                        html.I(className="fas fa-calendar-alt text-secondary me-2"),
+                                        "Upcoming Game"
+                                    ], className="card-title mb-0 d-inline-block"),
+                                    dbc.Badge("SCHEDULED", color="secondary", className="ms-2 fs-6 float-end")
+                                ], className="d-flex justify-content-between align-items-center")
+                            ]),
+                            dbc.CardBody([
+                                html.P("Game statistics and AI analysis will be available after this game is played.", className="text-muted mb-0")
+                            ])
+                        ], className="mb-3 shadow-sm")
                     else:
-                        card_header = dbc.CardHeader([
-                            html.Div([
-                                html.H5([
-                                    html.I(className="fas fa-bullhorn text-success me-2"),
-                                    "AI Game Highlights & Recap"
-                                ], className="card-title mb-0 d-inline-block"),
-                                dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 float-end")
-                            ], className="d-flex justify-content-between align-items-center")
-                        ])
+                        mode = 'coach' if is_coach else 'parent'
+                        summary_text = ai_summary_service.generate_summary(digest, mode=mode)
 
-                    ai_summary_card = dbc.Card([
-                        card_header,
-                        dbc.CardBody([
-                            html.Div(paragraphs, className="lh-base text-dark")
-                        ])
-                    ], className="mb-3 shadow-sm border-primary")
+                        paragraphs = [html.P(p.strip(), className="mb-2") for p in summary_text.split('\n\n') if p.strip()]
+
+                        if is_coach:
+                            card_header = dbc.CardHeader([
+                                html.Div([
+                                    html.H5([
+                                        html.I(className="fas fa-robot text-primary me-2"),
+                                        "AI Game Analyst Summary"
+                                    ], className="card-title mb-0 d-inline-block"),
+                                    dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 float-end")
+                                ], className="d-flex justify-content-between align-items-center")
+                            ])
+                        else:
+                            card_header = dbc.CardHeader([
+                                html.Div([
+                                    html.H5([
+                                        html.I(className="fas fa-bullhorn text-success me-2"),
+                                        "AI Game Highlights & Recap"
+                                    ], className="card-title mb-0 d-inline-block"),
+                                    dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 float-end")
+                                ], className="d-flex justify-content-between align-items-center")
+                            ])
+
+                        ai_summary_card = dbc.Card([
+                            card_header,
+                            dbc.CardBody([
+                                html.Div(paragraphs, className="lh-base text-dark")
+                            ])
+                        ], className="mb-3 shadow-sm border-primary")
             except Exception as e:
                 logger.error(f"Error generating AI summary card: {e}")
 
