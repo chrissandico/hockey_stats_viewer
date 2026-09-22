@@ -954,6 +954,8 @@ class DataService:
             if cache_key in self._games_calculated_cache:
                 # CRITICAL FIX: Evict empty dataframes so they don't get permanently stuck in cache
                 cached_games = self._games_calculated_cache[cache_key]
+                cache_timestamp = None
+                
                 if cached_games is None or cached_games.empty:
                     self._games_calculated_cache.pop(cache_key, None)
                     if hasattr(self, '_games_cache_timestamps'):
