@@ -455,7 +455,7 @@ def register_player_callbacks(app, data_service):
                 if is_goalie:
                     game_log_data.append({
                         'Date': game_stats['game']['Date'],
-                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'R')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['result'],
                         'SA': game_stats['shots_against'],
@@ -467,7 +467,7 @@ def register_player_callbacks(app, data_service):
                 else:
                     entry = {
                         'Date': game_stats['game']['Date'],
-                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'E')),
+                        'Game Type': config.get_game_type_name(game_stats['game'].get('GameType', 'R')),
                         'Opponent': game_stats['game']['Opponent'],
                         'Result': game_stats['game']['Result'],
                         'Goals': game_stats['goals'],

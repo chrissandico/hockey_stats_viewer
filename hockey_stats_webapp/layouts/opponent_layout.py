@@ -219,7 +219,7 @@ def create_game_log_card(opponent_name, games):
             'Location': game.get('Location', 'N/A'),
             'Result': game['Result'],
             'Score': f"{game['GoalsFor']} - {game['GoalsAgainst']}",
-            'Game Type': config.get_game_type_name(game.get('GameType', 'E'))
+            'Game Type': config.get_game_type_name(game.get('GameType', 'R'))
         })
 
     return dbc.Card([

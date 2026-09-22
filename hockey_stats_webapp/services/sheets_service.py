@@ -157,15 +157,15 @@ class SheetsService:
                 df['GameType'] = df['GameType'].fillna('R')
                 df['GameType'] = df['GameType'].replace('', 'R')
                 
-                # Validate game type values and replace invalid ones with default
-                from config import is_valid_game_type, DEFAULT_GAME_TYPE
-                invalid_mask = ~df['GameType'].apply(is_valid_game_type)
+                # Replace truly invalid values (not in ['E', 'R', 'T', 'P']) with 'R'
+                valid_codes = ['E', 'R', 'T', 'P']
+                invalid_mask = ~df['GameType'].astype(str).str.upper().isin(valid_codes)
                 if invalid_mask.any():
                     invalid_count = invalid_mask.sum()
-                    print(f"Found {invalid_count} invalid game type values, replacing with default '{DEFAULT_GAME_TYPE}'")
-                    df.loc[invalid_mask, 'GameType'] = DEFAULT_GAME_TYPE
+                    print(f"Found {invalid_count} invalid game type values, replacing with default 'R'")
+                    df.loc[invalid_mask, 'GameType'] = 'R'
                 
-                print(f"Game type distribution: {df['GameType'].value_counts().to_dict()}")
+                print(f"Game type distribution from Google Sheets: {df['GameType'].value_counts().to_dict()}")
             
             self.cache[key] = df
             self.last_refresh[key] = time.time()

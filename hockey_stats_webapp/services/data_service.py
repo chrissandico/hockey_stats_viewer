@@ -798,11 +798,14 @@ class DataService:
                 self.logger.warning("Event filtering: Empty or None events DataFrame provided")
                 print("Event filtering: Empty events DataFrame provided, returning as-is")
                 return events_df if events_df is not None else pd.DataFrame()
-            
+
+            # Always exclude Exhibition events ('E') if GameType column exists
+            if 'GameType' in events_df.columns:
+                events_df = events_df[events_df['GameType'] != 'E']
+
             # Handle "All Games" case (None game_type)
             if game_type_filter is None:
-                self.logger.info(f"Event filtering: All Games selected - including all {len(events_df)} events regardless of game type")
-                print("Event filtering: All Games selected - including all events regardless of game type")
+                self.logger.info(f"Event filtering: All Games selected - including all {len(events_df)} non-exhibition events")
                 return events_df
             
             # Validate game type parameter
@@ -1026,15 +1029,14 @@ class DataService:
                     self.logger.error(f"Error filtering games by team '{team_id}': {str(e)}")
                     return pd.DataFrame()
             
-            # Filter games by game type if specified
-            if game_type is not None:
-                try:
-                    original_count = len(games)
-                    games = self._filter_games_by_type(games, game_type)
-                    self.logger.info(f"Filtered games by type '{game_type}': {len(games)} games (from {original_count})")
-                except Exception as e:
-                    self.logger.error(f"Error filtering games by type '{game_type}': {str(e)}")
-                    return pd.DataFrame()
+            # Filter games by game type (always excludes Exhibition games 'E')
+            try:
+                original_count = len(games)
+                games = self._filter_games_by_type(games, game_type)
+                self.logger.info(f"Filtered games by type '{game_type}': {len(games)} games (from {original_count})")
+            except Exception as e:
+                self.logger.error(f"Error filtering games by type '{game_type}': {str(e)}")
+                return pd.DataFrame()
             
             # Print columns for debugging
             self.logger.debug(f"Games columns: {games.columns.tolist()}")
@@ -1255,7 +1257,8 @@ class DataService:
                 self._games_calculated_cache.clear()
                 if hasattr(self, '_games_cache_timestamps'):
                     self._games_cache_timestamps.clear()
-                self.logger.info(f"Cleared all games cache ({original_cache_size} entries)")
+                self.clear_leaderboard_cache()
+                self.logger.info(f"Cleared all games cache and leaderboard cache ({original_cache_size} entries)")
                 print("Cleared all games cache")
             else:
                 # Clear specific cache entries
@@ -1378,6 +1381,7 @@ class DataService:
                     self._games_calculated_cache.clear()
                     if hasattr(self, '_games_cache_timestamps'):
                         self._games_cache_timestamps.clear()
+                    self.clear_leaderboard_cache()
                     self._last_cleared_keys.clear() if hasattr(self, '_last_cleared_keys') else None
                     entries_removed = original_cache_size
                     reason = "full_clear_due_to_limits" if not force_clear else "full_clear_forced"
@@ -1881,16 +1885,12 @@ class DataService:
         game_roster = self.sheets_service.get_game_roster()
         print(f"Original game roster size: {len(game_roster)}")
         
-        # If team_id is specified, filter the game roster to only include games for that team
-        if team_id is not None:
-            # Get games for the specified team
-            games = self.sheets_service.get_games()
-            team_games = self._filter_by_team(games, team_id)
-            team_game_ids = team_games['ID'].tolist()
-            
-            # Filter game roster to only include entries for team games
-            game_roster = game_roster[game_roster['GameID'].isin(team_game_ids)]
-            print(f"Filtered game roster to {len(game_roster)} entries for team {team_id} games")
+        # Filter game roster to only include entries for valid non-Exhibition games
+        games = self.get_games(team_id)
+        if not games.empty and 'ID' in games.columns:
+            valid_game_ids = games['ID'].tolist()
+            game_roster = game_roster[game_roster['GameID'].isin(valid_game_ids)]
+            print(f"Filtered game roster to {len(game_roster)} entries for non-exhibition games")
         
         print(f"Final game roster size: {len(game_roster)}")
         return game_roster
@@ -3607,13 +3607,12 @@ class DataService:
         if cached_result is not None:
             return cached_result
         
-        # First check if there are any games of the specified type
-        if game_type is not None:
-            games = self.get_games(team_id, game_type)
-            completed_games = self._filter_games_by_date(games, include_future=False)
-            if completed_games.empty:
-                print(f"No completed games found for game type '{game_type}' - returning empty leaderboard")
-                return []
+        # First check if there are any completed games for this team/game type
+        games = self.get_games(team_id, game_type)
+        completed_games = self._filter_games_by_date(games, include_future=False)
+        if completed_games.empty:
+            print(f"No completed games found for game type '{game_type}' - returning empty leaderboard")
+            return []
         
         players = self.get_players(team_id)
         
@@ -3710,19 +3709,14 @@ class DataService:
         games = self.get_player_games(player_id, team_id, game_type=game_type)
         print(f"Goalie games count: {len(games)}")
         
-        # CRITICAL FIX: Apply the same game type filtering logic as for skaters
-        # This ensures goalies are also properly filtered by game type
-        if game_type is not None:
-            # Get all games of the specified type for proper event filtering
-            all_games_of_type = self.get_games(team_id, game_type)
-            if not all_games_of_type.empty:
-                game_ids_of_type = all_games_of_type['ID'].tolist()
-                events = events[events['GameID'].isin(game_ids_of_type)]
-                print(f"Filtered events to {len(events)} events from {len(game_ids_of_type)} games of type '{game_type}' for goalie")
-            else:
-                # No games of this type exist, so no events should be included
-                events = events[events['GameID'].isin([])]  # Empty filter
-                print(f"No games of type '{game_type}' found - using 0 events for goalie stats calculation")
+        # Filter events to only include events from the goalie's non-exhibition games
+        if not games.empty and 'ID' in games.columns:
+            goalie_game_ids = games['ID'].tolist()
+            events = events[events['GameID'].isin(goalie_game_ids)]
+            print(f"Filtered events to {len(events)} events from {len(goalie_game_ids)} games for goalie")
+        else:
+            events = events[events['GameID'].isin([])]
+            print(f"No games found - using 0 events for goalie stats calculation")
         
         if games.empty:
             print(f"WARNING: No games found for goalie {player_id}")

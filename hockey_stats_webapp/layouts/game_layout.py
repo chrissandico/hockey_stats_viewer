@@ -86,7 +86,7 @@ def register_game_callbacks(app, data_service, team_context=None):
         except Exception:
             pass
 
-        gt_colors = {'E': 'info', 'R': 'primary', 'T': 'warning', 'P': 'secondary'}
+        gt_colors = {'R': 'primary', 'T': 'warning', 'P': 'secondary'}
 
         cards = []
         for _, row in games.iterrows():
@@ -196,7 +196,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                 result_color, result_letter = 'warning', 'T'
 
             game_type_val = str(game.get('GameType', '') or '')
-            gt_colors = {'E': 'info', 'R': 'primary', 'T': 'warning', 'P': 'secondary'}
+            gt_colors = {'R': 'primary', 'T': 'warning', 'P': 'secondary'}
             gt_color = gt_colors.get(game_type_val, 'secondary')
 
             # ---- Score header card ----
