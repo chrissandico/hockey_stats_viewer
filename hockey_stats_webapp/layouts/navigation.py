@@ -23,9 +23,8 @@ def create_navigation():
                 dbc.Nav([
                     dbc.NavItem(dbc.NavLink("Home", href="/", active="exact")),
                     dbc.NavItem(dbc.NavLink("Player Stats", href="/player", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Team Stats", href="/team", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Game Stats", href="/game", active="exact")),
-                    dbc.NavItem(dbc.NavLink("Opponent Stats", href="/opponent", active="exact")),
+                    dbc.NavItem(dbc.NavLink("Game Log", href="/game", active="exact")),
+                    dbc.NavItem(dbc.NavLink("vs. Opponents Performance", href="/opponent", active="exact")),
                 ], className="me-auto", navbar=True),
                 id="navbar-collapse",
                 navbar=True,

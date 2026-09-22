@@ -29,7 +29,7 @@ def create_game_layout(data_service, team_context=None):
         dcc.Store(id='game-selected-store'),
         create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
         dbc.Container([
-            html.H1("Games", className="fw-bold mb-4"),
+            html.H1("Game Log", className="fw-bold mb-4"),
             dcc.Loading(html.Div(id='game-list-container', className="mb-4")),
             html.Div(id='game-detail-container'),
         ], fluid=True),

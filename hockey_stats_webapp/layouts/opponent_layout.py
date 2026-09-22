@@ -47,7 +47,7 @@ def create_opponent_layout(data_service, team_context=None):
 
     return html.Div([
         # Title
-        html.H1("Opponent Statistics", className="text-center mt-4 mb-4"),
+        html.H1("vs. Opponents Performance", className="text-center mt-4 mb-4"),
 
         # Unified filter bar with opponent selection
         create_unified_filter_bar(

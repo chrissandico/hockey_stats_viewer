@@ -1,4 +1,4 @@
-from dash import html, dcc, Output, Input
+from dash import html, dcc, Output, Input, dash_table
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
@@ -10,6 +10,7 @@ from components.unified_filter_bar import create_unified_filter_bar
 def create_main_layout(team_context=None):
     """
     Create the dashboard home layout with game type filtering (defaults to Regular Season).
+    Includes Forwards, Defense, and Goalie leaderboards directly on the main screen.
     """
     team_name = (team_context or {}).get('team_name', 'Your Team')
     return html.Div([
@@ -27,7 +28,7 @@ def create_main_layout(team_context=None):
             dbc.Alert([
                 html.I(className="fas fa-info-circle me-2"),
                 html.Strong("Default View: "),
-                "Showing ", html.Strong("Regular Season"), " statistics by default (Exhibition games excluded). Use the Filter dropdown above to select Tournament, Exhibition, or All Games."
+                "Showing ", html.Strong("Regular Season"), " statistics by default. Use the Filter dropdown above to select Tournament or All Games."
             ], color="info", className="py-2 mb-4 small text-center"),
 
             dcc.Loading(html.Div([
@@ -38,12 +39,29 @@ def create_main_layout(team_context=None):
                     dbc.Col(html.Div(id='dashboard-top-performers'), md=6, xs=12),
                 ], className="mb-4"),
                 html.Div(id='dashboard-chart', style={'display': 'none'}),
+
+                # Position Leaderboards section
+                html.Div([
+                    html.H3("Team Leaderboards", className="fw-bold mb-3"),
+                    dbc.Tabs([
+                        dbc.Tab(label="Forwards", tab_id="forwards",
+                                label_style={"fontWeight": "600", "fontSize": "15px"},
+                                active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+                        dbc.Tab(label="Defense",  tab_id="defense",
+                                label_style={"fontWeight": "600", "fontSize": "15px"},
+                                active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+                        dbc.Tab(label="Goalies",  tab_id="goalies",
+                                label_style={"fontWeight": "600", "fontSize": "15px"},
+                                active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
+                    ], id='dashboard-position-tabs', active_tab="forwards", className="mb-3 border-bottom border-2"),
+                    html.Div(id='dashboard-leaderboards-container', className="mb-4"),
+                ]),
             ])),
+
             dbc.Row([
-                _quick_card("Players",   "Individual stats and game logs",    "/player"),
-                _quick_card("Games",     "Results, period breakdowns, shots", "/game"),
-                _quick_card("Team",      "Leaderboards and season trends",    "/team"),
-                _quick_card("Opponents", "Head-to-head records by opponent",  "/opponent"),
+                _quick_card("Players", "Individual stats and game logs", "/player"),
+                _quick_card("Game Log", "Results, period breakdowns, shots", "/game"),
+                _quick_card("vs. Opponents Performance", "Head-to-head records by opponent", "/opponent"),
             ], className="mb-4"),
         ], fluid=True),
     ])
@@ -62,13 +80,13 @@ def _quick_card(title, desc, href):
         html.H5(title, className="fw-bold"),
         html.P(desc, className="text-muted small"),
         dbc.Button(f"View {title}", href=href, color="primary", className="mt-2"),
-    ])), md=3, className="mb-3")
+    ])), md=4, className="mb-3")
 
 
 def register_dashboard_callbacks(app, data_service):
     """
-    Single callback that populates the dashboard sections when the page
-    loads or game type filter changes.
+    Populates the dashboard sections when the page loads, game type filter changes,
+    or position tabs are selected.
     """
 
     @app.callback(
@@ -77,20 +95,32 @@ def register_dashboard_callbacks(app, data_service):
         Output('dashboard-last-game', 'children'),
         Output('dashboard-top-performers', 'children'),
         Output('dashboard-chart', 'children'),
+        Output('dashboard-leaderboards-container', 'children'),
         [Input('dashboard-trigger', 'data'),
-         Input('game-type-session-store', 'data')]
+         Input('game-type-session-store', 'data'),
+         Input('dashboard-position-tabs', 'active_tab')]
     )
-    def populate_dashboard(_trigger, game_type_data):
+    def populate_dashboard(_trigger, game_type_data, active_tab):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
-            return [html.Div()] * 5
+            return [html.Div()] * 6
+
+        if not active_tab:
+            active_tab = "forwards"
 
         # Resolve selected game type (default to 'R' Regular Season)
-        game_type = game_type_data if isinstance(game_type_data, str) else 'R'
-        if game_type_data and isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type', 'R')
-        if game_type == 'all' or not game_type:
+        if game_type_data == "all":
             game_type = None
+        elif isinstance(game_type_data, str) and game_type_data in ['R', 'T', 'P']:
+            game_type = game_type_data
+        elif isinstance(game_type_data, dict):
+            game_type = game_type_data.get('game_type', 'R')
+            if game_type == "all":
+                game_type = None
+        else:
+            game_type = 'R'
+
+        is_coach = flask_session.get('is_coach', False)
 
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:
@@ -123,7 +153,6 @@ def register_dashboard_callbacks(app, data_service):
                 ], className="kpi-tile"), xs=6, md=2),
             ], className="g-2 justify-content-center")
 
-            is_coach = flask_session.get('is_coach', False)
             if is_coach:
                 try:
                     st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
@@ -147,12 +176,12 @@ def register_dashboard_callbacks(app, data_service):
                     ], className="g-2 justify-content-center mt-2")
 
                     kpi_row = html.Div([kpi_row, st_kpi])
-                except Exception as e:
+                except Exception:
                     pass
         except Exception:
             kpi_row = html.Div()
 
-        # ── Fetch games once; shared by form-dots, last-game, and chart ───────
+        # ── Fetch games once; shared by form-dots and last-game ───────────────
         games_df = None
         try:
             games_df = data_service.get_games(team_id, game_type=game_type)
@@ -203,7 +232,6 @@ def register_dashboard_callbacks(app, data_service):
                     badge_color = 'secondary'
                     badge_text = 'T'
 
-                is_coach = flask_session.get('is_coach', False)
                 mode = 'coach' if is_coach else 'parent'
                 last_game_id = last.get('ID')
 
@@ -214,7 +242,7 @@ def register_dashboard_callbacks(app, data_service):
                     digest = data_service.get_game_summary_digest(last_game_id, team_id)
                     if digest:
                         ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode)
-                except Exception as e:
+                except Exception:
                     pass
 
                 summary_paragraphs = [html.P(p.strip(), className="small text-dark mb-2") for p in ai_summary_text.split('\n\n') if p.strip()]
@@ -256,14 +284,13 @@ def register_dashboard_callbacks(app, data_service):
             skaters = [p for p in leaderboard if p.get('player', {}).get('Position') != 'G']
 
             if skaters:
-                top_points = skaters[0]  # leaderboard is already sorted by points desc
+                top_points = skaters[0]
                 top_goals = max(skaters, key=lambda p: p.get('goals', 0))
                 top_assists = max(skaters, key=lambda p: p.get('assists', 0))
                 items.append(_top_performer_item('Goals', top_goals, 'goals'))
                 items.append(_top_performer_item('Assists', top_assists, 'assists'))
                 items.append(_top_performer_item('Points', top_points, 'points'))
 
-                is_coach = flask_session.get('is_coach', False)
                 if is_coach or not config.is_coaches_only_stat('plus_minus'):
                     defensemen = [p for p in skaters if p.get('player', {}).get('Position') == 'D']
                     if defensemen:
@@ -288,7 +315,92 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             top_performers = html.Div()
 
-        # ── Goals trend chart removed as requested ─────────────────────────────
+        # ── Position Leaderboard ───────────────────────────────────────────────
+        try:
+            if active_tab == "goalies":
+                goalies_leaders = data_service.get_team_leaderboard(
+                    stat='save_percentage' if is_coach else 'jersey_number',
+                    position='G',
+                    team_id=team_id,
+                    game_type=game_type
+                )
+                table_columns = [
+                    {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                    {'name': 'GP', 'id': 'GP', 'type': 'numeric'},
+                    {'name': 'W', 'id': 'W', 'type': 'numeric'},
+                    {'name': 'L', 'id': 'L', 'type': 'numeric'},
+                    {'name': 'SV%', 'id': 'SV%', 'type': 'numeric'},
+                    {'name': 'GAA', 'id': 'GAA', 'type': 'numeric'},
+                ]
+                table_data = [{
+                    'Player': format_player_label(stats['player']),
+                    'GP': stats['games_played'],
+                    'W': stats['wins'],
+                    'L': stats['losses'],
+                    'SV%': f"{stats['save_percentage']:.3f}",
+                    'GAA': f"{stats['gaa']:.2f}",
+                } for stats in goalies_leaders]
+            else:
+                pos_code = 'F' if active_tab == "forwards" else 'D'
+                stat_sort = ('points' if pos_code == 'F' else ('plus_minus' if is_coach else 'points')) if is_coach else 'jersey_number'
+                pos_leaders = data_service.get_team_leaderboard(
+                    stat=stat_sort,
+                    position=pos_code,
+                    team_id=team_id,
+                    game_type=game_type
+                )
+                table_columns = [
+                    {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                    {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
+                    {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
+                    {'name': 'P', 'id': 'Points', 'type': 'numeric'},
+                    *([
+                        {'name': '+/-', 'id': 'PlusMinus', 'type': 'numeric'},
+                        {'name': 'SF', 'id': 'SF', 'type': 'numeric'},
+                        {'name': 'SA', 'id': 'SA', 'type': 'numeric'},
+                        {'name': 'SF%', 'id': 'SFPct', 'type': 'numeric'}
+                    ] if is_coach else [])
+                ]
+                table_data = [{
+                    'Player': format_player_label(stats['player']),
+                    'Goals': stats['goals'],
+                    'Assists': stats['assists'],
+                    'Points': stats['points'],
+                    **({
+                        'PlusMinus': stats['plus_minus'],
+                        'SF': stats.get('on_ice_shots_for', 0),
+                        'SA': stats.get('on_ice_shots_against', 0),
+                        'SFPct': f"{stats.get('on_ice_shot_share_pct', 0.0):.1f}%"
+                    } if is_coach else {})
+                } for stats in pos_leaders]
+
+            if not table_data:
+                leaderboard_body = html.P(
+                    f"No {active_tab} players found.",
+                    className="text-muted text-center py-3"
+                )
+            else:
+                leaderboard_body = dash_table.DataTable(
+                    id='dashboard-position-leaderboard-table',
+                    columns=table_columns,
+                    data=table_data,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={'textAlign': 'center', 'padding': '10px', 'minWidth': '80px'},
+                    style_cell_conditional=[{'if': {'column_id': 'Player'}, 'textAlign': 'left'}],
+                    style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
+                    style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
+                    sort_action='native',
+                    sort_mode='single',
+                )
+
+            leaderboard_card = dbc.Card([
+                dbc.CardHeader(html.H5(f"Roster Leaderboard — {active_tab.title()}", className="card-title mb-0")),
+                dbc.CardBody([leaderboard_body])
+            ], className="mb-4 shadow-sm")
+
+        except Exception as e:
+            leaderboard_card = html.Div(f"Error loading leaderboards: {str(e)}", className="text-danger")
+
         season_chart = html.Div()
 
-        return kpi_row, form_row, last_game, top_performers, season_chart
+        return kpi_row, form_row, last_game, top_performers, season_chart, leaderboard_card

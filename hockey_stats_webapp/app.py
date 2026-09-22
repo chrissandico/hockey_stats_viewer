@@ -23,7 +23,6 @@ from services.data_service import DataService
 # Import layouts
 from layouts.main_layout import create_main_layout, register_dashboard_callbacks
 from layouts.player_layout import create_player_layout, register_player_callbacks
-from layouts.team_layout import create_team_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
 from layouts.shell import create_shell_header, create_shell_footer, register_shell_callbacks
@@ -206,9 +205,6 @@ def display_page(pathname):
     elif pathname == '/player':
         team_context = get_team_context()
         return create_player_layout(data_service, team_context)
-    elif pathname == '/team':
-        team_context = get_team_context()
-        return create_team_layout(data_service, team_context)
     elif pathname == '/game':
         team_context = get_team_context()
         return create_game_layout(data_service, team_context)
@@ -389,10 +385,6 @@ if services_initialized:
     # Register game callbacks - use the fixed version from game_layout.py
     # Note: We pass None for team_context since it will be retrieved dynamically from session
     register_game_callbacks(app, data_service, team_context=None)
-
-    # Register team callbacks for game type filtering
-    from layouts.team_layout import register_team_callbacks
-    register_team_callbacks(app, data_service)
 
     # Register opponent callbacks
     register_opponent_callbacks(app, data_service)

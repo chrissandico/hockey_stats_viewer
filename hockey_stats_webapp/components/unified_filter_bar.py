@@ -16,7 +16,6 @@ def create_game_type_dropdown():
             id="game-type-dropdown",
             options=[
                 {'label': '⚪ All Games', 'value': 'all'},
-                {'label': '🟠 Exhibition', 'value': 'E'},
                 {'label': '🔵 Regular Season', 'value': 'R'},
                 {'label': '🟣 Tournament', 'value': 'T'},
                 {'label': '🔴 Playoffs', 'value': 'P'}

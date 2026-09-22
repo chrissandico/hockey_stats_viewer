@@ -599,24 +599,30 @@ class DataService:
     
     def _filter_games_by_type(self, games, game_type=None):
         """
-        Filter games by game type.
+        Filter games by game type. Always excludes Exhibition ('E') games.
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
-            game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
+            game_type (str, optional): Game type to filter by (R, T, P). If None, returns all non-Exhibition games.
             
         Returns:
             pd.DataFrame: Filtered DataFrame containing only games of the specified type
         """
-        if games.empty or game_type is None:
+        if games.empty:
             return games
         
         if 'GameType' not in games.columns:
             print("WARNING: No GameType column found in games data. Returning all games.")
             return games
         
-        # Filter by game type
-        filtered_games = games[games['GameType'] == game_type]
+        # Always exclude Exhibition games ('E')
+        non_exhibition = games[games['GameType'] != 'E']
+
+        if game_type is None:
+            return non_exhibition
+
+        # Filter by specific game type
+        filtered_games = non_exhibition[non_exhibition['GameType'] == game_type]
         print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
         
         return filtered_games
@@ -672,7 +678,7 @@ class DataService:
             if game_type_filter is not None:
                 try:
                     # Validate game type filter
-                    valid_game_types = ['E', 'R', 'T']
+                    valid_game_types = ['R', 'T', 'P']
                     if game_type_filter not in valid_game_types:
                         self.logger.warning(f"Invalid game type filter '{game_type_filter}' for game {game_id}. Valid types: {valid_game_types}")
                         # Continue with unfiltered events as fallback
@@ -800,7 +806,7 @@ class DataService:
                 return events_df
             
             # Validate game type parameter
-            valid_game_types = ['E', 'R', 'T']  # Exhibition, Regular Season, Tournament
+            valid_game_types = ['R', 'T', 'P']  # Regular Season, Tournament, Playoffs
             if game_type_filter not in valid_game_types:
                 self.logger.warning(f"Invalid game type filter '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
                 print(f"WARNING: Invalid game type '{game_type_filter}'. Valid types: {valid_game_types}. Using all events as fallback.")
@@ -922,8 +928,8 @@ class DataService:
                 self.logger.error(f"Invalid team_id parameter: '{team_id}'. Must be a non-empty string or None.")
                 return pd.DataFrame()
             
-            if game_type is not None and game_type not in ['E', 'R', 'T', 'P']:
-                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'E', 'R', 'T', 'P', or None.")
+            if game_type is not None and game_type not in ['R', 'T', 'P']:
+                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'R', 'T', 'P', or None.")
                 return pd.DataFrame()
             
             # Create a cache key based on team_id and game_type
@@ -2430,8 +2436,8 @@ class DataService:
                 self.logger.error(f"Invalid team_id provided: '{team_id}'")
                 return None
             
-            if game_type is not None and game_type not in ['E', 'R', 'T', 'P']:
-                self.logger.error(f"Invalid game_type provided: '{game_type}'. Must be 'E', 'R', 'T', 'P', or None")
+            if game_type is not None and game_type not in ['R', 'T', 'P']:
+                self.logger.error(f"Invalid game_type provided: '{game_type}'. Must be 'R', 'T', 'P', or None")
                 return None
             
             self.logger.info(f"Calculating player stats for player_id='{player_id}', team_id='{team_id}', game_type='{game_type}'")
@@ -2491,7 +2497,7 @@ class DataService:
                     
                     # Get player games for each game type individually and combine
                     all_player_games = []
-                    for gt in ['E', 'R', 'T']:  # Exhibition, Regular Season, Tournament
+                    for gt in ['R', 'T', 'P']:  # Regular Season, Tournament, Playoffs
                         gt_games = self.get_player_games(player_id, team_id, game_type=gt)
                         if not gt_games.empty:
                             all_player_games.append(gt_games)
@@ -4290,7 +4296,7 @@ class DataService:
             'Result': str(game.get('Result', '')).upper(),
             'GoalsFor': int(game.get('GoalsFor', 0)),
             'GoalsAgainst': int(game.get('GoalsAgainst', 0)),
-            'GameType': str(game.get('GameType', 'E'))
+            'GameType': str(game.get('GameType', 'R'))
         }
 
         # 2. Period Breakdown

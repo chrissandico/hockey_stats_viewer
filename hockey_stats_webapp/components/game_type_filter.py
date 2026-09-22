@@ -8,7 +8,7 @@ def create_game_type_filter_component(selected_game_type=None, show_all_option=T
     Create a reusable game type filter component.
     
     Args:
-        selected_game_type (str, optional): Currently selected game type. Defaults to "All Games" when show_all_option is True, otherwise Exhibition.
+        selected_game_type (str, optional): Currently selected game type. Defaults to "All Games" when show_all_option is True, otherwise Regular Season.
         show_all_option (bool): Whether to show an "All Games" option. Defaults to True.
         
     Returns:

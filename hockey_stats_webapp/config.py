@@ -13,11 +13,6 @@ COACHES_ONLY_STATS = [
 
 # Game type constants
 GAME_TYPES = {
-    'E': {
-        'name': 'Exhibition',
-        'color': '#FF9800',  # Orange
-        'badge_class': 'warning'
-    },
     'R': {
         'name': 'Regular Season',
         'color': '#2196F3',  # Blue
@@ -36,7 +31,7 @@ GAME_TYPES = {
 }
 
 # Default game type
-DEFAULT_GAME_TYPE = 'E'
+DEFAULT_GAME_TYPE = 'R'
 
 def is_coaches_only_stat(stat_name):
     """
@@ -55,7 +50,7 @@ def get_game_type_name(game_type_code):
     Get the display name for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
+        game_type_code (str): The game type code (R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The display name for the game type
@@ -69,7 +64,7 @@ def get_game_type_color(game_type_code):
     Get the color for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
+        game_type_code (str): The game type code (R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The hex color code for the game type
@@ -83,7 +78,7 @@ def get_game_type_badge_class(game_type_code):
     Get the Bootstrap badge class for a game type code.
     
     Args:
-        game_type_code (str): The game type code (E=Exhibition, R=Regular Season, T=Tournament, P=Playoffs)
+        game_type_code (str): The game type code (R=Regular Season, T=Tournament, P=Playoffs)
         
     Returns:
         str: The Bootstrap badge class for the game type

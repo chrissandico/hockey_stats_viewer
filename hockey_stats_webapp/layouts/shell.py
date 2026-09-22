@@ -17,11 +17,10 @@ def create_shell_header(team_context=None):
             dbc.NavbarToggler(id="navbar-toggler"),
             dbc.Collapse([
                 dbc.Nav([
-                    dbc.NavLink("Dashboard", href="/",         active="exact"),
-                    dbc.NavLink("Players",   href="/player",   active="exact"),
-                    dbc.NavLink("Games",     href="/game",     active="exact"),
-                    dbc.NavLink("Team",      href="/team",     active="exact"),
-                    dbc.NavLink("Opponents", href="/opponent", active="exact"),
+                    dbc.NavLink("Dashboard",                 href="/",         active="exact"),
+                    dbc.NavLink("Players",                   href="/player",   active="exact"),
+                    dbc.NavLink("Game Log",                  href="/game",     active="exact"),
+                    dbc.NavLink("vs. Opponents Performance", href="/opponent", active="exact"),
                 ], navbar=True, className="me-auto"),
                 dbc.Button("Logout", id="logout-button", size="sm",
                            color="outline-light", className="ms-3"),

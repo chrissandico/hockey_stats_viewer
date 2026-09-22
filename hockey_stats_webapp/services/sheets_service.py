@@ -148,14 +148,14 @@ class SheetsService:
             df = pd.DataFrame(data)
             
             # Handle game type data from column F
-            # If GameType column doesn't exist or has empty values, default to 'E' (Exhibition)
+            # If GameType column doesn't exist or has empty values, default to 'R' (Regular Season)
             if 'GameType' not in df.columns:
                 print("GameType column not found in Games sheet, adding default values")
-                df['GameType'] = 'E'  # Default to Exhibition
+                df['GameType'] = 'R'  # Default to Regular Season
             else:
                 # Fill empty/null game type values with default
-                df['GameType'] = df['GameType'].fillna('E')
-                df['GameType'] = df['GameType'].replace('', 'E')
+                df['GameType'] = df['GameType'].fillna('R')
+                df['GameType'] = df['GameType'].replace('', 'R')
                 
                 # Validate game type values and replace invalid ones with default
                 from config import is_valid_game_type, DEFAULT_GAME_TYPE
