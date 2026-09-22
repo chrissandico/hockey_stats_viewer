@@ -103,7 +103,6 @@ def register_dashboard_callbacks(app, data_service):
             triggered_prop = dash.callback_context.triggered[0]['prop_id']
             if 'dashboard-regenerate-summary-store' in triggered_prop:
                 force_refresh_summary = True
-            return [html.Div()] * 5
 
         # Resolve selected game type (default to 'R' Regular Season)
         if game_type_data == 'all':
