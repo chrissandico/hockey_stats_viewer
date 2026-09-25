@@ -6,7 +6,7 @@ import logging
 import json
 import plotly.graph_objects as go
 from components.unified_filter_bar import create_unified_filter_bar
-from utils import format_player_label
+from utils import format_player_label, resolve_game_type
 import config
 
 logger = logging.getLogger(__name__)
@@ -189,11 +189,7 @@ def register_player_callbacks(app, data_service):
         is_coach = session.get('is_coach', False)
 
         # Resolve game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type_data and isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type')
-        if game_type == 'all':
-            game_type = None
+        game_type = resolve_game_type(game_type_data)
 
         # ---------------------------------------------------------------
         # Cache management: clear stale entries when player or game type

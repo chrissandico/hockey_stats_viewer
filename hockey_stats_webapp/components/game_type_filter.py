@@ -96,28 +96,31 @@ def register_game_type_filter_callbacks(app, data_service):
         app (dash.Dash): The Dash application
         data_service (DataService): The data service for retrieving game data
     """
-    # NOTE: Removed update_game_type_info callback - no longer needed with dropdown interface
-
     @app.callback(
         dash.dependencies.Output('game-type-session-store', 'data'),
-        [dash.dependencies.Input('game-type-dropdown', 'value')],  # Changed from 'game-type-filter-tabs', 'active_tab'
-        prevent_initial_call=True
+        [dash.dependencies.Input('game-type-dropdown', 'value')],
+        prevent_initial_call=False
     )
-    def update_game_type_session(selected_value):  # Changed parameter name from active_tab
+    def update_game_type_session(selected_value):
         """Update the game type selection in the session."""
-        # Set the game type in the session
-        if selected_value == "all":
-            data_service._set_game_type_in_session(None)
-        else:
-            data_service._set_game_type_in_session(selected_value)
-
-        return selected_value
+        val = selected_value if selected_value in ['all', 'R', 'T', 'P'] else 'R'
+        data_service._set_game_type_in_session(val)
+        return val
 
 def create_game_type_session_store():
     """
-    Create a hidden div to store game type selection in the session.
+    Create a hidden store for game type selection in session.
     
     Returns:
         dash.dcc.Store: The session store component
     """
-    return dcc.Store(id='game-type-session-store', storage_type='session')
+    initial_val = 'R'
+    try:
+        from flask import session
+        session_val = session.get('selected_game_type')
+        if session_val in ['all', 'R', 'T', 'P']:
+            initial_val = session_val
+    except Exception:
+        pass
+
+    return dcc.Store(id='game-type-session-store', storage_type='session', data=initial_val)

@@ -10,6 +10,15 @@ def create_game_type_dropdown():
     Returns:
         html.Div: Game type dropdown with label and emoji indicators
     """
+    initial_val = 'R'
+    try:
+        from flask import session
+        session_val = session.get('selected_game_type')
+        if session_val in ['all', 'R', 'T', 'P']:
+            initial_val = session_val
+    except Exception:
+        pass
+
     return html.Div([
         html.Label("Game Type", className="form-label fw-bold mb-1"),
         dbc.Select(
@@ -20,7 +29,7 @@ def create_game_type_dropdown():
                 {'label': '🟣 Tournament', 'value': 'T'},
                 {'label': '🔴 Playoffs', 'value': 'P'}
             ],
-            value='R',  # Default to Regular Season
+            value=initial_val,
             className="form-select"
         )
     ])

@@ -531,13 +531,49 @@ class DataService:
         except Exception as e:
             return {"error": f"Validation failed: {str(e)}"}
 
+    def _game_has_stats(self, game_id, row=None, events_df=None):
+        """
+        Check if a game has stats (events or goals scored).
+        If a game has zero stats, it is assumed to be a scheduled game that has not been played.
+        """
+        if game_id is None or game_id == '':
+            return False
+
+        # 1. Check if non-zero goals are recorded in row
+        if row is not None:
+            try:
+                gf = float(row.get('GoalsFor', 0) or 0)
+                ga = float(row.get('GoalsAgainst', 0) or 0)
+                if gf > 0 or ga > 0:
+                    return True
+            except (ValueError, TypeError):
+                pass
+
+        # 2. Check if events exist for this GameID
+        if events_df is None:
+            try:
+                events_df = self.get_events()
+            except Exception:
+                events_df = None
+
+        if events_df is not None and not events_df.empty and 'GameID' in events_df.columns:
+            try:
+                game_events = events_df[events_df['GameID'].astype(str) == str(game_id)]
+                if not game_events.empty:
+                    return True
+            except Exception:
+                pass
+
+        return False
+
     def _filter_games_by_date(self, games, include_future=False):
         """
-        Filter games to only include those on or before the current date.
+        Filter games to only include completed games (or all games if include_future=True).
+        A game is completed if it is on/before today AND has stats recorded.
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
-            include_future (bool): If True, include future games. If False, only past/current games.
+            include_future (bool): If True, include future games. If False, only past/current games with stats.
             
         Returns:
             pd.DataFrame: Filtered DataFrame containing only completed games
@@ -589,11 +625,19 @@ class DataService:
             # Return all games (no filtering)
             result = filtered_games.drop('ParsedDate', axis=1)
         else:
-            # Only include games on or before current date
-            mask = (filtered_games['ParsedDate'].notna()) & (filtered_games['ParsedDate'] <= current_date)
+            # Only include games on or before current date THAT ALSO HAVE STATS
+            events_df = self.get_events()
+            def is_completed_check(r):
+                p_date = r.get('ParsedDate')
+                if p_date is None or p_date > current_date:
+                    return False
+                game_id = r.get('ID')
+                return self._game_has_stats(game_id, r, events_df)
+
+            mask = filtered_games.apply(is_completed_check, axis=1)
             result = filtered_games[mask].drop('ParsedDate', axis=1)
             
-            print(f"Date filtering: {len(result)} games out of {len(games)} are completed (on or before {current_date})")
+            print(f"Date & stats filtering: {len(result)} games out of {len(games)} are completed")
         
         return result
     
@@ -882,18 +926,23 @@ class DataService:
         Set the currently selected game type in the Flask session.
         
         Args:
-            game_type (str): The game type code to set
+            game_type (str): The game type code to set ('R', 'T', 'P', 'all')
         """
-        from flask import session
-        from config import is_valid_game_type, DEFAULT_GAME_TYPE
-        
-        # Validate game type
-        if game_type and is_valid_game_type(game_type):
-            session['selected_game_type'] = game_type
-        else:
-            session['selected_game_type'] = DEFAULT_GAME_TYPE
-        
-        print(f"Set game type in session: {session['selected_game_type']}")
+        try:
+            from flask import session
+            from config import is_valid_game_type, DEFAULT_GAME_TYPE
+
+            # Validate game type
+            if game_type == 'all':
+                session['selected_game_type'] = 'all'
+            elif game_type and is_valid_game_type(game_type):
+                session['selected_game_type'] = game_type
+            else:
+                session['selected_game_type'] = DEFAULT_GAME_TYPE
+
+            print(f"Set game type in session: {session.get('selected_game_type')}")
+        except RuntimeError:
+            pass
     
     def get_players(self, team_id=None):
         """
@@ -1811,14 +1860,19 @@ class DataService:
                     games.loc[negative_goals_against, 'GoalsAgainst'] = 0
                 
                 # Create a new Result column with error handling for each row
+                events_df = self.get_events()
                 def calculate_result(row):
                     try:
+                        game_id = row.get('ID')
+                        if not self._game_has_stats(game_id, row, events_df):
+                            return 'SCHEDULED'
+
                         goals_for = row['GoalsFor']
                         goals_against = row['GoalsAgainst']
                         
                         # Handle NaN values
                         if pd.isna(goals_for) or pd.isna(goals_against):
-                            return 'Unknown'
+                            return 'SCHEDULED'
                         
                         if goals_for > goals_against:
                             return 'W'
@@ -1828,16 +1882,16 @@ class DataService:
                             return 'T'
                     except Exception as e:
                         self.logger.error(f"Error calculating result for row: {str(e)}")
-                        return 'Unknown'
+                        return 'SCHEDULED'
                 
                 games['Result'] = games.apply(calculate_result, axis=1)
                 
                 # Validate results
-                valid_results = ['W', 'L', 'T', 'Unknown']
+                valid_results = ['W', 'L', 'T', 'SCHEDULED', 'Unknown']
                 invalid_results = ~games['Result'].isin(valid_results)
                 if invalid_results.any():
-                    self.logger.warning(f"Found {invalid_results.sum()} games with invalid Result values, setting to 'Unknown'")
-                    games.loc[invalid_results, 'Result'] = 'Unknown'
+                    self.logger.warning(f"Found {invalid_results.sum()} games with invalid Result values, setting to 'SCHEDULED'")
+                    games.loc[invalid_results, 'Result'] = 'SCHEDULED'
                 
                 # Log summary
                 result_counts = games['Result'].value_counts()
@@ -4388,23 +4442,8 @@ class DataService:
                         'save_percentage': f"{gs.get('save_percentage', 0.0):.3f}"
                     })
 
-        # 8. Check if game is completed
-        from datetime import datetime, date
-        date_str = str(game.get('Date', ''))
-        is_completed = False
-        ga_val = int(game.get('GoalsAgainst', 0))
-
-        if not game_events.empty:
-            is_completed = True
-        elif date_str:
-            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y']:
-                try:
-                    parsed_date = datetime.strptime(date_str, fmt).date()
-                    if parsed_date <= date.today() and (gf_val > 0 or ga_val > 0 or your_tot_shots > 0 or opp_tot_shots > 0):
-                        is_completed = True
-                    break
-                except ValueError:
-                    continue
+        # 8. Check if game is completed (has stats)
+        is_completed = self._game_has_stats(game_meta.get('ID'), game, game_events)
 
         return {
             'game': game_meta,

@@ -2,7 +2,7 @@ from dash import html, dcc, Output, Input, dash_table
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
-from utils import format_player_label
+from utils import format_player_label, resolve_game_type
 import config
 from components.unified_filter_bar import create_unified_filter_bar
 
@@ -109,16 +109,7 @@ def register_dashboard_callbacks(app, data_service):
             active_tab = "forwards"
 
         # Resolve selected game type (default to 'R' Regular Season)
-        if game_type_data == "all":
-            game_type = None
-        elif isinstance(game_type_data, str) and game_type_data in ['R', 'T', 'P']:
-            game_type = game_type_data
-        elif isinstance(game_type_data, dict):
-            game_type = game_type_data.get('game_type', 'R')
-            if game_type == "all":
-                game_type = None
-        else:
-            game_type = 'R'
+        game_type = resolve_game_type(game_type_data)
 
         is_coach = flask_session.get('is_coach', False)
 
