@@ -168,10 +168,9 @@ def register_game_callbacks(app, data_service, team_context=None):
     @app.callback(
         Output('game-detail-container', 'children'),
         [Input('game-selected-store', 'data'),
-         Input('global-refresh-btn', 'n_clicks'),
-         Input('btn-refresh-game-ai', 'n_clicks')],
+         Input('global-refresh-btn', 'n_clicks')],
     )
-    def update_game_detail(game_id, refresh_clicks, ai_refresh_clicks):
+    def update_game_detail(game_id, refresh_clicks):
         if not game_id:
             return html.P(
                 "Select a game above to view details.",
@@ -183,7 +182,7 @@ def register_game_callbacks(app, data_service, team_context=None):
             triggered_id = callback_context.triggered[0]['prop_id'].split('.')[0]
 
         force_summary_refresh = False
-        if triggered_id in ['global-refresh-btn', 'btn-refresh-game-ai']:
+        if triggered_id == 'global-refresh-btn':
             data_service.force_refresh_all_data()
             force_summary_refresh = True
 
@@ -543,13 +542,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                         html.I(className="fas fa-robot text-primary me-2"),
                                         "AI Game Analyst Summary"
                                     ], className="card-title mb-0 d-inline-block"),
-                                    html.Div([
-                                        dbc.Button([
-                                            html.I(className="fas fa-sync-alt me-1"),
-                                            "Regenerate Recap"
-                                        ], id="btn-refresh-game-ai", color="outline-warning", size="sm", className="me-2"),
-                                        dbc.Badge("COACH TACTICAL VIEW", color="warning", className="fs-6")
-                                    ], className="d-flex align-items-center")
+                                    dbc.Badge("COACH TACTICAL VIEW", color="warning", className="fs-6")
                                 ], className="d-flex justify-content-between align-items-center")
                             ])
                         else:
@@ -559,13 +552,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                                         html.I(className="fas fa-bullhorn text-success me-2"),
                                         "AI Game Highlights & Recap"
                                     ], className="card-title mb-0 d-inline-block"),
-                                    html.Div([
-                                        dbc.Button([
-                                            html.I(className="fas fa-sync-alt me-1"),
-                                            "Regenerate Recap"
-                                        ], id="btn-refresh-game-ai", color="outline-info", size="sm", className="me-2"),
-                                        dbc.Badge("TEAM & FAMILY RECAP", color="info", className="fs-6")
-                                    ], className="d-flex align-items-center")
+                                    dbc.Badge("TEAM & FAMILY RECAP", color="info", className="fs-6")
                                 ], className="d-flex justify-content-between align-items-center")
                             ])
 
