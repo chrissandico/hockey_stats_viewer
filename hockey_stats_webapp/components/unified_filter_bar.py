@@ -130,7 +130,13 @@ def create_unified_filter_bar(
 
     return dbc.Card([
         dbc.CardHeader([
-            html.H5("Filters", className="mb-0")
+            html.Div([
+                html.H5("Filters", className="mb-0 d-inline-block fw-bold"),
+                dbc.Button([
+                    html.I(className="fas fa-sync-alt me-1"),
+                    "Refresh Data"
+                ], id="global-refresh-btn", color="outline-primary", size="sm", className="float-end")
+            ], className="d-flex justify-content-between align-items-center")
         ]),
         dbc.CardBody([
             # Single row with adaptive columns

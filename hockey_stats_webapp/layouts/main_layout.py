@@ -1,4 +1,4 @@
-from dash import html, dcc, Output, Input, dash_table
+from dash import html, dcc, Output, Input, dash_table, callback_context
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
@@ -98,12 +98,23 @@ def register_dashboard_callbacks(app, data_service):
         Output('dashboard-leaderboards-container', 'children'),
         [Input('dashboard-trigger', 'data'),
          Input('game-type-session-store', 'data'),
-         Input('dashboard-position-tabs', 'active_tab')]
+         Input('dashboard-position-tabs', 'active_tab'),
+         Input('global-refresh-btn', 'n_clicks'),
+         Input('btn-refresh-dashboard-ai', 'n_clicks')]
     )
-    def populate_dashboard(_trigger, game_type_data, active_tab):
+    def populate_dashboard(_trigger, game_type_data, active_tab, refresh_clicks, ai_refresh_clicks):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
             return [html.Div()] * 6
+
+        triggered_id = None
+        if callback_context.triggered:
+            triggered_id = callback_context.triggered[0]['prop_id'].split('.')[0]
+
+        force_summary_refresh = False
+        if triggered_id in ['global-refresh-btn', 'btn-refresh-dashboard-ai']:
+            data_service.force_refresh_all_data()
+            force_summary_refresh = True
 
         if not active_tab:
             active_tab = "forwards"
@@ -234,7 +245,7 @@ def register_dashboard_callbacks(app, data_service):
                 try:
                     digest = data_service.get_game_summary_digest(last_game_id, team_id)
                     if digest:
-                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode)
+                        ai_summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_summary_refresh)
                 except Exception:
                     pass
 
@@ -255,7 +266,16 @@ def register_dashboard_callbacks(app, data_service):
                         html.Span(str(last.get('Date', '')), className="fw-semibold"),
                     ], className="mb-3 border-bottom pb-2"),
                     html.Div([
-                        html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-2") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-2"),
+                        html.Div([
+                            html.H6("🎙️ Game Analyst Recap", className="fw-bold text-primary mb-0 d-inline-block") if is_coach else html.H6("🎙️ Highlights & Recap", className="fw-bold text-success mb-0 d-inline-block"),
+                            dbc.Button(
+                                [html.I(className="fas fa-sync-alt me-1"), "Regenerate Recap"],
+                                id="btn-refresh-dashboard-ai",
+                                color="outline-primary" if is_coach else "outline-success",
+                                size="sm",
+                                className="float-end small"
+                            )
+                        ], className="d-flex justify-content-between align-items-center mb-2"),
                         html.Div(summary_paragraphs if summary_paragraphs else "Summary unavailable.")
                     ], className="bg-light p-3 rounded border")
                 ]), className="shadow-sm mb-3")

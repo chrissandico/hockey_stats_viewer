@@ -51,7 +51,34 @@ class DataService:
         
         # Force refresh events data to ensure boolean conversion happens
         self.force_refresh_events_data()
-    
+
+    def force_refresh_all_data(self):
+        """
+        Force refresh all Google Sheets data and clear all local calculation caches.
+        """
+        try:
+            self.logger.info("Force refreshing all Google Sheets data and calculation caches...")
+            print("Force refreshing all Google Sheets data...")
+            self.sheets_service.get_games(force_refresh=True)
+            self.sheets_service.get_events(force_refresh=True)
+            self.sheets_service.get_players(force_refresh=True)
+            try:
+                self.sheets_service.get_teams(force_refresh=True)
+            except Exception:
+                pass
+            self.clear_games_cache()
+            if hasattr(self, '_games_calculated_cache'):
+                self._games_calculated_cache.clear()
+            if hasattr(self, '_games_cache_timestamps'):
+                self._games_cache_timestamps.clear()
+            if hasattr(self, '_leaderboard_cache'):
+                self._leaderboard_cache.clear()
+            print("Force refresh complete!")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error in force_refresh_all_data: {e}")
+            return False
+
     def force_refresh_events_data(self):
         """
         Force refresh events data to ensure boolean conversion happens properly.
@@ -643,7 +670,7 @@ class DataService:
     
     def _filter_games_by_type(self, games, game_type=None):
         """
-        Filter games by game type. Always excludes Exhibition ('E') games.
+        Filter games by game type. Always excludes Exhibition ('E') games unless explicitly requested.
         
         Args:
             games (pd.DataFrame): DataFrame containing game data
@@ -652,24 +679,24 @@ class DataService:
         Returns:
             pd.DataFrame: Filtered DataFrame containing only games of the specified type
         """
-        if games.empty:
-            return games
-        
-        if 'GameType' not in games.columns:
-            print("WARNING: No GameType column found in games data. Returning all games.")
-            return games
-        
-        # Always exclude Exhibition games ('E')
-        clean_game_types = games['GameType'].astype(str).str.strip(' "\'').str.upper()
-        non_exhibition = games[clean_game_types != 'E']
+        if games is None or games.empty or 'GameType' not in games.columns:
+            return games if games is not None else pd.DataFrame()
 
-        if game_type is None:
-            return non_exhibition
+        clean_gt = games['GameType'].astype(str).str.strip(' "\'').str.upper()
 
-        # Filter by specific game type
-        filtered_games = non_exhibition[clean_game_types[clean_game_types != 'E'] == str(game_type).strip(' "\'').str.upper()]
-        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} are of type '{game_type}'")
-        
+        if game_type is None or str(game_type).lower() == 'all':
+            return games[clean_gt != 'E']
+
+        target_gt = str(game_type).strip(' "\'').str.upper()
+        if target_gt in ['REGULAR SEASON', 'REGULAR']:
+            target_gt = 'R'
+        elif target_gt in ['TOURNAMENT', 'TOURN']:
+            target_gt = 'T'
+        elif target_gt in ['PLAYOFFS', 'PLAYOFF', 'POSTSEASON']:
+            target_gt = 'P'
+
+        filtered_games = games[clean_gt == target_gt]
+        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} match game type '{game_type}' (code '{target_gt}')")
         return filtered_games
     
     def _calculate_game_scores(self, game_id, events_df, team_identifier, game_type_filter=None):

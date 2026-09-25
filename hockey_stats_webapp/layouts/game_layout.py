@@ -54,10 +54,16 @@ def register_game_callbacks(app, data_service, team_context=None):
         Output('game-list-container', 'children'),
         Input('game-type-session-store', 'data'),
         Input('url', 'pathname'),
+        Input('global-refresh-btn', 'n_clicks'),
     )
-    def update_game_list(game_type_data, pathname):
+    def update_game_list(game_type_data, pathname, refresh_clicks):
         if pathname != '/game':
             return no_update
+
+        if callback_context.triggered:
+            trig_id = callback_context.triggered[0]['prop_id'].split('.')[0]
+            if trig_id == 'global-refresh-btn':
+                data_service.force_refresh_all_data()
 
         session_team_id = flask_session.get('team_id')
         effective_team_id = session_team_id if session_team_id else team_id
@@ -162,14 +168,25 @@ def register_game_callbacks(app, data_service, team_context=None):
     # ------------------------------------------------------------------ #
     @app.callback(
         Output('game-detail-container', 'children'),
-        Input('game-selected-store', 'data'),
+        [Input('game-selected-store', 'data'),
+         Input('global-refresh-btn', 'n_clicks'),
+         Input('btn-refresh-game-ai', 'n_clicks')],
     )
-    def update_game_detail(game_id):
+    def update_game_detail(game_id, refresh_clicks, ai_refresh_clicks):
         if not game_id:
             return html.P(
                 "Select a game above to view details.",
                 className="text-muted text-center py-4",
             )
+
+        triggered_id = None
+        if callback_context.triggered:
+            triggered_id = callback_context.triggered[0]['prop_id'].split('.')[0]
+
+        force_summary_refresh = False
+        if triggered_id in ['global-refresh-btn', 'btn-refresh-game-ai']:
+            data_service.force_refresh_all_data()
+            force_summary_refresh = True
 
         session_team_id = flask_session.get('team_id')
         effective_team_id = session_team_id if session_team_id else team_id
@@ -516,7 +533,7 @@ def register_game_callbacks(app, data_service, team_context=None):
                         ], className="mb-3 shadow-sm")
                     else:
                         mode = 'coach' if is_coach else 'parent'
-                        summary_text = ai_summary_service.generate_summary(digest, mode=mode)
+                        summary_text = ai_summary_service.generate_summary(digest, mode=mode, force_refresh=force_summary_refresh)
 
                         paragraphs = [html.P(p.strip(), className="mb-2") for p in summary_text.split('\n\n') if p.strip()]
 
@@ -527,7 +544,13 @@ def register_game_callbacks(app, data_service, team_context=None):
                                         html.I(className="fas fa-robot text-primary me-2"),
                                         "AI Game Analyst Summary"
                                     ], className="card-title mb-0 d-inline-block"),
-                                    dbc.Badge("COACH TACTICAL VIEW", color="warning", className="ms-2 fs-6 float-end")
+                                    html.Div([
+                                        dbc.Button([
+                                            html.I(className="fas fa-sync-alt me-1"),
+                                            "Regenerate Recap"
+                                        ], id="btn-refresh-game-ai", color="outline-warning", size="sm", className="me-2"),
+                                        dbc.Badge("COACH TACTICAL VIEW", color="warning", className="fs-6")
+                                    ], className="d-flex align-items-center")
                                 ], className="d-flex justify-content-between align-items-center")
                             ])
                         else:
@@ -537,7 +560,13 @@ def register_game_callbacks(app, data_service, team_context=None):
                                         html.I(className="fas fa-bullhorn text-success me-2"),
                                         "AI Game Highlights & Recap"
                                     ], className="card-title mb-0 d-inline-block"),
-                                    dbc.Badge("TEAM & FAMILY RECAP", color="info", className="ms-2 fs-6 float-end")
+                                    html.Div([
+                                        dbc.Button([
+                                            html.I(className="fas fa-sync-alt me-1"),
+                                            "Regenerate Recap"
+                                        ], id="btn-refresh-game-ai", color="outline-info", size="sm", className="me-2"),
+                                        dbc.Badge("TEAM & FAMILY RECAP", color="info", className="fs-6")
+                                    ], className="d-flex align-items-center")
                                 ], className="d-flex justify-content-between align-items-center")
                             ])
 

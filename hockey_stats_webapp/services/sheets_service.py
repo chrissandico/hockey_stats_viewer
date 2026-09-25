@@ -5,6 +5,21 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 
+
+def normalize_game_type_value(val):
+    if pd.isna(val) or val is None:
+        return 'R'
+    s = str(val).strip().strip('"').strip("'").upper()
+    if s in ['R', 'REGULAR', 'REGULAR SEASON', 'REG', 'SEASON']:
+        return 'R'
+    if s in ['T', 'TOURNAMENT', 'TOURNAMENT GAME', 'TOURN', 'TOUR']:
+        return 'T'
+    if s in ['P', 'PLAYOFF', 'PLAYOFFS', 'POSTSEASON', 'POST']:
+        return 'P'
+    if s in ['E', 'EXHIBITION', 'EX', 'PRESEASON', 'PRE-SEASON']:
+        return 'E'
+    return 'R'
+
 class SheetsService:
     """
     Service for interacting with Google Sheets.
@@ -147,24 +162,12 @@ class SheetsService:
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             
-            # Handle game type data from column F
-            # If GameType column doesn't exist or has empty values, default to 'R' (Regular Season)
+            # Handle game type data
             if 'GameType' not in df.columns:
                 print("GameType column not found in Games sheet, adding default values")
-                df['GameType'] = 'R'  # Default to Regular Season
+                df['GameType'] = 'R'
             else:
-                # Clean up GameType values: strip whitespace and surrounding quotes
-                df['GameType'] = df['GameType'].astype(str).str.strip().str.strip('"').str.strip("'").str.upper()
-                df['GameType'] = df['GameType'].replace(['', 'NAN', 'NONE'], 'R')
-                
-                # Replace truly invalid values (not in ['E', 'R', 'T', 'P']) with 'R'
-                valid_codes = ['E', 'R', 'T', 'P']
-                invalid_mask = ~df['GameType'].isin(valid_codes)
-                if invalid_mask.any():
-                    invalid_count = invalid_mask.sum()
-                    print(f"Found {invalid_count} invalid game type values, replacing with default 'R'")
-                    df.loc[invalid_mask, 'GameType'] = 'R'
-                
+                df['GameType'] = df['GameType'].apply(normalize_game_type_value)
                 print(f"Game type distribution from Google Sheets: {df['GameType'].value_counts().to_dict()}")
             
             self.cache[key] = df
@@ -243,6 +246,9 @@ class SheetsService:
                 else:
                     print(f"  Column {col} not found in Events sheet")
             
+            if 'GameType' in df.columns:
+                df['GameType'] = df['GameType'].apply(normalize_game_type_value)
+
             self.cache[key] = df
             self.last_refresh[key] = time.time()
             print(f"Events data cached successfully with {len(df)} records")
