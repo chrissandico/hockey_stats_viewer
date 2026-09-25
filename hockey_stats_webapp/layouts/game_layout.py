@@ -52,11 +52,10 @@ def register_game_callbacks(app, data_service, team_context=None):
     # ------------------------------------------------------------------ #
     @app.callback(
         Output('game-list-container', 'children'),
-        Input('game-type-session-store', 'data'),
         Input('url', 'pathname'),
         Input('global-refresh-btn', 'n_clicks'),
     )
-    def update_game_list(game_type_data, pathname, refresh_clicks):
+    def update_game_list(pathname, refresh_clicks):
         if pathname != '/game':
             return no_update
 
@@ -71,8 +70,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         if not effective_team_id or not data_service:
             return html.P("No data available.", className="text-muted")
 
-        # Resolve game_type from the session store value ('all', 'R', 'T', 'P', or default 'R')
-        game_type = resolve_game_type(game_type_data)
+        # Always show all games (Regular Season, Tournament, Playoffs)
+        game_type = None
 
         try:
             games = data_service.get_games(effective_team_id, game_type=game_type)

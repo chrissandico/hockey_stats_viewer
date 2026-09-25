@@ -1,80 +1,15 @@
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from config import get_all_game_types, get_game_type_name, get_game_type_badge_class, DEFAULT_GAME_TYPE
+from config import get_game_type_name, get_game_type_badge_class
 
-def create_game_type_filter_component(selected_game_type=None, show_all_option=True):
-    """
-    Create a reusable game type filter component.
-    
-    Args:
-        selected_game_type (str, optional): Currently selected game type. Defaults to "All Games" when show_all_option is True, otherwise Regular Season.
-        show_all_option (bool): Whether to show an "All Games" option. Defaults to True.
-        
-    Returns:
-        dash.html.Div: The game type filter component
-    """
-    # Get all available game types
-    game_types = get_all_game_types()
-    
-    # Store the original selected_game_type for later logic
-    original_selected_game_type = selected_game_type
-    
-    # Create tab options
-    tab_options = []
-    
-    # Add "All Games" option if requested
-    if show_all_option:
-        tab_options.append(
-            dbc.Tab(
-                label="All Games",
-                tab_id="all",
-                active_tab_style={"backgroundColor": "#6c757d", "color": "white"},
-                tab_style={"backgroundColor": "#f8f9fa", "color": "#6c757d"}
-            )
-        )
-    
-    # Add game type tabs
-    for game_type_code, game_type_info in game_types.items():
-        tab_options.append(
-            dbc.Tab(
-                label=game_type_info['name'],
-                tab_id=game_type_code,
-                active_tab_style={"backgroundColor": game_type_info['color'], "color": "white"},
-                tab_style={"backgroundColor": "#f8f9fa", "color": game_type_info['color']}
-            )
-        )
-    
-    # Determine active tab - default to "all" when show_all_option is True and no specific type is selected
-    if show_all_option and original_selected_game_type is None:
-        active_tab = "all"
-    else:
-        active_tab = original_selected_game_type or DEFAULT_GAME_TYPE
-    
-    return dbc.Card([
-        dbc.CardHeader([
-            html.H5([
-                html.I(className="fas fa-filter me-2"),
-                "Filter by Game Type"
-            ], className="card-title mb-0")
-        ]),
-        dbc.CardBody([
-            dbc.Tabs(
-                tab_options,
-                id="game-type-filter-tabs",
-                active_tab=active_tab,
-                className="mb-3"
-            ),
-            html.Div(id="game-type-filter-info", className="text-muted small")
-        ])
-    ], className="mb-4 shadow-sm")
 
 def create_game_type_badge(game_type_code):
     """
     Create a colored badge for a game type.
     
     Args:
-        game_type_code (str): The game type code (E, R, T)
+        game_type_code (str): The game type code (E, R, T, P)
         
     Returns:
         dash_bootstrap_components.Badge: The game type badge
@@ -88,39 +23,12 @@ def create_game_type_badge(game_type_code):
         className="me-1"
     )
 
-def register_game_type_filter_callbacks(app, data_service):
-    """
-    Register callbacks for the game type filter component (dropdown-based).
 
-    Args:
-        app (dash.Dash): The Dash application
-        data_service (DataService): The data service for retrieving game data
-    """
-    @app.callback(
-        dash.dependencies.Output('game-type-session-store', 'data'),
-        [dash.dependencies.Input('game-type-dropdown', 'value')],
-        prevent_initial_call=False
-    )
-    def update_game_type_session(selected_value):
-        """Update the game type selection in the session."""
-        val = selected_value if selected_value in ['all', 'R', 'T', 'P'] else 'R'
-        data_service._set_game_type_in_session(val)
-        return val
+def register_game_type_filter_callbacks(app, data_service):
+    """No-op callback registration for backwards compatibility."""
+    pass
+
 
 def create_game_type_session_store():
-    """
-    Create a hidden store for game type selection in session.
-    
-    Returns:
-        dash.dcc.Store: The session store component
-    """
-    initial_val = 'R'
-    try:
-        from flask import session
-        session_val = session.get('selected_game_type')
-        if session_val in ['all', 'R', 'T', 'P']:
-            initial_val = session_val
-    except Exception:
-        pass
-
-    return dcc.Store(id='game-type-session-store', storage_type='session', data=initial_val)
+    """No-op store for backwards compatibility."""
+    return html.Div(style={'display': 'none'})

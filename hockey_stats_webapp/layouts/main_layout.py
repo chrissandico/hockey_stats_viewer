@@ -21,15 +21,8 @@ def create_main_layout(team_context=None):
                 html.P("Season Dashboard & Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
 
-            # Game Type Filter Bar (defaults to Regular Season)
+            # Filter & Refresh Bar
             create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
-
-            # Informational Note
-            dbc.Alert([
-                html.I(className="fas fa-info-circle me-2"),
-                html.Strong("Default View: "),
-                "Showing ", html.Strong("Regular Season"), " statistics by default. Use the Filter dropdown above to select Tournament or All Games."
-            ], color="info", className="py-2 mb-4 small text-center"),
 
             dcc.Loading(html.Div([
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
@@ -97,12 +90,11 @@ def register_dashboard_callbacks(app, data_service):
         Output('dashboard-chart', 'children'),
         Output('dashboard-leaderboards-container', 'children'),
         [Input('dashboard-trigger', 'data'),
-         Input('game-type-session-store', 'data'),
          Input('dashboard-position-tabs', 'active_tab'),
          Input('global-refresh-btn', 'n_clicks'),
          Input('btn-refresh-dashboard-ai', 'n_clicks')]
     )
-    def populate_dashboard(_trigger, game_type_data, active_tab, refresh_clicks, ai_refresh_clicks):
+    def populate_dashboard(_trigger, active_tab, refresh_clicks, ai_refresh_clicks):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
             return [html.Div()] * 6
@@ -119,8 +111,8 @@ def register_dashboard_callbacks(app, data_service):
         if not active_tab:
             active_tab = "forwards"
 
-        # Resolve selected game type (default to 'R' Regular Season)
-        game_type = resolve_game_type(game_type_data)
+        # Show all games (Regular Season, Tournament, Playoffs)
+        game_type = None
 
         is_coach = flask_session.get('is_coach', False)
 

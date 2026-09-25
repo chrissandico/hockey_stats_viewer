@@ -159,14 +159,19 @@ def register_player_callbacks(app, data_service):
         [Output('player-info-container', 'children'),
          Output('player-game-log-container', 'children')],
         [Input('player-selected-store', 'data'),
-         Input('game-type-session-store', 'data')],
+         Input('global-refresh-btn', 'n_clicks')],
     )
-    def update_player_info(jersey_number, game_type_data):
+    def update_player_info(jersey_number, refresh_clicks):
         """Populate the player info card and game log for the selected player."""
         empty_prompt = html.P(
             "Select a player above to view their stats.",
             className="text-muted text-center py-4",
         )
+
+        if callback_context.triggered:
+            trig_id = callback_context.triggered[0]['prop_id'].split('.')[0]
+            if trig_id == 'global-refresh-btn':
+                data_service.force_refresh_all_data()
 
         # Handle missing data service
         if data_service is None:
@@ -188,8 +193,8 @@ def register_player_callbacks(app, data_service):
         team_id = session.get('team_id') if session.get('authenticated', False) else None
         is_coach = session.get('is_coach', False)
 
-        # Resolve game type
-        game_type = resolve_game_type(game_type_data)
+        # Always show all non-exhibition games
+        game_type = None
 
         # ---------------------------------------------------------------
         # Cache management: clear stale entries when player or game type

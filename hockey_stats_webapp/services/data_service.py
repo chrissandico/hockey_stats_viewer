@@ -670,34 +670,14 @@ class DataService:
     
     def _filter_games_by_type(self, games, game_type=None):
         """
-        Filter games by game type. Always excludes Exhibition ('E') games unless explicitly requested.
-        
-        Args:
-            games (pd.DataFrame): DataFrame containing game data
-            game_type (str, optional): Game type to filter by (R, T, P). If None, returns all non-Exhibition games.
-            
-        Returns:
-            pd.DataFrame: Filtered DataFrame containing only games of the specified type
+        Filter games to return all non-Exhibition ('E') games.
+        Exhibition games are always excluded from team and player statistics.
         """
         if games is None or games.empty or 'GameType' not in games.columns:
             return games if games is not None else pd.DataFrame()
 
         clean_gt = games['GameType'].astype(str).str.strip(' "\'').str.upper()
-
-        if game_type is None or str(game_type).lower() == 'all':
-            return games[clean_gt != 'E']
-
-        target_gt = str(game_type).strip(' "\'').str.upper()
-        if target_gt in ['REGULAR SEASON', 'REGULAR']:
-            target_gt = 'R'
-        elif target_gt in ['TOURNAMENT', 'TOURN']:
-            target_gt = 'T'
-        elif target_gt in ['PLAYOFFS', 'PLAYOFF', 'POSTSEASON']:
-            target_gt = 'P'
-
-        filtered_games = games[clean_gt == target_gt]
-        print(f"Game type filtering: {len(filtered_games)} games out of {len(games)} match game type '{game_type}' (code '{target_gt}')")
-        return filtered_games
+        return games[clean_gt != 'E']
     
     def _calculate_game_scores(self, game_id, events_df, team_identifier, game_type_filter=None):
         """

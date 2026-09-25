@@ -1,38 +1,5 @@
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from components.game_type_filter import create_game_type_session_store
-
-
-def create_game_type_dropdown():
-    """
-    Create the game type dropdown component.
-
-    Returns:
-        html.Div: Game type dropdown with label and emoji indicators
-    """
-    initial_val = 'R'
-    try:
-        from flask import session
-        session_val = session.get('selected_game_type')
-        if session_val in ['all', 'R', 'T', 'P']:
-            initial_val = session_val
-    except Exception:
-        pass
-
-    return html.Div([
-        html.Label("Game Type", className="form-label fw-bold mb-1"),
-        dbc.Select(
-            id="game-type-dropdown",
-            options=[
-                {'label': '⚪ All Games', 'value': 'all'},
-                {'label': '🔵 Regular Season', 'value': 'R'},
-                {'label': '🟣 Tournament', 'value': 'T'},
-                {'label': '🔴 Playoffs', 'value': 'P'}
-            ],
-            value=initial_val,
-            className="form-select"
-        )
-    ])
 
 
 def create_recent_games_dropdown(selector_id):
@@ -66,72 +33,40 @@ def create_unified_filter_bar(
     screen_specific_controls=None,
     recent_games_selector_id='recent-games-selector',
     recent_games_store_id='recent-games-store',
-    show_recent_games=True
+    show_recent_games=False
 ):
     """
-    Create a unified filter bar with all dropdown-based controls in a single row.
-
-    This component provides a clean, cohesive filtering interface with all controls
-    as dropdowns. The layout adapts based on screen type:
-    - Team Stats: 2 columns (Game Type, Recent Games)
-    - Player Stats: 3 columns (Game Type, Player Selection, Recent Games)
-
-    Args:
-        screen_specific_controls (dash.html component, optional): Optional Dash component
-            for the middle column (e.g., player selection dropdown for Player Stats).
-            If None, uses 2-column layout (Team Stats).
-        recent_games_selector_id (str): ID for the recent games dropdown selector.
-            Default: 'recent-games-selector'
-        recent_games_store_id (str): ID for the recent games session store.
-            Default: 'recent-games-store'
-        show_recent_games (bool): Whether to include the Recent Games dropdown and its
-            session store. Default: True. When False, the Recent Games column and its
-            dcc.Store are omitted; remaining columns expand to fill the space.
-
-    Returns:
-        dbc.Card: A Bootstrap card component containing the unified filter bar
-
-    Responsive Behavior:
-        - Desktop (≥768px): Columns side-by-side with equal widths
-        - Mobile (<576px): All controls stack vertically at full width
+    Create a unified filter bar for controls (Player selection, Opponent selection, Refresh button).
     """
-    # Determine column configuration based on screen type and show_recent_games flag
-    if show_recent_games:
-        if screen_specific_controls:
-            # 3-column layout (e.g. Player Stats): Game Type | Screen-specific | Recent Games
-            col_width = 4
-            columns = [
-                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
-                dbc.Col([screen_specific_controls], xs=12, md=col_width),
-                dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
-            ]
-        else:
-            # 2-column layout (e.g. Team Stats): Game Type | Recent Games
-            col_width = 6
-            columns = [
-                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
-                dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=col_width)
-            ]
+    columns = []
+    if screen_specific_controls and show_recent_games:
+        columns = [
+            dbc.Col([screen_specific_controls], xs=12, md=6),
+            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=6)
+        ]
+        extra_stores = [dcc.Store(id=recent_games_store_id, storage_type='session', data='all')]
+    elif screen_specific_controls:
+        columns = [
+            dbc.Col([screen_specific_controls], xs=12, md=12)
+        ]
+        extra_stores = []
+    elif show_recent_games:
+        columns = [
+            dbc.Col([create_recent_games_dropdown(recent_games_selector_id)], xs=12, md=12)
+        ]
         extra_stores = [dcc.Store(id=recent_games_store_id, storage_type='session', data='all')]
     else:
-        if screen_specific_controls:
-            # 2-column layout without Recent Games: Game Type | Screen-specific
-            col_width = 6
-            columns = [
-                dbc.Col([create_game_type_dropdown()], xs=12, md=col_width),
-                dbc.Col([screen_specific_controls], xs=12, md=col_width)
-            ]
-        else:
-            # 1-column layout without Recent Games: Game Type only
-            columns = [
-                dbc.Col([create_game_type_dropdown()], xs=12, md=12)
-            ]
+        columns = [
+            dbc.Col([
+                html.Span("Showing all games (Regular Season, Tournament, Playoffs).", className="text-muted small")
+            ], xs=12, md=12)
+        ]
         extra_stores = []
 
     return dbc.Card([
         dbc.CardHeader([
             html.Div([
-                html.H5("Filters", className="mb-0 d-inline-block fw-bold"),
+                html.H5("Filters & Actions", className="mb-0 d-inline-block fw-bold"),
                 dbc.Button([
                     html.I(className="fas fa-sync-alt me-1"),
                     "Refresh Data"
@@ -139,11 +74,7 @@ def create_unified_filter_bar(
             ], className="d-flex justify-content-between align-items-center")
         ]),
         dbc.CardBody([
-            # Single row with adaptive columns
             dbc.Row(columns, className="g-3"),
-
-            # Session stores (hidden components)
-            create_game_type_session_store(),
             *extra_stores
         ], className="pb-3")
     ], className="mb-4 shadow-sm")

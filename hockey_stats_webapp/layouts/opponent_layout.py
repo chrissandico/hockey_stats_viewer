@@ -434,17 +434,16 @@ def register_opponent_callbacks(app, data_service):
         data_service: DataService instance
     """
 
-    # Callback 1: Update opponent dropdown when game type changes
+    # Callback 1: Update opponent dropdown
     @app.callback(
         [dash.dependencies.Output('opponent-selection-dropdown', 'options'),
          dash.dependencies.Output('opponent-selection-dropdown', 'value')],
-        [dash.dependencies.Input('game-type-session-store', 'data')],
+        [dash.dependencies.Input('global-refresh-btn', 'n_clicks')],
         prevent_initial_call=False
     )
-    def update_opponent_dropdown(game_type_data):
-        """Update opponent dropdown options based on game type filter."""
-        # Parse game type
-        game_type = resolve_game_type(game_type_data)
+    def update_opponent_dropdown(refresh_clicks):
+        """Update opponent dropdown options."""
+        game_type = None
 
         # Get team_id from session
         team_id = session.get('team_id') if session.get('authenticated') else None
@@ -490,7 +489,7 @@ def register_opponent_callbacks(app, data_service):
         """Store selected opponent in session store."""
         return opponent_name
 
-    # Callback 3: Update all stats when opponent or game type changes
+    # Callback 3: Update all stats when opponent selection changes or refresh is clicked
     @app.callback(
         [dash.dependencies.Output('opponent-h2h-chart-container', 'children'),
          dash.dependencies.Output('opponent-head-to-head-container', 'children'),
@@ -498,9 +497,9 @@ def register_opponent_callbacks(app, data_service):
          dash.dependencies.Output('opponent-player-leaders-container', 'children'),
          dash.dependencies.Output('opponent-goalie-stats-container', 'children')],
         [dash.dependencies.Input('opponent-selection-store', 'data'),
-         dash.dependencies.Input('game-type-session-store', 'data')]
+         dash.dependencies.Input('global-refresh-btn', 'n_clicks')]
     )
-    def update_opponent_stats(opponent_name, game_type_data):
+    def update_opponent_stats(opponent_name, refresh_clicks):
         """Update all opponent statistics displays."""
         # Skip if no opponent selected
         if not opponent_name or opponent_name == '':
@@ -513,8 +512,8 @@ def register_opponent_callbacks(app, data_service):
         if not team_id:
             return html.Div(), html.Div(), html.Div(), html.Div(), html.Div()
 
-        # Parse game type
-        game_type = resolve_game_type(game_type_data)
+        # Always show all games
+        game_type = None
 
         # Cache management (track previous values)
         previous_game_type = session.get('opponent_previous_game_type')

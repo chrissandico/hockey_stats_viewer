@@ -588,9 +588,9 @@ def register_recent_games_callbacks(app, data_service):
     @app.callback(
         Output('team-performance-section', 'children'),
         [Input('recent-games-count-store', 'data'),
-         Input('game-type-session-store', 'data')]
+         Input('global-refresh-btn', 'n_clicks')]
     )
-    def update_team_performance(num_games, game_type_data):
+    def update_team_performance(num_games, refresh_clicks):
         """Update team performance stats for selected recent games."""
         try:
             # Get team context from session
@@ -601,8 +601,7 @@ def register_recent_games_callbacks(app, data_service):
             if not team_id:
                 return dbc.Alert("No team selected", color="danger")
 
-            # Parse game type
-            game_type = resolve_game_type(game_type_data)
+            game_type = None
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
@@ -644,9 +643,9 @@ def register_recent_games_callbacks(app, data_service):
     @app.callback(
         Output('player-leaderboards-section', 'children'),
         [Input('recent-games-count-store', 'data'),
-         Input('game-type-session-store', 'data')]
+         Input('global-refresh-btn', 'n_clicks')]
     )
-    def update_player_leaderboards(num_games, game_type_data):
+    def update_player_leaderboards(num_games, refresh_clicks):
         """Update player leaderboards for selected recent games."""
         try:
             # Get team context from session
@@ -657,8 +656,7 @@ def register_recent_games_callbacks(app, data_service):
             if not team_id:
                 return dbc.Alert("No team selected", color="danger")
 
-            # Parse game type
-            game_type = resolve_game_type(game_type_data)
+            game_type = None
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
