@@ -13,6 +13,7 @@ import pandas as pd
 import logging
 
 from components.game_type_filter import create_game_type_filter_component, create_game_type_session_store
+from utils import resolve_game_type
 import config
 
 logger = logging.getLogger(__name__)
@@ -601,7 +602,7 @@ def register_recent_games_callbacks(app, data_service):
                 return dbc.Alert("No team selected", color="danger")
 
             # Parse game type
-            game_type = None if game_type_data == "all" else game_type_data
+            game_type = resolve_game_type(game_type_data)
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
@@ -657,7 +658,7 @@ def register_recent_games_callbacks(app, data_service):
                 return dbc.Alert("No team selected", color="danger")
 
             # Parse game type
-            game_type = None if game_type_data == "all" else game_type_data
+            game_type = resolve_game_type(game_type_data)
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)

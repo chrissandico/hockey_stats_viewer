@@ -6,7 +6,7 @@ import json
 import logging
 from flask import session as flask_session
 import config
-from utils import format_player_label
+from utils import format_player_label, resolve_game_type
 from components.unified_filter_bar import create_unified_filter_bar
 from services.ai_summary_service import AISummaryService
 
@@ -65,10 +65,8 @@ def register_game_callbacks(app, data_service, team_context=None):
         if not effective_team_id or not data_service:
             return html.P("No data available.", className="text-muted")
 
-        # Resolve game_type from the session store value ('all', 'E', 'R', 'T', 'P', or None)
-        game_type = None
-        if game_type_data and game_type_data != 'all':
-            game_type = game_type_data
+        # Resolve game_type from the session store value ('all', 'R', 'T', 'P', or default 'R')
+        game_type = resolve_game_type(game_type_data)
 
         try:
             games = data_service.get_games(effective_team_id, game_type=game_type)
@@ -86,22 +84,38 @@ def register_game_callbacks(app, data_service, team_context=None):
         except Exception:
             pass
 
-        gt_colors = {'R': 'primary', 'T': 'warning', 'P': 'secondary'}
-
         cards = []
+        events_df = data_service.get_events()
         for _, row in games.iterrows():
+            game_id_val = str(row.get('ID', row.name))
+            has_stats = data_service._game_has_stats(game_id_val, row, events_df)
+
             result_str = str(row.get('Result', '') or '')
             result_upper = result_str.upper()
-            if 'W' in result_upper:
-                badge_color, result_letter = 'success', 'W'
-            elif 'L' in result_upper:
-                badge_color, result_letter = 'danger', 'L'
-            else:
-                badge_color, result_letter = 'warning', 'T'
 
             game_type_val = str(row.get('GameType', '') or '')
-            gt_color = gt_colors.get(game_type_val, 'secondary')
-            game_id_val = str(row.get('ID', row.name))
+            gt_name = config.get_game_type_name(game_type_val)
+            gt_color = config.get_game_type_badge_class(game_type_val)
+
+            if not has_stats or 'SCHEDULED' in result_upper or result_str == '':
+                score_element = html.Div("SCHEDULED", className="game-score text-center text-muted fs-6 fw-bold")
+                badge_elements = [dbc.Badge(gt_name, color=gt_color)]
+            else:
+                if 'W' in result_upper:
+                    badge_color, result_letter = 'success', 'W'
+                elif 'L' in result_upper:
+                    badge_color, result_letter = 'danger', 'L'
+                else:
+                    badge_color, result_letter = 'warning', 'T'
+
+                score_element = html.Div(
+                    f"{row.get('GoalsFor', 0)} — {row.get('GoalsAgainst', 0)}",
+                    className="game-score text-center"
+                )
+                badge_elements = [
+                    dbc.Badge(result_letter, color=badge_color, className="me-1"),
+                    dbc.Badge(gt_name, color=gt_color),
+                ]
 
             cards.append(
                 html.Div(
@@ -112,17 +126,8 @@ def register_game_callbacks(app, data_service, team_context=None):
                                     html.Div(str(row.get('Date', '')), className="text-muted small"),
                                     html.Div(f"vs {row.get('Opponent', '')}", className="fw-bold"),
                                 ], width=5),
-                                dbc.Col(
-                                    html.Div(
-                                        f"{row.get('GoalsFor', 0)} — {row.get('GoalsAgainst', 0)}",
-                                        className="game-score text-center"
-                                    ),
-                                    width=3,
-                                ),
-                                dbc.Col([
-                                    dbc.Badge(result_letter, color=badge_color, className="me-1"),
-                                    dbc.Badge(game_type_val, color=gt_color),
-                                ], width=4, className="text-end"),
+                                dbc.Col(score_element, width=3),
+                                dbc.Col(badge_elements, width=4, className="text-end"),
                             ], align='center')
                         ),
                         className="game-scorecard mb-2",
@@ -186,46 +191,71 @@ def register_game_callbacks(app, data_service, team_context=None):
                 return dbc.Alert("Game not found.", color="danger")
 
             game = summary['game']
+            has_stats = data_service._game_has_stats(game_id_typed, game)
             result_str = str(game.get('Result', '') or '')
             result_upper = result_str.upper()
-            if 'W' in result_upper:
-                result_color, result_letter = 'success', 'W'
-            elif 'L' in result_upper:
-                result_color, result_letter = 'danger', 'L'
-            else:
-                result_color, result_letter = 'warning', 'T'
-
             game_type_val = str(game.get('GameType', '') or '')
-            gt_colors = {'R': 'primary', 'T': 'warning', 'P': 'secondary'}
-            gt_color = gt_colors.get(game_type_val, 'secondary')
+            gt_name = config.get_game_type_name(game_type_val)
+            gt_color = config.get_game_type_badge_class(game_type_val)
 
-            # ---- Score header card ----
-            score_header = dbc.Card(
-                dbc.CardBody(
-                    dbc.Row([
-                        dbc.Col([
-                            html.Div(str(game.get('Date', '')), className="text-muted small"),
-                            html.H4(f"vs {game.get('Opponent', '')}", className="mb-0"),
-                            html.Div(str(game.get('Location', '')), className="text-muted small mt-1"),
-                        ], xs=12, md=5),
-                        dbc.Col(
-                            html.Div(
-                                html.Span(
-                                    f"{game.get('GoalsFor', 0)} — {game.get('GoalsAgainst', 0)}",
-                                    className="game-score",
+            if not has_stats or 'SCHEDULED' in result_upper or result_str == '':
+                score_header = dbc.Card(
+                    dbc.CardBody(
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div(str(game.get('Date', '')), className="text-muted small"),
+                                html.H4(f"vs {game.get('Opponent', '')}", className="mb-0"),
+                                html.Div(str(game.get('Location', '')), className="text-muted small mt-1"),
+                            ], xs=12, md=5),
+                            dbc.Col(
+                                html.Div(
+                                    html.Span("SCHEDULED", className="game-score text-muted fs-5 fw-bold"),
+                                    className="text-center",
                                 ),
-                                className="text-center",
+                                xs=12, md=4,
                             ),
-                            xs=12, md=4,
-                        ),
-                        dbc.Col([
-                            dbc.Badge(result_letter, color=result_color, className="me-2 fs-6"),
-                            dbc.Badge(game_type_val, color=gt_color, className="fs-6"),
-                        ], xs=12, md=3, className="d-flex align-items-center justify-content-end"),
-                    ], align='center')
-                ),
-                className="mb-3 shadow-sm",
-            )
+                            dbc.Col([
+                                dbc.Badge(gt_name, color=gt_color, className="fs-6"),
+                            ], xs=12, md=3, className="d-flex align-items-center justify-content-end"),
+                        ], align='center')
+                    ),
+                    className="mb-3 shadow-sm",
+                )
+            else:
+                if 'W' in result_upper:
+                    result_color, result_letter = 'success', 'W'
+                elif 'L' in result_upper:
+                    result_color, result_letter = 'danger', 'L'
+                else:
+                    result_color, result_letter = 'warning', 'T'
+
+                # ---- Score header card ----
+                score_header = dbc.Card(
+                    dbc.CardBody(
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div(str(game.get('Date', '')), className="text-muted small"),
+                                html.H4(f"vs {game.get('Opponent', '')}", className="mb-0"),
+                                html.Div(str(game.get('Location', '')), className="text-muted small mt-1"),
+                            ], xs=12, md=5),
+                            dbc.Col(
+                                html.Div(
+                                    html.Span(
+                                        f"{game.get('GoalsFor', 0)} — {game.get('GoalsAgainst', 0)}",
+                                        className="game-score",
+                                    ),
+                                    className="text-center",
+                                ),
+                                xs=12, md=4,
+                            ),
+                            dbc.Col([
+                                dbc.Badge(result_letter, color=result_color, className="me-2 fs-6"),
+                                dbc.Badge(gt_name, color=gt_color, className="fs-6"),
+                            ], xs=12, md=3, className="d-flex align-items-center justify-content-end"),
+                        ], align='center')
+                    ),
+                    className="mb-3 shadow-sm",
+                )
 
             # ---- Shots-by-period chart ----
             period_data = data_service.get_period_breakdown(game_id_typed, effective_team_id)

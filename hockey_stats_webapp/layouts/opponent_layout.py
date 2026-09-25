@@ -9,7 +9,7 @@ import pandas as pd
 import logging
 import plotly.graph_objects as go
 from components.unified_filter_bar import create_unified_filter_bar
-from utils import format_player_label
+from utils import format_player_label, resolve_game_type
 import config
 
 # Set up logging
@@ -439,14 +439,12 @@ def register_opponent_callbacks(app, data_service):
         [dash.dependencies.Output('opponent-selection-dropdown', 'options'),
          dash.dependencies.Output('opponent-selection-dropdown', 'value')],
         [dash.dependencies.Input('game-type-session-store', 'data')],
-        prevent_initial_call=True
+        prevent_initial_call=False
     )
     def update_opponent_dropdown(game_type_data):
         """Update opponent dropdown options based on game type filter."""
         # Parse game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type == "all":
-            game_type = None
+        game_type = resolve_game_type(game_type_data)
 
         # Get team_id from session
         team_id = session.get('team_id') if session.get('authenticated') else None
@@ -516,9 +514,7 @@ def register_opponent_callbacks(app, data_service):
             return html.Div(), html.Div(), html.Div(), html.Div(), html.Div()
 
         # Parse game type
-        game_type = game_type_data if isinstance(game_type_data, str) else None
-        if game_type == "all":
-            game_type = None
+        game_type = resolve_game_type(game_type_data)
 
         # Cache management (track previous values)
         previous_game_type = session.get('opponent_previous_game_type')
