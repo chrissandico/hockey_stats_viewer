@@ -3089,12 +3089,12 @@ class DataService:
         raw_pp_opps = len(events[(events['EventType'] == 'Penalty') & is_opponent])
         pp_opps = max(raw_pp_opps, pp_goals)
 
-        # PK Goals Conceded (PPGA: Opponent PP goals)
-        pk_goals_conceded_mask = (events['IsGoal'] == True) & is_opponent & is_pp_mask
+        # PK Goals Conceded (PPGA: Opponent PP goals scored while we are short-handed)
+        pk_goals_conceded_mask = (events['IsGoal'] == True) & is_opponent & (is_pp_mask | is_pk_mask)
         pk_goals_conceded = len(events[pk_goals_conceded_mask])
 
-        # Opponent PP Shots (Shots allowed on PK)
-        pk_shots_allowed_mask = is_opponent & is_pp_mask & is_shot_event
+        # Opponent PP Shots (Shots allowed while short-handed)
+        pk_shots_allowed_mask = is_opponent & (is_pp_mask | is_pk_mask) & is_shot_event
         pk_shots_allowed = len(events[pk_shots_allowed_mask])
 
         # Our Penalties (Raw PK Opps)
