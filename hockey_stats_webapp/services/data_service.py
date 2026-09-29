@@ -218,9 +218,10 @@ class DataService:
             print(f"ERROR: {error_msg}")
             raise ValueError(error_msg)
         
-        # Filter by team ID
-        filtered_df = df[df['TeamID'] == team_id]
-        print(f"Filtered data: {len(filtered_df)} records for team {team_id} (from {len(df)} total)")
+        # Filter by team ID (string-normalized)
+        clean_target = str(team_id).strip()
+        filtered_df = df[df['TeamID'].astype(str).str.strip() == clean_target]
+        print(f"Filtered data: {len(filtered_df)} records for team '{clean_target}' (from {len(df)} total)")
         
         return filtered_df
     
@@ -2780,7 +2781,10 @@ class DataService:
         plus_minus = self.calculate_plus_minus_for_events(player_id, game_events, team_identifier)
         shots = self.calculate_shots_for_events(player_id, game_events)
         penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, game_events)
-        
+        corsi = self.calculate_player_corsi_for_events(player_id, game_events, team_identifier)
+        shots_for = corsi.get('shots_for', 0)
+        shots_against = corsi.get('shots_against', 0)
+
         return {
             'player': player,
             'game': game,
@@ -2789,7 +2793,9 @@ class DataService:
             'points': points,
             'plus_minus': plus_minus,
             'shots': shots,
-            'penalty_minutes': penalty_minutes
+            'penalty_minutes': penalty_minutes,
+            'shots_for': shots_for,
+            'shots_against': shots_against
         }
     
     def calculate_goalie_game_stats(self, player_id, game_id, team_id=None):

@@ -313,6 +313,10 @@ def register_player_callbacks(app, data_service):
                 ], className="kpi-tile"),
             ]
         else:
+            sf = stats.get('on_ice_shots_for', 0)
+            sa = stats.get('on_ice_shots_against', 0)
+            pim = stats.get('penalty_minutes', 0)
+
             kpi_tiles = [
                 html.Div([
                     html.Div(str(stats.get('goals', 0)), className="kpi-value"),
@@ -327,19 +331,22 @@ def register_player_callbacks(app, data_service):
                     html.Div("POINTS", className="kpi-label"),
                 ], className="kpi-tile"),
                 html.Div([
-                    html.Div(str(stats.get('shots', 0)), className="kpi-value"),
-                    html.Div("SHOTS", className="kpi-label"),
+                    html.Div(str(sf), className="kpi-value text-success"),
+                    html.Div("SHOTS FOR (SF)", className="kpi-label"),
+                ], className="kpi-tile"),
+                html.Div([
+                    html.Div(str(sa), className="kpi-value text-danger"),
+                    html.Div("SHOTS AGAINST (SA)", className="kpi-label"),
+                ], className="kpi-tile"),
+                html.Div([
+                    html.Div(str(pim), className="kpi-value"),
+                    html.Div("PIM", className="kpi-label"),
                 ], className="kpi-tile"),
             ]
             if is_coach or not config.is_coaches_only_stat('plus_minus'):
                 kpi_tiles.append(html.Div([
                     html.Div(str(stats.get('plus_minus', 0)), className="kpi-value"),
                     html.Div("+/-", className="kpi-label"),
-                ], className="kpi-tile"))
-            if is_coach or not config.is_coaches_only_stat('penalty_minutes'):
-                kpi_tiles.append(html.Div([
-                    html.Div(str(stats.get('penalty_minutes', 0)), className="kpi-value"),
-                    html.Div("PIM", className="kpi-label"),
                 ], className="kpi-tile"))
 
         player_info = dbc.Card([
@@ -474,11 +481,12 @@ def register_player_callbacks(app, data_service):
                         'Goals': game_stats['goals'],
                         'Assists': game_stats['assists'],
                         'Points': game_stats['points'],
+                        'SF': game_stats.get('shots_for', 0),
+                        'SA': game_stats.get('shots_against', 0),
+                        'PIM': game_stats.get('penalty_minutes', 0),
                     }
                     if is_coach or not config.is_coaches_only_stat('plus_minus'):
                         entry['+/-'] = game_stats['plus_minus']
-                    if is_coach or not config.is_coaches_only_stat('PIM'):
-                        entry['PIM'] = game_stats['penalty_minutes']
                     game_log_data.append(entry)
 
             game_log_df = pd.DataFrame(game_log_data)
@@ -539,11 +547,12 @@ def register_player_callbacks(app, data_service):
                     {'name': 'Goals', 'id': 'Goals'},
                     {'name': 'Assists', 'id': 'Assists'},
                     {'name': 'Points', 'id': 'Points'},
+                    {'name': 'Shots For (SF)', 'id': 'SF'},
+                    {'name': 'Shots Against (SA)', 'id': 'SA'},
+                    {'name': 'PIM', 'id': 'PIM'},
                 ]
                 if is_coach or not config.is_coaches_only_stat('plus_minus'):
                     columns.append({'name': '+/-', 'id': '+/-'})
-                if is_coach or not config.is_coaches_only_stat('PIM'):
-                    columns.append({'name': 'PIM', 'id': 'PIM'})
 
             game_log_card = dbc.Card([
                 dbc.CardHeader(html.H4("Game Log", className="card-title")),

@@ -37,7 +37,7 @@ def create_parent_layout(data_service, team_context=None):
         ], fluid=True)
 
     # ---------------------------------------------------------------------------
-    # 1. TOP SECTION: High-Level Team Summary
+    # 1. TOP SECTION: High-Level Team Summary (All non-exhibition game types)
     # ---------------------------------------------------------------------------
     team_summary_content = _build_team_summary_section(data_service, team_id)
 
@@ -70,9 +70,9 @@ def create_parent_layout(data_service, team_context=None):
 
 
 def _build_team_summary_section(data_service, team_id):
-    """Build the high-level team stats summary section."""
+    """Build the high-level team stats summary section combining all non-exhibition games."""
     try:
-        t_stats = data_service.calculate_team_stats(team_id)
+        t_stats = data_service.calculate_team_stats(team_id, game_type=None)
     except Exception as e:
         logger.error(f"Parent Layout: Error calculating team stats: {e}")
         t_stats = None
@@ -93,6 +93,8 @@ def _build_team_summary_section(data_service, team_id):
         ties = t_stats.get('ties', 0)
         win_pct = t_stats.get('win_percentage', 0.0)
 
+    win_pct_val = win_pct * 100.0 if win_pct <= 1.0 else win_pct
+
     gf = t_stats.get('goals_for', 0)
     ga = t_stats.get('goals_against', 0)
     diff = t_stats.get('goal_differential', gf - ga)
@@ -101,7 +103,7 @@ def _build_team_summary_section(data_service, team_id):
     # Special teams
     st_summary = ""
     try:
-        st = data_service.calculate_special_teams_stats(team_id)
+        st = data_service.calculate_special_teams_stats(team_id, game_type=None)
         if st:
             pp = st.get('pp_percentage', 0.0)
             pk = st.get('pk_percentage', 0.0)
@@ -118,7 +120,7 @@ def _build_team_summary_section(data_service, team_id):
         ], xs=6, sm=4, md=2),
         dbc.Col([
             html.Div([
-                html.Div(f"{win_pct:.1f}%", className="kpi-value"),
+                html.Div(f"{win_pct_val:.1f}%", className="kpi-value"),
                 html.Div("WIN %", className="kpi-label"),
             ], className="kpi-tile text-center")
         ], xs=6, sm=4, md=2),
@@ -142,6 +144,10 @@ def _build_team_summary_section(data_service, team_id):
         ], xs=6, sm=4, md=3),
     ]
 
+    card_children = [dbc.Row(team_kpi_cards, className="g-3 mb-2")]
+    if st_summary:
+        card_children.append(html.P(f"Special Teams{st_summary}", className="text-muted small text-center mb-0"))
+
     return dbc.Card([
         dbc.CardHeader([
             html.H4([
@@ -149,10 +155,7 @@ def _build_team_summary_section(data_service, team_id):
                 "Team Overview"
             ], className="card-title mb-0")
         ]),
-        dbc.CardBody([
-            dbc.Row(team_kpi_cards, className="g-3 mb-2"),
-            if_st_text := (html.P(f"Special Teams{st_summary}", className="text-muted small text-center mb-0") if st_summary else None)
-        ]),
+        dbc.CardBody(card_children),
     ], className="shadow-sm mb-4 border-0")
 
 
@@ -203,12 +206,12 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
     is_goalie = position == 'G'
     display_name = format_player_label(target_player)
 
-    # Calculate stats
+    # Calculate stats across all games
     try:
         if is_goalie:
-            stats = data_service.calculate_goalie_stats(player_id, team_id)
+            stats = data_service.calculate_goalie_stats(player_id, team_id, game_type=None)
         else:
-            stats = data_service.calculate_player_stats(player_id, team_id)
+            stats = data_service.calculate_player_stats(player_id, team_id, game_type=None)
     except Exception as e:
         logger.error(f"Parent Layout: Error calculating stats for player {player_id}: {e}")
         stats = None
@@ -239,6 +242,10 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
             ], className="kpi-tile"),
         ]
     else:
+        sf = stats.get('on_ice_shots_for', 0)
+        sa = stats.get('on_ice_shots_against', 0)
+        pim = stats.get('penalty_minutes', 0)
+
         kpi_tiles = [
             html.Div([
                 html.Div(str(stats.get('goals', 0)), className="kpi-value text-success"),
@@ -253,8 +260,16 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
                 html.Div("POINTS", className="kpi-label"),
             ], className="kpi-tile"),
             html.Div([
-                html.Div(str(stats.get('shots', 0)), className="kpi-value"),
-                html.Div("SHOTS", className="kpi-label"),
+                html.Div(str(sf), className="kpi-value text-success"),
+                html.Div("SHOTS FOR (SF)", className="kpi-label"),
+            ], className="kpi-tile"),
+            html.Div([
+                html.Div(str(sa), className="kpi-value text-danger"),
+                html.Div("SHOTS AGAINST (SA)", className="kpi-label"),
+            ], className="kpi-tile"),
+            html.Div([
+                html.Div(str(pim), className="kpi-value"),
+                html.Div("PIM", className="kpi-label"),
             ], className="kpi-tile"),
         ]
         if not config.is_coaches_only_stat('plus_minus'):
@@ -277,7 +292,7 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
     ], className="shadow-sm mb-4 border-0")
 
     # Game Log
-    game_log_data = data_service.get_player_game_log(player_id, team_id)
+    game_log_data = data_service.get_player_game_log(player_id, team_id, game_type=None)
     game_log_card = _build_game_log_card(game_log_data, is_goalie)
 
     return html.Div([
@@ -318,11 +333,12 @@ def _build_game_log_card(game_log, is_goalie):
                 'Goals': g.get('goals', 0),
                 'Assists': g.get('assists', 0),
                 'Points': g.get('points', 0),
+                'SF': g.get('shots_for', 0),
+                'SA': g.get('shots_against', 0),
+                'PIM': g.get('penalty_minutes', 0),
             }
             if not config.is_coaches_only_stat('plus_minus'):
                 entry['+/-'] = g.get('plus_minus', 0)
-            if not config.is_coaches_only_stat('PIM'):
-                entry['PIM'] = g.get('penalty_minutes', 0)
             table_rows.append(entry)
 
     df_log = pd.DataFrame(table_rows)
@@ -384,11 +400,12 @@ def _build_game_log_card(game_log, is_goalie):
             {'name': 'Goals', 'id': 'Goals'},
             {'name': 'Assists', 'id': 'Assists'},
             {'name': 'Points', 'id': 'Points'},
+            {'name': 'Shots For (SF)', 'id': 'SF'},
+            {'name': 'Shots Against (SA)', 'id': 'SA'},
+            {'name': 'PIM', 'id': 'PIM'},
         ]
         if not config.is_coaches_only_stat('plus_minus'):
             cols.append({'name': '+/-', 'id': '+/-'})
-        if not config.is_coaches_only_stat('PIM'):
-            cols.append({'name': 'PIM', 'id': 'PIM'})
 
     log_table = dash_table.DataTable(
         data=df_log.to_dict('records'),
