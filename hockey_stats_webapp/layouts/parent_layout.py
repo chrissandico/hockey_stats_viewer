@@ -81,8 +81,8 @@ def _build_team_summary_section(data_service, team_id):
         return dbc.Alert("Team statistics could not be calculated.", color="warning")
 
     gp = t_stats.get('games_played', 0)
-    record = t_stats.get('record', {})
-    if isinstance(record, dict):
+    record = t_stats.get('record')
+    if isinstance(record, dict) and record:
         wins = record.get('wins', 0)
         losses = record.get('losses', 0)
         ties = record.get('ties', 0)
@@ -91,7 +91,7 @@ def _build_team_summary_section(data_service, team_id):
         wins = t_stats.get('wins', 0)
         losses = t_stats.get('losses', 0)
         ties = t_stats.get('ties', 0)
-        win_pct = t_stats.get('win_percentage', 0.0)
+        win_pct = t_stats.get('win_percentage', t_stats.get('win_pct', 0.0))
 
     win_pct_val = win_pct * 100.0 if win_pct <= 1.0 else win_pct
 
