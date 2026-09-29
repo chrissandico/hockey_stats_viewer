@@ -14,6 +14,8 @@ if 'services.sheets_service' in sys.modules:
     importlib.reload(sys.modules['services.sheets_service'])
 if 'layouts.player_layout' in sys.modules:
     importlib.reload(sys.modules['layouts.player_layout'])
+if 'layouts.parent_layout' in sys.modules:
+    importlib.reload(sys.modules['layouts.parent_layout'])
 
 # Import services and components
 from services.sheets_service import SheetsService
@@ -23,6 +25,7 @@ from services.data_service import DataService
 # Import layouts
 from layouts.main_layout import create_main_layout, register_dashboard_callbacks
 from layouts.player_layout import create_player_layout, register_player_callbacks
+from layouts.parent_layout import create_parent_layout
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
 from layouts.shell import create_shell_header, create_shell_footer, register_shell_callbacks
@@ -157,6 +160,10 @@ def get_team_context():
         'team_id': team_id,
         'team_name': team_name,
         'is_coach': session.get('is_coach', False),
+        'is_parent': session.get('is_parent', False),
+        'jersey_number': session.get('jersey_number'),
+        'player_id': session.get('player_id'),
+        'child_name': session.get('child_name'),
     }
 
 def validate_team_session():
@@ -202,17 +209,20 @@ def display_page(pathname):
     # Display the appropriate page based on the URL
     if pathname == '/login':
         return create_login_layout()
-    elif pathname == '/player':
-        team_context = get_team_context()
+
+    team_context = get_team_context()
+
+    # If user is a parent, direct them to parent view layout regardless of path
+    if team_context and team_context.get('is_parent', False):
+        return create_parent_layout(data_service, team_context)
+
+    if pathname == '/player':
         return create_player_layout(data_service, team_context)
     elif pathname == '/game':
-        team_context = get_team_context()
         return create_game_layout(data_service, team_context)
     elif pathname == '/opponent':
-        team_context = get_team_context()
         return create_opponent_layout(data_service, team_context)
     else:
-        team_context = get_team_context()
         return create_main_layout(team_context)
 
 # Shell callback — renders persistent header/footer outside page-content
@@ -325,8 +335,12 @@ def login(n_clicks, password):
             session['authenticated'] = True
             session['team_id'] = team_info['team_id']
             session['team_name'] = team_info['team_name']
-            session['is_coach'] = team_info.get('is_coach', False)  # Store coach flag
-            print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']}, Coach: {session['is_coach']})")
+            session['is_coach'] = team_info.get('is_coach', False)
+            session['is_parent'] = team_info.get('is_parent', False)
+            session['jersey_number'] = team_info.get('jersey_number')
+            session['player_id'] = team_info.get('player_id')
+            session['child_name'] = team_info.get('child_name')
+            print(f"User authenticated for team: {team_info['team_name']} (ID: {team_info['team_id']}, Coach: {session['is_coach']}, Parent: {session['is_parent']})")
             return '/', ''
         else:
             print("Authentication failed - incorrect password")
@@ -370,6 +384,11 @@ def logout(n_clicks):
     session['authenticated'] = False
     session.pop('team_id', None)
     session.pop('team_name', None)
+    session.pop('is_coach', None)
+    session.pop('is_parent', None)
+    session.pop('jersey_number', None)
+    session.pop('player_id', None)
+    session.pop('child_name', None)
     print("User logged out - session cleared")
     return '/login'
 

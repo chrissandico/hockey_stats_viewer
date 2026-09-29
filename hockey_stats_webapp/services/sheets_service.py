@@ -348,11 +348,55 @@ class SheetsService:
         
         return self.cache[key]
     
+    def get_parent_codes(self, force_refresh=False):
+        """
+        Get all parent code mappings from the ParentCodes sheet.
+
+        Args:
+            force_refresh (bool): Force a refresh of the cache
+
+        Returns:
+            pd.DataFrame: DataFrame containing parent code data
+        """
+        key = 'parent_codes'
+
+        if force_refresh or self._should_refresh_cache(key):
+            try:
+                worksheet = self._get_worksheet('ParentCodes')
+                data = worksheet.get_all_records()
+                df = pd.DataFrame(data)
+
+                if df.empty:
+                    print("WARNING: ParentCodes sheet is empty")
+                    self.cache[key] = pd.DataFrame(columns=['ParentCode', 'TeamID', 'JerseyNumber', 'ChildName'])
+                    self.last_refresh[key] = time.time()
+                    return self.cache[key]
+
+                # Standardize column names, ensure string types
+                if 'ParentCode' in df.columns:
+                    df['ParentCode'] = df['ParentCode'].astype(str).str.strip()
+                if 'JerseyNumber' in df.columns:
+                    df['JerseyNumber'] = df['JerseyNumber'].astype(str).str.strip()
+                if 'TeamID' in df.columns:
+                    df['TeamID'] = df['TeamID'].astype(str).str.strip()
+
+                print(f"Successfully loaded {len(df)} parent codes from ParentCodes sheet")
+                self.cache[key] = df
+                self.last_refresh[key] = time.time()
+
+            except Exception as e:
+                print(f"WARNING: Could not load ParentCodes sheet (may not exist yet): {e}")
+                self.cache[key] = pd.DataFrame(columns=['ParentCode', 'TeamID', 'JerseyNumber', 'ChildName'])
+                self.last_refresh[key] = time.time()
+
+        return self.cache[key]
+
     def refresh_all_data(self):
         """
         Refresh all cached data.
         """
         self.get_teams(force_refresh=True)
+        self.get_parent_codes(force_refresh=True)
         self.get_players(force_refresh=True)
         self.get_games(force_refresh=True)
         self.get_events(force_refresh=True)

@@ -6,24 +6,41 @@ def create_shell_header(team_context=None):
     tc = team_context or {}
     team_name = tc.get('team_name', 'Hockey Stats')
     is_coach  = tc.get('is_coach', False)
-    coach_badge = dbc.Badge("COACH", color="warning", className="ms-2") if is_coach else html.Span()
+    is_parent = tc.get('is_parent', False)
+    jersey_number = tc.get('jersey_number')
+    child_name = tc.get('child_name')
+
+    if is_coach:
+        badge = dbc.Badge("COACH", color="warning", className="ms-2")
+    elif is_parent:
+        badge_text = f"PARENT #{jersey_number}" if jersey_number else "PARENT"
+        badge = dbc.Badge(badge_text, color="info", className="ms-2")
+    else:
+        badge = html.Span()
+
+    # For parent users, hide navigation links to other pages
+    nav_links = []
+    if not is_parent:
+        nav_links = [
+            dbc.Nav([
+                dbc.NavLink("Dashboard",                 href="/",         active="exact"),
+                dbc.NavLink("Players",                   href="/player",   active="exact"),
+                dbc.NavLink("Game Log",                  href="/game",     active="exact"),
+                dbc.NavLink("vs. Opponents Performance", href="/opponent", active="exact"),
+            ], navbar=True, className="me-auto")
+        ]
 
     return dbc.Navbar(
         dbc.Container([
             dbc.NavbarBrand(
-                [html.Span("⬡ ", style={"color": "#eca200"}), team_name, coach_badge],
+                [html.Span("⬡ ", style={"color": "#eca200"}), team_name, badge],
                 href="/", className="fw-bold text-white d-flex align-items-center gap-1"
             ),
-            dbc.NavbarToggler(id="navbar-toggler"),
+            dbc.NavbarToggler(id="navbar-toggler") if not is_parent else html.Div(),
             dbc.Collapse([
-                dbc.Nav([
-                    dbc.NavLink("Dashboard",                 href="/",         active="exact"),
-                    dbc.NavLink("Players",                   href="/player",   active="exact"),
-                    dbc.NavLink("Game Log",                  href="/game",     active="exact"),
-                    dbc.NavLink("vs. Opponents Performance", href="/opponent", active="exact"),
-                ], navbar=True, className="me-auto"),
+                *nav_links,
                 dbc.Button("Logout", id="logout-button", size="sm",
-                           color="outline-light", className="ms-3"),
+                           color="outline-light", className="ms-auto" if is_parent else "ms-3"),
             ], id="navbar-collapse", navbar=True),
         ], fluid=True),
         dark=True, color="black", sticky="top", className="nhl-navbar mb-0",
