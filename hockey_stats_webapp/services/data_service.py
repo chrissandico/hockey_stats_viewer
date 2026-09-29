@@ -1873,23 +1873,34 @@ class DataService:
                 events_df = self.get_events()
                 def calculate_result(row):
                     try:
-                        game_id = row.get('ID')
-                        if not self._game_has_stats(game_id, row, events_df):
-                            return 'SCHEDULED'
+                        # Check existing Result first
+                        existing_res = str(row.get('Result', '')).strip().upper() if pd.notna(row.get('Result')) else ''
+                        if existing_res in ['W', 'WIN', 'WINS']:
+                            return 'W'
+                        if existing_res in ['L', 'LOSS', 'LOSSES']:
+                            return 'L'
+                        if existing_res in ['T', 'TIE', 'TIES']:
+                            return 'T'
 
-                        goals_for = row['GoalsFor']
-                        goals_against = row['GoalsAgainst']
-                        
-                        # Handle NaN values
+                        goals_for = row.get('GoalsFor', 0)
+                        goals_against = row.get('GoalsAgainst', 0)
+
                         if pd.isna(goals_for) or pd.isna(goals_against):
                             return 'SCHEDULED'
-                        
-                        if goals_for > goals_against:
-                            return 'W'
-                        elif goals_for < goals_against:
-                            return 'L'
-                        else:
-                            return 'T'
+
+                        gf = float(goals_for)
+                        ga = float(goals_against)
+
+                        game_id = row.get('ID')
+                        if gf > 0 or ga > 0 or self._game_has_stats(game_id, row, events_df):
+                            if gf > ga:
+                                return 'W'
+                            elif gf < ga:
+                                return 'L'
+                            else:
+                                return 'T'
+
+                        return 'SCHEDULED'
                     except Exception as e:
                         self.logger.error(f"Error calculating result for row: {str(e)}")
                         return 'SCHEDULED'
@@ -2991,16 +3002,32 @@ class DataService:
         completed_games = self._filter_games_by_date(games, include_future=False)
         print(f"Team stats calculation: Using {len(completed_games)} completed games out of {len(games)} total games")
         
-        # Calculate wins, losses, and ties with error handling - only from completed games
-        try:
-            wins = len(completed_games[completed_games['Result'] == 'W'])
-            losses = len(completed_games[completed_games['Result'] == 'L'])
-            ties = len(completed_games[completed_games['Result'] == 'T'])
-        except KeyError as e:
-            print(f"Error calculating team stats: {e}")
-            wins = 0
-            losses = 0
-            ties = 0
+        # Calculate wins, losses, and ties with flexible matching & score fallback
+        wins = 0
+        losses = 0
+        ties = 0
+
+        if completed_games is not None and not completed_games.empty:
+            for _, r in completed_games.iterrows():
+                res = str(r.get('Result', '')).strip().upper()
+                if res in ['W', 'WIN', 'WINS']:
+                    wins += 1
+                elif res in ['L', 'LOSS', 'LOSSES']:
+                    losses += 1
+                elif res in ['T', 'TIE', 'TIES']:
+                    ties += 1
+                else:
+                    try:
+                        gf = float(r.get('GoalsFor', 0) or 0)
+                        ga = float(r.get('GoalsAgainst', 0) or 0)
+                        if gf > ga:
+                            wins += 1
+                        elif gf < ga:
+                            losses += 1
+                        else:
+                            ties += 1
+                    except (ValueError, TypeError):
+                        pass
         
         # Calculate goals for and against with error handling - only from completed games
         try:
