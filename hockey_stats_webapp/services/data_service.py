@@ -584,11 +584,19 @@ class DataService:
             except Exception:
                 events_df = None
 
-        if events_df is not None and not events_df.empty and 'GameID' in events_df.columns:
+        if events_df is not None and not events_df.empty:
             try:
-                game_events = events_df[events_df['GameID'].astype(str) == str(game_id)]
-                if not game_events.empty:
-                    return True
+                target_gid = str(game_id).strip()
+                game_id_col = None
+                for col in ['GameID', 'GameId', 'game_id', 'game_ID', 'ID', 'id']:
+                    if col in events_df.columns:
+                        game_id_col = col
+                        break
+
+                if game_id_col is not None:
+                    game_events = events_df[events_df[game_id_col].astype(str).str.strip() == target_gid]
+                    if not game_events.empty:
+                        return True
             except Exception:
                 pass
 
@@ -622,25 +630,15 @@ class DataService:
         
         # Parse dates and filter
         def parse_game_date(date_str):
-            """Parse various date formats"""
-            if pd.isna(date_str) or date_str == '':
+            """Parse various date formats using pandas to_datetime for maximum robustness"""
+            if pd.isna(date_str) or str(date_str).strip() == '':
                 return None
-            
-            # Try different date formats
-            date_formats = [
-                '%m/%d/%Y',    # MM/DD/YYYY
-                '%Y-%m-%d',    # YYYY-MM-DD
-                '%d/%m/%Y',    # DD/MM/YYYY
-                '%m-%d-%Y',    # MM-DD-YYYY
-                '%Y/%m/%d',    # YYYY/MM/DD
-            ]
-            
-            for fmt in date_formats:
-                try:
-                    parsed_date = datetime.strptime(str(date_str), fmt).date()
-                    return parsed_date
-                except ValueError:
-                    continue
+            try:
+                dt = pd.to_datetime(date_str, errors='coerce')
+                if pd.notna(dt):
+                    return dt.date()
+            except Exception:
+                pass
             
             print(f"WARNING: Could not parse date '{date_str}'. Treating as future game.")
             return None
@@ -1827,10 +1825,14 @@ class DataService:
             # Always work with a copy to avoid pandas warnings
             games = games.copy()
             
-            # Check if Result column already exists
+            # Check if Result column already exists with valid non-blank values
             if 'Result' in games.columns:
-                self.logger.debug("Result column already exists in games DataFrame")
-                return games
+                res_clean = games['Result'].fillna('').astype(str).str.strip().str.upper()
+                valid_mask = res_clean.isin(['W', 'L', 'T'])
+                # If all games with scores have a valid W/L/T result, return as-is
+                if valid_mask.sum() > 0 and (~valid_mask & ((games.get('GoalsFor', 0) > 0) | (games.get('GoalsAgainst', 0) > 0))).sum() == 0:
+                    self.logger.debug("Result column already contains valid W/L/T results")
+                    return games
             
             # Check if we can calculate it
             required_columns = ['GoalsFor', 'GoalsAgainst']
