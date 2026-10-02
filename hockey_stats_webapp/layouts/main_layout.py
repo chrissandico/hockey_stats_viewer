@@ -56,12 +56,28 @@ def create_main_layout(team_context=None):
     ])
 
 
-def _top_performer_item(label, entry, stat_key, signed=False):
-    name = format_player_label(entry['player'])
-    value = entry.get(stat_key, 0)
-    if signed:
-        value = f"+{value}" if value >= 0 else str(value)
-    return dbc.ListGroupItem([html.Strong(f"{label}: "), f"{name}  ({value})"])
+def _top_performer_item(label, entries, stat_key, signed=False, is_pct=False):
+    if not entries:
+        return None
+    if not isinstance(entries, list):
+        entries = [entries]
+
+    player_lis = []
+    for entry in entries:
+        name = format_player_label(entry['player'])
+        value = entry.get(stat_key, 0)
+        if is_pct:
+            val_str = f"{value:.1f}%"
+        elif signed:
+            val_str = f"+{value}" if value >= 0 else str(value)
+        else:
+            val_str = str(value)
+        player_lis.append(html.Li(f"{name} ({val_str})"))
+
+    return dbc.ListGroupItem([
+        html.Div(html.Strong(f"{label}:"), className="fw-bold mb-1"),
+        html.Ol(player_lis, className="mb-0 ps-3 small text-muted")
+    ])
 
 
 def _quick_card(title, desc, href):
@@ -284,32 +300,36 @@ def register_dashboard_callbacks(app, data_service):
             skaters = [p for p in leaderboard if p.get('player', {}).get('Position') != 'G']
 
             if skaters:
-                top_points = skaters[0]
-                top_goals = max(skaters, key=lambda p: p.get('goals', 0))
-                top_assists = max(skaters, key=lambda p: p.get('assists', 0))
-                items.append(_top_performer_item('Goals', top_goals, 'goals'))
-                items.append(_top_performer_item('Assists', top_assists, 'assists'))
-                items.append(_top_performer_item('Points', top_points, 'points'))
+                top_goals = sorted(skaters, key=lambda p: (p.get('goals', 0), p.get('points', 0)), reverse=True)[:3]
+                top_assists = sorted(skaters, key=lambda p: (p.get('assists', 0), p.get('points', 0)), reverse=True)[:3]
+                top_points = sorted(skaters, key=lambda p: (p.get('points', 0), p.get('goals', 0)), reverse=True)[:3]
+
+                if top_goals:
+                    items.append(_top_performer_item('Goals', top_goals, 'goals'))
+                if top_assists:
+                    items.append(_top_performer_item('Assists', top_assists, 'assists'))
+                if top_points:
+                    items.append(_top_performer_item('Points', top_points, 'points'))
 
                 if is_coach or not config.is_coaches_only_stat('plus_minus'):
                     defensemen = [p for p in skaters if p.get('player', {}).get('Position') == 'D']
                     if defensemen:
-                        top_plus_minus = max(defensemen, key=lambda p: p.get('plus_minus', 0))
-                        items.append(_top_performer_item(
-                            'Plus/Minus (D)', top_plus_minus, 'plus_minus', signed=True
-                        ))
+                        top_plus_minus = sorted(defensemen, key=lambda p: (p.get('plus_minus', 0), p.get('points', 0)), reverse=True)[:3]
+                        if top_plus_minus:
+                            items.append(_top_performer_item(
+                                'Plus/Minus (D)', top_plus_minus, 'plus_minus', signed=True
+                            ))
                 if is_coach:
-                    top_corsi = max(skaters, key=lambda p: p.get('on_ice_shot_share_pct', 0.0))
-                    if top_corsi and top_corsi.get('on_ice_shot_share_pct', 0.0) > 0:
-                        c_val = f"{top_corsi.get('on_ice_shot_share_pct', 0.0):.1f}%"
-                        c_name = format_player_label(top_corsi['player'])
-                        items.append(dbc.ListGroupItem([
-                            html.Strong("Shot Share Leader (Corsi): "),
-                            f"{c_name}  ({c_val})"
-                        ]))
+                    corsi_skaters = [p for p in skaters if p.get('on_ice_shot_share_pct', 0.0) > 0]
+                    if corsi_skaters:
+                        top_corsi = sorted(corsi_skaters, key=lambda p: p.get('on_ice_shot_share_pct', 0.0), reverse=True)[:3]
+                        if top_corsi:
+                            items.append(_top_performer_item(
+                                'Shot Share Leaders (Corsi)', top_corsi, 'on_ice_shot_share_pct', is_pct=True
+                            ))
 
             top_performers = dbc.Card(dbc.CardBody([
-                html.H6("Top Performers", className="text-muted mb-2"),
+                html.H6("Top Performers (All-time)", className="text-muted mb-2"),
                 dbc.ListGroup(items, flush=True),
             ])) if items else html.Div()
         except Exception:
