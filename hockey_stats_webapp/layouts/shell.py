@@ -39,8 +39,13 @@ def create_shell_header(team_context=None):
             dbc.NavbarToggler(id="navbar-toggler") if not is_parent else html.Div(),
             dbc.Collapse([
                 *nav_links,
-                dbc.Button("Logout", id="logout-button", size="sm",
-                           color="outline-light", className="ms-auto" if is_parent else "ms-3"),
+                html.Div([
+                    dbc.Button([
+                        html.I(className="fas fa-sync-alt me-1"),
+                        "Refresh"
+                    ], id="global-refresh-btn", size="sm", color="outline-light", className="me-2"),
+                    dbc.Button("Logout", id="logout-button", size="sm", color="outline-light"),
+                ], className="d-flex align-items-center ms-auto" if is_parent else "d-flex align-items-center ms-3"),
             ], id="navbar-collapse", navbar=True),
         ], fluid=True),
         dark=True, color="black", sticky="top", className="nhl-navbar mb-0",

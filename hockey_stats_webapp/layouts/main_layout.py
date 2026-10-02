@@ -4,7 +4,6 @@ import plotly.graph_objects as go
 from flask import session as flask_session
 from utils import format_player_label, resolve_game_type
 import config
-from components.unified_filter_bar import create_unified_filter_bar
 
 
 def create_main_layout(team_context=None):
@@ -20,9 +19,6 @@ def create_main_layout(team_context=None):
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
                 html.P("Season Dashboard & Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
-
-            # Filter & Refresh Bar
-            create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
 
             dcc.Loading(html.Div([
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
