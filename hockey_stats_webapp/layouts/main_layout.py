@@ -33,6 +33,9 @@ def create_main_layout(team_context=None):
                 html.Div([
                     html.H3("Team Leaderboards", className="fw-bold mb-3"),
                     dbc.Tabs([
+                        dbc.Tab(label="All", tab_id="all",
+                                label_style={"fontWeight": "600", "fontSize": "15px"},
+                                active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
                         dbc.Tab(label="Forwards", tab_id="forwards",
                                 label_style={"fontWeight": "600", "fontSize": "15px"},
                                 active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
@@ -42,7 +45,7 @@ def create_main_layout(team_context=None):
                         dbc.Tab(label="Goalies",  tab_id="goalies",
                                 label_style={"fontWeight": "600", "fontSize": "15px"},
                                 active_label_style={"fontWeight": "700", "fontSize": "15px", "color": "#0042bb"}),
-                    ], id='dashboard-position-tabs', active_tab="forwards", className="mb-3 border-bottom border-2"),
+                    ], id='dashboard-position-tabs', active_tab="all", className="mb-3 border-bottom border-2"),
                     html.Div(id='dashboard-leaderboards-container', className="mb-4"),
                 ]),
             ])),
@@ -120,7 +123,7 @@ def register_dashboard_callbacks(app, data_service):
             force_summary_refresh = True
 
         if not active_tab:
-            active_tab = "forwards"
+            active_tab = "all"
 
         # Show all games (Regular Season, Tournament, Playoffs)
         game_type = None
@@ -360,9 +363,26 @@ def register_dashboard_callbacks(app, data_service):
                     'SV%': f"{stats['save_percentage']:.3f}",
                     'GAA': f"{stats['gaa']:.2f}",
                 } for stats in goalies_leaders]
+                tab_title_text = "Goalies"
             else:
-                pos_code = 'F' if active_tab == "forwards" else 'D'
-                stat_sort = ('points' if pos_code == 'F' else ('plus_minus' if is_coach else 'points')) if is_coach else 'jersey_number'
+                if active_tab == "all":
+                    pos_code = 'all'
+                    tab_title_text = "All Players"
+                elif active_tab == "forwards":
+                    pos_code = 'F'
+                    tab_title_text = "Forwards"
+                else:
+                    pos_code = 'D'
+                    tab_title_text = "Defense"
+
+                if is_coach:
+                    if active_tab == "defense":
+                        stat_sort = 'plus_minus'
+                    else:
+                        stat_sort = 'points'
+                else:
+                    stat_sort = 'jersey_number'
+
                 pos_leaders = data_service.get_team_leaderboard(
                     stat=stat_sort,
                     position=pos_code,
@@ -371,6 +391,7 @@ def register_dashboard_callbacks(app, data_service):
                 )
                 table_columns = [
                     {'name': 'Player', 'id': 'Player', 'type': 'text'},
+                    *([{'name': 'Pos', 'id': 'Position', 'type': 'text'}] if active_tab == "all" else []),
                     {'name': 'G', 'id': 'Goals', 'type': 'numeric'},
                     {'name': 'A', 'id': 'Assists', 'type': 'numeric'},
                     {'name': 'P', 'id': 'Points', 'type': 'numeric'},
@@ -383,6 +404,7 @@ def register_dashboard_callbacks(app, data_service):
                 ]
                 table_data = [{
                     'Player': format_player_label(stats['player']),
+                    **({'Position': stats['player'].get('Position', '')} if active_tab == "all" else {}),
                     'Goals': stats['goals'],
                     'Assists': stats['assists'],
                     'Points': stats['points'],
@@ -396,25 +418,72 @@ def register_dashboard_callbacks(app, data_service):
 
             if not table_data:
                 leaderboard_body = html.P(
-                    f"No {active_tab} players found.",
+                    f"No {tab_title_text.lower()} found.",
                     className="text-muted text-center py-3"
                 )
             else:
-                leaderboard_body = dash_table.DataTable(
+                table_component = dash_table.DataTable(
                     id='dashboard-position-leaderboard-table',
                     columns=table_columns,
                     data=table_data,
                     style_table={'overflowX': 'auto'},
-                    style_cell={'textAlign': 'center', 'padding': '10px', 'minWidth': '80px'},
-                    style_cell_conditional=[{'if': {'column_id': 'Player'}, 'textAlign': 'left'}],
-                    style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
-                    style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}],
+                    style_cell={
+                        'textAlign': 'center',
+                        'padding': '12px 8px',
+                        'minWidth': '55px',
+                        'fontSize': '14px',
+                        'fontFamily': 'inherit',
+                    },
+                    style_cell_conditional=[
+                        {'if': {'column_id': 'Player'}, 'textAlign': 'left', 'minWidth': '120px'},
+                        {'if': {'column_id': 'Position'}, 'minWidth': '50px'},
+                    ],
+                    style_header={
+                        'backgroundColor': '#f8f9fa',
+                        'fontWeight': 'bold',
+                        'fontSize': '14px',
+                        'height': '46px',
+                        'cursor': 'pointer',
+                        'userSelect': 'none',
+                        'padding': '10px 6px',
+                    },
+                    style_data_conditional=[
+                        {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}
+                    ],
                     sort_action='native',
                     sort_mode='single',
                 )
 
+                # Add SF% explanation if coach mode is active and not on goalies tab
+                sf_explanation = []
+                if is_coach and active_tab != "goalies":
+                    sf_explanation.append(
+                        html.Div([
+                            html.Div([
+                                html.Span("📊 About SF% (Shot Share %): ", className="fw-bold text-dark"),
+                                "Calculated as ",
+                                html.Code("SF / (SF + SA) × 100%", className="bg-white text-dark px-2 py-0.5 rounded border border-1 fw-bold"),
+                                "."
+                            ], className="mb-1"),
+                            html.Div([
+                                "SF% measures the percentage of total on-ice shot attempts taken by your team vs. opponent while this player is on the ice. ",
+                                html.Span("A value above 50% indicates your team controlled play and generated more shot opportunities than they allowed.", className="fw-semibold text-primary")
+                            ], className="text-muted small")
+                        ], className="mt-3 p-3 rounded bg-light border border-1")
+                    )
+
+                leaderboard_body = html.Div([
+                    html.Div(
+                        "💡 Tap column headers to sort table",
+                        className="text-muted small text-end mb-2 fw-semibold",
+                        style={'fontSize': '12px'}
+                    ),
+                    table_component,
+                    *sf_explanation
+                ])
+
             leaderboard_card = dbc.Card([
-                dbc.CardHeader(html.H5(f"Roster Leaderboard — {active_tab.title()}", className="card-title mb-0")),
+                dbc.CardHeader(html.H5(f"Roster Leaderboard — {tab_title_text}", className="card-title mb-0")),
                 dbc.CardBody([leaderboard_body])
             ], className="mb-4 shadow-sm")
 

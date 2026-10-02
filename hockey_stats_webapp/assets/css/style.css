@@ -403,13 +403,53 @@ body {
 
 /* DataTable Styles */
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
-    background-color: #f1f1f1;
+    background-color: #f1f3f5;
     font-weight: bold;
     text-align: center;
 }
 
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td {
     text-align: center;
+}
+
+/* Touch-Friendly Table Header & Sort Controls */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th.dash-header {
+    cursor: pointer !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    touch-action: manipulation !important;
+    padding: 12px 6px !important;
+    min-height: 48px !important;
+    position: relative;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th.dash-header:hover,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th.dash-header:active {
+    background-color: #e2e8f0 !important;
+}
+
+/* Prominent & Easy-to-Tap Sort Indicators */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th .column-header--sort {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: #0042bb !important;
+    margin-left: 4px !important;
+    padding: 2px 4px !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+}
+
+@media (max-width: 768px) {
+    .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th.dash-header {
+        padding: 14px 6px !important;
+        font-size: 14px !important;
+    }
+
+    .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th .column-header--sort {
+        font-size: 18px !important;
+        margin-left: 6px !important;
+    }
 }
 
 /* Login Page Styles */

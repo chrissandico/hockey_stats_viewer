@@ -3715,7 +3715,17 @@ class DataService:
         
         # Filter by position if specified
         if position:
-            players = players[players['Position'] == position]
+            if isinstance(position, (list, tuple, set)):
+                players = players[players['Position'].isin(position)]
+            elif isinstance(position, str):
+                pos_lower = position.lower().strip()
+                if pos_lower in ('all', 'skaters', 'f,d', 'd,f'):
+                    players = players[players['Position'] != 'G']
+                elif ',' in position:
+                    pos_list = [p.strip() for p in position.split(',')]
+                    players = players[players['Position'].isin(pos_list)]
+                else:
+                    players = players[players['Position'] == position]
         
         # Calculate stats for each player - use appropriate method based on position
         player_stats = []
