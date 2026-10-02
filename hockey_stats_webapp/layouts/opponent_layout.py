@@ -8,7 +8,6 @@ from flask import session
 import pandas as pd
 import logging
 import plotly.graph_objects as go
-from components.unified_filter_bar import create_unified_filter_bar
 from utils import format_player_label, resolve_game_type
 import config
 
@@ -49,11 +48,14 @@ def create_opponent_layout(data_service, team_context=None):
         # Title
         html.H1("vs. Opponents Performance", className="text-center mt-4 mb-4"),
 
-        # Unified filter bar with opponent selection
-        create_unified_filter_bar(
-            screen_specific_controls=opponent_dropdown,
-            show_recent_games=False
-        ),
+        # Opponent selection
+        dbc.Container([
+            dbc.Row([
+                dbc.Col([
+                    opponent_dropdown
+                ], xs=12, sm=8, md=6, className="mx-auto")
+            ])
+        ], className="mb-4"),
 
         # Store for opponent selection
         dcc.Store(id='opponent-selection-store', storage_type='session'),
@@ -514,6 +516,12 @@ def register_opponent_callbacks(app, data_service):
 
         # Always show all games
         game_type = None
+
+        # Check if refresh button triggered the callback
+        ctx = dash.callback_context
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+        if triggered_id == 'global-refresh-btn':
+            data_service.force_refresh_all_data()
 
         # Cache management (track previous values)
         previous_game_type = session.get('opponent_previous_game_type')

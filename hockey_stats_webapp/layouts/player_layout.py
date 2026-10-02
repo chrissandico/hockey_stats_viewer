@@ -5,7 +5,6 @@ import pandas as pd
 import logging
 import json
 import plotly.graph_objects as go
-from components.unified_filter_bar import create_unified_filter_bar
 from utils import format_player_label, resolve_game_type
 import config
 
@@ -82,9 +81,8 @@ def create_player_layout(data_service, team_context=None):
     return html.Div([
         dcc.Store(id='player-selected-store'),
         html.Div(id='player-scroll-dummy', style={'display': 'none'}),
-        create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
         dbc.Container([
-            html.H1("Players", className="fw-bold mb-4"),
+            html.H1("Players", className="fw-bold mb-4 pt-3"),
             roster_grid,
             html.Hr(className="my-4"),
             dcc.Loading(html.Div([

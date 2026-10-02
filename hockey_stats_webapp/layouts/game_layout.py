@@ -7,7 +7,6 @@ import logging
 from flask import session as flask_session
 import config
 from utils import format_player_label, resolve_game_type
-from components.unified_filter_bar import create_unified_filter_bar
 from services.ai_summary_service import AISummaryService
 
 logger = logging.getLogger(__name__)
@@ -27,9 +26,8 @@ def create_game_layout(data_service, team_context=None):
     """
     return html.Div([
         dcc.Store(id='game-selected-store'),
-        create_unified_filter_bar(screen_specific_controls=None, show_recent_games=False),
         dbc.Container([
-            html.H1("Game Log", className="fw-bold mb-4"),
+            html.H1("Game Log", className="fw-bold mb-4 pt-3"),
             dcc.Loading(html.Div(id='game-list-container', className="mb-4")),
             html.Div(id='game-detail-container'),
         ], fluid=True),

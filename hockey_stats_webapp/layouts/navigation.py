@@ -31,8 +31,14 @@ def create_navigation():
                 is_open=False,
             ),
 
-            # Logout button
-            dbc.NavItem(dbc.Button("Logout", id="logout-button", className="nhl-navbar-logout ms-2")),
+            # Action buttons
+            html.Div([
+                dbc.Button([
+                    html.I(className="fas fa-sync-alt me-1"),
+                    "Refresh"
+                ], id="global-refresh-btn", size="sm", color="outline-light", className="me-2"),
+                dbc.Button("Logout", id="logout-button", size="sm", color="outline-light", className="nhl-navbar-logout"),
+            ], className="d-flex align-items-center ms-2"),
         ], fluid=True),
         dark=True,
         className="nhl-navbar mb-0",
