@@ -226,6 +226,9 @@ def register_dashboard_callbacks(app, data_service):
                     pp_sub = f"R: {r_pp} · T: {t_pp} · P: {p_pp}"
                     pk_sub = f"R: {r_pk} · T: {t_pk} · P: {p_pk}"
 
+                    pp_count_suffix = f" ({st_stats.get('pp_goals', 0)}/{pp_opps} PPG)" if pp_opps > 0 else ""
+                    pk_count_suffix = f" ({st_stats.get('pk_successes', 0)}/{pk_opps} Kills)" if pk_opps > 0 else ""
+
                     st_kpi = dbc.Row([
                         dbc.Col(html.Div([
                             html.Div(st_index_display, className="kpi-value text-primary"),
@@ -234,12 +237,12 @@ def register_dashboard_callbacks(app, data_service):
                         ], className="kpi-tile border-primary"), xs=12, md=4),
                         dbc.Col(html.Div([
                             html.Div(pp_pct, className="kpi-value text-success"),
-                            html.Div(f"Power Play (PP%) {f'({st_stats.get(\"pp_goals\", 0)}/{pp_opps} PPG)' if pp_opps > 0 else ''}", className="kpi-label"),
+                            html.Div(f"Power Play (PP%){pp_count_suffix}", className="kpi-label"),
                             html.Div(pp_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                         dbc.Col(html.Div([
                             html.Div(pk_pct, className="kpi-value text-danger"),
-                            html.Div(f"Penalty Kill (PK%) {f'({st_stats.get(\"pk_successes\", 0)}/{pk_opps} Kills)' if pk_opps > 0 else ''}", className="kpi-label"),
+                            html.Div(f"Penalty Kill (PK%){pk_count_suffix}", className="kpi-label"),
                             html.Div(pk_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                     ], className="g-2 justify-content-center mt-2")
