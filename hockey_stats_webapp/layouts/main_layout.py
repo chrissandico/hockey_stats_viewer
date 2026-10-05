@@ -134,30 +134,55 @@ def register_dashboard_callbacks(app, data_service):
         try:
             stats = data_service.calculate_team_stats(team_id, game_type=game_type)
             win_pct = f"{stats['win_percentage']:.0%}"
+
+            # Calculate sub-breakdowns by game type (R = Regular, T = Tournament, P = Playoffs)
+            r_stats = data_service.calculate_team_stats(team_id, game_type='R')
+            t_stats = data_service.calculate_team_stats(team_id, game_type='T')
+            p_stats = data_service.calculate_team_stats(team_id, game_type='P')
+
+            r_win_pct = f"{r_stats['win_percentage']:.0%}" if r_stats['games_played'] > 0 else "N/A"
+            t_win_pct = f"{t_stats['win_percentage']:.0%}" if t_stats['games_played'] > 0 else "N/A"
+            p_win_pct = f"{p_stats['win_percentage']:.0%}" if p_stats['games_played'] > 0 else "N/A"
+
+            wins_sub = f"R: {r_stats['wins']} · T: {t_stats['wins']} · P: {p_stats['wins']}"
+            losses_sub = f"R: {r_stats['losses']} · T: {t_stats['losses']} · P: {p_stats['losses']}"
+            ties_sub = f"R: {r_stats['ties']} · T: {t_stats['ties']} · P: {p_stats['ties']}"
+            win_pct_sub = f"R: {r_win_pct} · T: {t_win_pct} · P: {p_win_pct}"
+            gf_sub = f"R: {r_stats['goals_for']} · T: {t_stats['goals_for']} · P: {p_stats['goals_for']}"
+            ga_sub = f"R: {r_stats['goals_against']} · T: {t_stats['goals_against']} · P: {p_stats['goals_against']}"
+
+            sub_style = {"fontSize": "0.75rem", "color": "#6c757d", "marginTop": "2px"}
+
             kpi_row = dbc.Row([
                 dbc.Col(html.Div([
-                    html.Div(str(stats['wins']),         className="kpi-value"),
-                    html.Div("Wins",                     className="kpi-label"),
+                    html.Div(str(stats['wins']), className="kpi-value"),
+                    html.Div("Wins", className="kpi-label"),
+                    html.Div(wins_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
-                    html.Div(str(stats['losses']),       className="kpi-value"),
-                    html.Div("Losses",                   className="kpi-label"),
+                    html.Div(str(stats['losses']), className="kpi-value"),
+                    html.Div("Losses", className="kpi-label"),
+                    html.Div(losses_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
-                    html.Div(str(stats['ties']),         className="kpi-value"),
-                    html.Div("Ties",                     className="kpi-label"),
+                    html.Div(str(stats['ties']), className="kpi-value"),
+                    html.Div("Ties", className="kpi-label"),
+                    html.Div(ties_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
-                    html.Div(win_pct,                    className="kpi-value"),
-                    html.Div("Win %",                    className="kpi-label"),
+                    html.Div(win_pct, className="kpi-value"),
+                    html.Div("Win %", className="kpi-label"),
+                    html.Div(win_pct_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
-                    html.Div(str(stats['goals_for']),    className="kpi-value"),
-                    html.Div("Goals For",                className="kpi-label"),
+                    html.Div(str(stats['goals_for']), className="kpi-value"),
+                    html.Div("Goals For", className="kpi-label"),
+                    html.Div(gf_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(str(stats['goals_against']), className="kpi-value"),
-                    html.Div("Goals Against",            className="kpi-label"),
+                    html.Div("Goals Against", className="kpi-label"),
+                    html.Div(ga_sub, style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
             ], className="g-2 justify-content-center")
 
@@ -179,18 +204,43 @@ def register_dashboard_callbacks(app, data_service):
                     else:
                         st_index_display = "N/A"
 
+                    # Special teams sub-breakdowns
+                    r_st = data_service.calculate_special_teams_stats(team_id, game_type='R')
+                    t_st = data_service.calculate_special_teams_stats(team_id, game_type='T')
+                    p_st = data_service.calculate_special_teams_stats(team_id, game_type='P')
+
+                    r_pp = f"{r_st.get('pp_percentage', 0.0):.1f}%" if r_st.get('pp_opportunities', 0) > 0 else "N/A"
+                    t_pp = f"{t_st.get('pp_percentage', 0.0):.1f}%" if t_st.get('pp_opportunities', 0) > 0 else "N/A"
+                    p_pp = f"{p_st.get('pp_percentage', 0.0):.1f}%" if p_st.get('pp_opportunities', 0) > 0 else "N/A"
+
+                    r_pk = f"{r_st.get('pk_percentage', 0.0):.1f}%" if r_st.get('pk_opportunities', 0) > 0 else "N/A"
+                    t_pk = f"{t_st.get('pk_percentage', 0.0):.1f}%" if t_st.get('pk_opportunities', 0) > 0 else "N/A"
+                    p_pk = f"{p_st.get('pk_percentage', 0.0):.1f}%" if p_st.get('pk_opportunities', 0) > 0 else "N/A"
+
+                    def format_st_index(st):
+                        if st.get('pp_opportunities', 0) > 0 or st.get('pk_opportunities', 0) > 0:
+                            return f"{st.get('combined_st_index', 0.0):.1f}%"
+                        return "N/A"
+
+                    st_index_sub = f"R: {format_st_index(r_st)} · T: {format_st_index(t_st)} · P: {format_st_index(p_st)}"
+                    pp_sub = f"R: {r_pp} · T: {t_pp} · P: {p_pp}"
+                    pk_sub = f"R: {r_pk} · T: {t_pk} · P: {p_pk}"
+
                     st_kpi = dbc.Row([
                         dbc.Col(html.Div([
                             html.Div(st_index_display, className="kpi-value text-primary"),
                             html.Div("ST Index (PP% + PK%)", className="kpi-label"),
+                            html.Div(st_index_sub, style=sub_style),
                         ], className="kpi-tile border-primary"), xs=12, md=4),
                         dbc.Col(html.Div([
                             html.Div(pp_pct, className="kpi-value text-success"),
                             html.Div(f"Power Play (PP%) {f'({st_stats.get(\"pp_goals\", 0)}/{pp_opps} PPG)' if pp_opps > 0 else ''}", className="kpi-label"),
+                            html.Div(pp_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                         dbc.Col(html.Div([
                             html.Div(pk_pct, className="kpi-value text-danger"),
                             html.Div(f"Penalty Kill (PK%) {f'({st_stats.get(\"pk_successes\", 0)}/{pk_opps} Kills)' if pk_opps > 0 else ''}", className="kpi-label"),
+                            html.Div(pk_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                     ], className="g-2 justify-content-center mt-2")
 
