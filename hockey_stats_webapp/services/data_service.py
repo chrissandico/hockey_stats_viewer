@@ -3112,35 +3112,36 @@ class DataService:
 
         is_shot_event = events['EventType'].isin(['Shot', 'Goal']) | (events.get('IsGoal', False) == True) if 'EventType' in events.columns else events['IsGoal'] == True
 
-        # PP Goals
+        # 1. PP Goals (Your team scores on Power Play)
         pp_goals_mask = (events['IsGoal'] == True) & is_your_team & is_pp_mask
         pp_goals = len(events[pp_goals_mask])
 
-        # PP Shots
+        # 2. PP Shots
         pp_shots_mask = is_your_team & is_pp_mask & is_shot_event
         pp_shots = len(events[pp_shots_mask])
 
-        # Opponent Penalties (Raw PP Opps)
+        # 3. Opponent Penalties (Raw PP Opportunities)
         raw_pp_opps = len(events[(events['EventType'] == 'Penalty') & is_opponent])
         pp_opps = max(raw_pp_opps, pp_goals)
 
-        # PK Goals Conceded (PPGA: Opponent PP goals scored while we are short-handed)
-        pk_goals_conceded_mask = (events['IsGoal'] == True) & is_opponent & (is_pp_mask | is_pk_mask)
+        # 4. PK Goals Conceded (Opponent scores while your team is on Penalty Kill)
+        pk_goals_conceded_mask = (events['IsGoal'] == True) & is_opponent & is_pk_mask
         pk_goals_conceded = len(events[pk_goals_conceded_mask])
 
-        # Opponent PP Shots (Shots allowed while short-handed)
-        pk_shots_allowed_mask = is_opponent & (is_pp_mask | is_pk_mask) & is_shot_event
+        # 5. Opponent Shots Allowed on PK
+        pk_shots_allowed_mask = is_opponent & is_pk_mask & is_shot_event
         pk_shots_allowed = len(events[pk_shots_allowed_mask])
 
-        # Our Penalties (Raw PK Opps)
+        # 6. Our Penalties (Raw PK Opportunities)
         raw_pk_opps = len(events[(events['EventType'] == 'Penalty') & is_your_team])
         pk_opps = max(raw_pk_opps, pk_goals_conceded)
 
-        # Short-handed goals
+        # 7. Short-Handed Goals For (Your team scores while on Penalty Kill)
         sh_goals_for_mask = (events['IsGoal'] == True) & is_your_team & is_pk_mask
         sh_goals_for = len(events[sh_goals_for_mask])
 
-        sh_goals_against_mask = (events['IsGoal'] == True) & is_opponent & is_pk_mask
+        # 8. Short-Handed Goals Against (Opponent scores while your team is on Power Play)
+        sh_goals_against_mask = (events['IsGoal'] == True) & is_opponent & is_pp_mask
         sh_goals_against = len(events[sh_goals_against_mask])
 
         # Calculations
@@ -3151,6 +3152,7 @@ class DataService:
         pk_pct = round((pk_successes / pk_opps * 100.0), 1) if pk_opps > 0 else 100.0
         pk_shots_allowed_per_opp = round((pk_shots_allowed / pk_opps), 1) if pk_opps > 0 else 0.0
 
+        # No more double-counting!
         net_st_goals = (pp_goals + sh_goals_for) - (pk_goals_conceded + sh_goals_against)
         combined_st_index = round((pp_pct + pk_pct), 1)
         net_penalties = raw_pp_opps - raw_pk_opps

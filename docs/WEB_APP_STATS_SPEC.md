@@ -57,7 +57,7 @@ $$\text{SA/PK} = \frac{\text{Opponent PP Shots}}{\text{PK Opportunities}}$$
 ### ⚖️ Net Special Teams Goals
 $$\text{Net ST Goals} = (\text{PPG} + \text{SHGF}) - (\text{PPGA} + \text{SHGA})$$
 - **SHGF** (Short-Handed Goals For): Goals where `Team == 'your_team'` and `GoalSituation == 'Penalty Kill'`.
-- **SHGA** (Short-Handed Goals Allowed): Goals where `Team == 'opponent'` and `GoalSituation == 'Penalty Kill'`.
+- **SHGA** (Short-Handed Goals Allowed): Goals where `Team == 'opponent'` and `GoalSituation == 'Power Play'`.
 
 ### 📊 Combined Special Teams Index (100% Benchmark)
 $$\text{ST Index} = \text{PP\%} + \text{PK\%}$$
@@ -149,10 +149,10 @@ export function calculateSpecialTeamsStats(events: EventRow[], teamId = 'your_te
       if (event.isGoal) {
         if (event.goalSituation === 'Power Play') {
           if (isYourTeam) ppGoals++;
-          else pkGoalsConceded++;
+          else shGoalsAgainst++; // Opponent scores while your team is on Power Play
         } else if (event.goalSituation === 'Penalty Kill') {
           if (isYourTeam) shGoalsFor++;
-          else shGoalsAgainst++;
+          else pkGoalsConceded++; // Opponent scores while your team is on Penalty Kill
         }
       }
 
