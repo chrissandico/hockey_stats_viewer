@@ -986,11 +986,15 @@ class DataService:
             if team_id is not None and (not isinstance(team_id, str) or team_id.strip() == ''):
                 self.logger.error(f"Invalid team_id parameter: '{team_id}'. Must be a non-empty string or None.")
                 return pd.DataFrame()
-            
-            if game_type is not None and game_type not in ['R', 'T', 'P']:
-                self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'R', 'T', 'P', or None.")
-                return pd.DataFrame()
-            
+
+            # Normalize game_type
+            if game_type is not None and isinstance(game_type, str) and game_type.strip().upper() in ['ALL', 'NONE', '']:
+                game_type = None
+
+            if game_type is not None and game_type not in ['R', 'T', 'P', 'E']:
+                self.logger.warning(f"Unrecognized game_type parameter: '{game_type}'. Defaulting to None (all games).")
+                game_type = None
+
             # Create a cache key based on team_id and game_type
             cache_key = f"games_{team_id}_{game_type}" if team_id or game_type else "games_all"
             
@@ -3069,6 +3073,10 @@ class DataService:
         if events is None or events.empty:
             return self._empty_special_teams_summary()
 
+        # Normalize game_type
+        if game_type is not None and isinstance(game_type, str) and game_type.strip().upper() in ['ALL', 'NONE', '']:
+            game_type = None
+
         # Filter events by game_id if provided
         if game_id is not None:
             try:
@@ -3097,8 +3105,12 @@ class DataService:
 
         team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
 
-        is_your_team = events['Team'] == team_identifier
-        is_opponent = events['Team'] != team_identifier
+        valid_team_ids = {str(team_identifier).lower(), 'your_team'}
+        if team_id:
+            valid_team_ids.add(str(team_id).lower())
+
+        is_your_team = events['Team'].astype(str).str.lower().isin(valid_team_ids)
+        is_opponent = ~is_your_team
 
         # Vectorized situation flags for maximum speed
         sit_col = events['GoalSituation'].astype(str) if 'GoalSituation' in events.columns else pd.Series('', index=events.index)
@@ -3152,9 +3164,16 @@ class DataService:
         pk_pct = round((pk_successes / pk_opps * 100.0), 1) if pk_opps > 0 else 100.0
         pk_shots_allowed_per_opp = round((pk_shots_allowed / pk_opps), 1) if pk_opps > 0 else 0.0
 
-        # No more double-counting!
+        if pp_opps > 0 and pk_opps > 0:
+            combined_st_index = round(pp_pct + pk_pct, 1)
+        elif pp_opps > 0:
+            combined_st_index = round(pp_pct, 1)
+        elif pk_opps > 0:
+            combined_st_index = round(pk_pct, 1)
+        else:
+            combined_st_index = 0.0
+
         net_st_goals = (pp_goals + sh_goals_for) - (pk_goals_conceded + sh_goals_against)
-        combined_st_index = round((pp_pct + pk_pct), 1)
         net_penalties = raw_pp_opps - raw_pk_opps
 
         return {
