@@ -350,6 +350,24 @@ class DataService:
             import config
             return config.get_primary_team_identifier()
     
+    def _opponent_mask(self, events, team_identifier):
+        """Boolean mask for events attributable to the opponent.
+
+        Rows with blank/NaN/mistyped Team values are excluded from the
+        "against" side instead of being counted as opponent events.
+        """
+        if 'Team' not in events.columns:
+            return pd.Series(False, index=events.index)
+        is_opponent = events['Team'] != team_identifier
+        team_missing = events['Team'].isna() | (events['Team'].astype(str).str.strip() == '')
+        excluded = is_opponent & team_missing
+        if excluded.any():
+            self.logger.warning(
+                f"Excluding {int(excluded.sum())} events with blank/missing Team from opponent mask "
+                f"(team_identifier='{team_identifier}')"
+            )
+        return is_opponent & ~team_missing
+
     def _auto_detect_team_identifier(self):
         """Auto-detect the primary team identifier from events data."""
         try:
@@ -784,7 +802,7 @@ class DataService:
                 goals_for = len(game_events[goals_for_mask])
                 
                 # Calculate goals against the team
-                goals_against_mask = (game_events['IsGoal'] == True) & (game_events['Team'] != team_identifier)
+                goals_against_mask = (game_events['IsGoal'] == True) & self._opponent_mask(game_events, team_identifier)
                 goals_against = len(game_events[goals_against_mask])
                 
                 # Debug the mask results
@@ -2205,6 +2223,23 @@ class DataService:
         print(f"Final plus/minus for player {player_id}: {plus_minus}")
         return plus_minus
 
+    @staticmethod
+    def _player_in_on_ice_list(players_str, pid):
+        """Exact-membership check for a comma-separated on-ice player list.
+
+        Unlike a substring search, this does not credit player "12" for on-ice
+        lists containing "112" or "120". Mirrors the plus/minus helper.
+        """
+        if not players_str or pd.isna(players_str):
+            return False
+        if isinstance(players_str, str):
+            try:
+                players_list = [p for p in players_str.strip('[]').replace(' ', '').split(',') if p]
+                return str(pid) in players_list
+            except Exception:
+                return False
+        return False
+
     def calculate_player_corsi_for_events(self, player_id, events, team_identifier):
         """
         Calculate Corsi (On-Ice Shots For / Against / Share) for a player based on events.
@@ -2241,12 +2276,14 @@ class DataService:
                 'shot_share_pct': 0.0
             }
 
-        # Check on-ice players using vectorized string search on pre-filtered shot events
+        # Check on-ice players with exact list membership (a substring search would
+        # credit player "12" for on-ice lists containing "112" or "120")
         pid_str = str(player_id)
         has_on_ice_col = 'YourTeamPlayersOnIce' in shot_events.columns
 
         if has_on_ice_col:
-            on_ice_mask = shot_events['YourTeamPlayersOnIce'].astype(str).str.contains(pid_str, regex=False, na=False)
+            on_ice_mask = shot_events['YourTeamPlayersOnIce'].apply(
+                lambda x: self._player_in_on_ice_list(x, pid_str))
         else:
             on_ice_mask = pd.Series(False, index=shot_events.index)
 
@@ -2847,7 +2884,7 @@ class DataService:
         
         # Use the team_id parameter for proper team identification
         if team_id is not None:
-            your_team = team_id  # Use team_id directly for event filtering
+            your_team = self._get_team_identifier_for_events(team_id)  # Map team_id to events identifier
             print(f"Using team identifier: '{your_team}' for team ID: '{team_id}'")
         else:
             # For backward compatibility, try to get the first team or use fallback
@@ -3098,7 +3135,7 @@ class DataService:
         team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
 
         is_your_team = events['Team'] == team_identifier
-        is_opponent = events['Team'] != team_identifier
+        is_opponent = self._opponent_mask(events, team_identifier)
 
         # Vectorized situation flags for maximum speed
         sit_col = events['GoalSituation'].astype(str) if 'GoalSituation' in events.columns else pd.Series('', index=events.index)
@@ -3591,10 +3628,10 @@ class DataService:
             losses = len(goalie_games[goalie_games['Result'] == 'L'])
             ties = len(goalie_games[goalie_games['Result'] == 'T'])
 
-            # Get goalie-specific events
+            # Get goalie-specific events (events are already filtered to these games above)
             goalie_events = events[
                 (events['GoalieOnIceId'] == goalie_id) |
-                (events['GameID'].isin(game_ids))  # Fallback to all events in these games
+                (events['GoalieOnIceId'].isna())  # Backward compat when GoalieOnIceId not logged
             ]
 
             # Count goals against (goals by opposing team)
@@ -3604,17 +3641,23 @@ class DataService:
             ]
             goals_against = len(goals_against_events)
 
-            # Count shots against
-            shots_against = len(goalie_events[goalie_events['Team'] != team_identifier])
+            # Count shots against (shots and goals only — exclude penalties and other event types)
+            opponent_events = goalie_events[goalie_events['Team'] != team_identifier]
+            if 'EventType' in opponent_events.columns:
+                shot_like = opponent_events[
+                    opponent_events['EventType'].isin(['Shot', 'Goal']) |
+                    (opponent_events['IsGoal'] == True)
+                ]
+            else:
+                shot_like = opponent_events[opponent_events['IsGoal'] == True]
+            shots_against = len(shot_like)
 
             # Calculate saves and save percentage
             saves = shots_against - goals_against
             save_percentage = saves / shots_against if shots_against > 0 else 0.0
 
-            # Calculate GAA (goals against average)
-            # Assuming regulation game length from config
-            regulation_length = 36  # minutes (3 periods x 12 minutes)
-            gaa = (goals_against / games_played) * regulation_length if games_played > 0 else 0.0
+            # Calculate GAA (goals against average) — per game, matching calculate_goalie_stats
+            gaa = goals_against / games_played if games_played > 0 else 0.0
 
             # Count shutouts
             shutouts = 0
@@ -3850,7 +3893,7 @@ class DataService:
         
         # Use the team_id parameter for proper team identification
         if team_id is not None:
-            your_team = team_id  # Use team_id directly for event filtering
+            your_team = self._get_team_identifier_for_events(team_id)  # Map team_id to events identifier
             print(f"Using team identifier: '{your_team}' for team ID: '{team_id}'")
         else:
             # For backward compatibility, try to get the first team or use fallback
@@ -4095,13 +4138,13 @@ class DataService:
         your_team_shots = len(game_events[(game_events['EventType'].isin(['Goal', 'Shot'])) & 
                                          (game_events['Team'] == team_identifier)])
         opponent_shots = len(game_events[(game_events['EventType'].isin(['Goal', 'Shot'])) & 
-                                        (game_events['Team'] != team_identifier)])
+                                        self._opponent_mask(game_events, team_identifier)])
         
         # Calculate penalty minutes with proper team identification
         your_team_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
                                          (game_events['Team'] == team_identifier)]
         opponent_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
-                                        (game_events['Team'] != team_identifier)]
+                                        self._opponent_mask(game_events, team_identifier)]
         
         your_team_pim = your_team_penalties['PenaltyDuration'].sum() if not your_team_penalties.empty else 0
         opponent_pim = opponent_penalties['PenaltyDuration'].sum() if not opponent_penalties.empty else 0
@@ -4111,22 +4154,21 @@ class DataService:
                                            (game_events['Team'] == team_identifier) & 
                                            (game_events.get('IsPowerPlay', False) == True)])
         opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                          (game_events['Team'] != team_identifier) & 
+                                          self._opponent_mask(game_events, team_identifier) & 
                                           (game_events.get('IsPowerPlay', False) == True)])
         print(f"Using IsGoal column for power play goals in game {game_id}")
         
-        # If IsPowerPlay column doesn't exist, try to estimate power play goals
-        if your_team_pp_goals == 0 and opponent_pp_goals == 0:
-            # Check if there are penalties in the game
-            if not your_team_penalties.empty or not opponent_penalties.empty:
-                # Estimate power play goals based on timing of goals and penalties
-                # This is a simplified approach - in a real app, you'd need more detailed logic
-                your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                                   (game_events['Team'] == team_identifier) & 
-                                                   (~game_events.get('IsShortHanded', False))])
-                opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                                  (game_events['Team'] != team_identifier) & 
-                                                  (~game_events.get('IsShortHanded', False))])
+        # Only estimate power play goals when the IsPowerPlay column is actually missing.
+        # A 0-pp-goals night with penalties taken is a legitimate outcome, not missing data.
+        if 'IsPowerPlay' not in game_events.columns:
+            if 'GoalSituation' in game_events.columns:
+                pp_situation = game_events['GoalSituation'].astype(str).str.contains('Power Play', na=False)
+                your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
+                                                    (game_events['Team'] == team_identifier) &
+                                                    pp_situation])
+                opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
+                                                   self._opponent_mask(game_events, team_identifier) &
+                                                   pp_situation])
         
         # Calculate power play opportunities
         your_team_pp_opps = len(opponent_penalties)
