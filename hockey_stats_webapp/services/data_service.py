@@ -695,6 +695,56 @@ class DataService:
 
         clean_gt = games['GameType'].astype(str).str.strip(' "\'').str.upper()
         return games[clean_gt != 'E']
+
+    @staticmethod
+    def _normalize_game_type_code(raw_value):
+        """Normalize a raw GameType sheet value to a canonical code.
+
+        Maps long names to single-letter codes (REGULAR SEASON/REGULAR -> R,
+        TOURNAMENT/TOURN -> T, PLAYOFFS/PLAYOFF/POSTSEASON -> P). Any other
+        value is returned cleaned but unmapped (e.g. 'E').
+        """
+        code = str(raw_value).strip(' "\'').upper()
+        if code in ('REGULAR SEASON', 'REGULAR'):
+            return 'R'
+        if code in ('TOURNAMENT', 'TOURN'):
+            return 'T'
+        if code in ('PLAYOFFS', 'PLAYOFF', 'POSTSEASON'):
+            return 'P'
+        return code
+
+    def _bucket_game_ids_by_type(self, games):
+        """Bucket game IDs into R/T/P by normalized GameType.
+
+        Operates locally on the provided games DataFrame; no game_type
+        filtering is applied here. 'E' games are skipped. Any other
+        non-'E' game whose type is not R/T/P folds into 'R' (consistent
+        with resolve_game_type's "unrecognized -> R" default) with a
+        warning, so the buckets always partition the input games.
+
+        Returns:
+            dict: {'R': [id, ...], 'T': [...], 'P': [...]} with IDs as str.
+        """
+        buckets = {'R': [], 'T': [], 'P': []}
+        if games is None or games.empty:
+            return buckets
+        has_id = 'ID' in games.columns
+        has_gt = 'GameType' in games.columns
+        for _, row in games.iterrows():
+            raw_gt = row['GameType'] if has_gt else ''
+            code = self._normalize_game_type_code(raw_gt)
+            if code == 'E':
+                continue
+            if code not in buckets:
+                game_label = row['ID'] if has_id else '?'
+                self.logger.warning(
+                    "Game %s has unrecognized GameType %r; counting it as Regular (R)",
+                    game_label, raw_gt
+                )
+                code = 'R'
+            if has_id:
+                buckets[code].append(str(row['ID']))
+        return buckets
     
     def _calculate_game_scores(self, game_id, events_df, team_identifier, game_type_filter=None):
         """
@@ -3089,6 +3139,114 @@ class DataService:
             'win_percentage': win_percentage
         }
 
+
+    def _tally_team_stats(self, games_df):
+        """Shared W/L/T + GF/GA tally over a games DataFrame.
+
+        Uses the same classification and aggregation rules as
+        calculate_team_stats so per-type buckets and totals stay consistent.
+        """
+        wins = 0
+        losses = 0
+        ties = 0
+
+        if games_df is not None and not games_df.empty:
+            for _, r in games_df.iterrows():
+                res = str(r.get('Result', '')).strip().upper()
+                if res in ['W', 'WIN', 'WINS']:
+                    wins += 1
+                elif res in ['L', 'LOSS', 'LOSSES']:
+                    losses += 1
+                elif res in ['T', 'TIE', 'TIES']:
+                    ties += 1
+                else:
+                    try:
+                        gf = float(r.get('GoalsFor', 0) or 0)
+                        ga = float(r.get('GoalsAgainst', 0) or 0)
+                        if gf > ga:
+                            wins += 1
+                        elif gf < ga:
+                            losses += 1
+                        else:
+                            ties += 1
+                    except (ValueError, TypeError):
+                        pass
+
+        try:
+            goals_for = games_df['GoalsFor'].sum()
+            goals_against = games_df['GoalsAgainst'].sum()
+        except (KeyError, TypeError):
+            goals_for = 0
+            goals_against = 0
+
+        games_played = len(games_df) if games_df is not None else 0
+        win_percentage = wins / games_played if games_played > 0 else 0
+
+        return {
+            'games_played': games_played,
+            'wins': wins,
+            'losses': losses,
+            'ties': ties,
+            'goals_for': goals_for,
+            'goals_against': goals_against,
+            'win_percentage': win_percentage
+        }
+
+    def calculate_team_stats_by_game_type(self, team_id=None):
+        """Calculate team stats broken down by game type (R/T/P) in one pass.
+
+        Buckets locally from the same all-games list that
+        calculate_team_stats uses (no game_type filtering involved), so the
+        R/T/P parts always sum exactly to the ALL total. Exhibition ('E')
+        games are excluded, matching calculate_team_stats.
+
+        Returns:
+            dict: {'R': {...}, 'T': {...}, 'P': {...}, 'ALL': {...}} with the
+            same keys as calculate_team_stats.
+        """
+        games = self.get_games(team_id)
+        games = self._ensure_result_column(games)
+        completed_games = self._filter_games_by_date(games, include_future=False)
+        if completed_games is None:
+            completed_games = pd.DataFrame()
+
+        # Defensive: drop 'E' games up front (get_games normally excludes
+        # them already) so the buckets and the ALL total partition the exact
+        # same game list.
+        if not completed_games.empty and 'GameType' in completed_games.columns:
+            _codes = completed_games['GameType'].apply(self._normalize_game_type_code)
+            eligible = completed_games[_codes != 'E']
+        else:
+            eligible = completed_games
+
+        buckets = {'R': [], 'T': [], 'P': []}
+        if not eligible.empty:
+            if 'GameType' not in eligible.columns:
+                self.logger.warning(
+                    "Games data has no GameType column; counting all games as Regular (R)"
+                )
+                buckets['R'] = list(eligible.index)
+            else:
+                for idx, row in eligible.iterrows():
+                    code = self._normalize_game_type_code(row.get('GameType', ''))
+                    if code not in buckets:
+                        self.logger.warning(
+                            "Game %s has unrecognized GameType %r; counting it as Regular (R)",
+                            row.get('ID', '?'), row.get('GameType', '')
+                        )
+                        code = 'R'
+                    buckets[code].append(idx)
+
+        result = {}
+        for code in ('R', 'T', 'P'):
+            idx_list = buckets[code]
+            if idx_list:
+                sub = eligible.loc[idx_list]
+            else:
+                sub = eligible.iloc[0:0]
+            result[code] = self._tally_team_stats(sub)
+        result['ALL'] = self._tally_team_stats(eligible)
+        return result
     def calculate_special_teams_stats(self, team_id=None, game_type=None, game_id=None):
         """
         Calculate Special Teams metrics (PP%, PK%, S/PP, SA/PK, Net ST Goals, Combined ST Index, Discipline Index)
@@ -3133,6 +3291,17 @@ class DataService:
             return self._empty_special_teams_summary()
 
         team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
+        return self._special_teams_summary_from_events(events, team_identifier)
+
+    def _special_teams_summary_from_events(self, events, team_identifier):
+        """Core special-teams computation over an events DataFrame.
+
+        Shared by calculate_special_teams_stats and
+        calculate_special_teams_stats_by_game_type so per-type numbers use
+        exactly the same masks and formulas as the totals.
+        """
+        if events is None or events.empty:
+            return self._empty_special_teams_summary()
 
         is_your_team = events['Team'] == team_identifier
         is_opponent = self._opponent_mask(events, team_identifier)
@@ -3214,6 +3383,33 @@ class DataService:
             'penalties_taken': raw_pk_opps,
             'net_penalties': net_penalties,
         }
+
+    def calculate_special_teams_stats_by_game_type(self, team_id=None):
+        """Calculate special-teams stats broken down by game type (R/T/P).
+
+        Derives per-type game-ID sets from local GameType bucketing (no
+        game_type filtering involved) and reuses the same computation as
+        calculate_special_teams_stats for each bucket.
+
+        Returns:
+            dict: {'R': {...}, 'T': {...}, 'P': {...}} with the same keys as
+            calculate_special_teams_stats.
+        """
+        games = self.get_games(team_id)
+        buckets = self._bucket_game_ids_by_type(games)
+
+        events = self.get_events()
+        team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
+
+        result = {}
+        for code in ('R', 'T', 'P'):
+            game_ids = buckets[code]
+            if events is None or events.empty or not game_ids or 'GameID' not in events.columns:
+                result[code] = self._empty_special_teams_summary()
+                continue
+            bucket_events = events[events['GameID'].astype(str).isin(game_ids)]
+            result[code] = self._special_teams_summary_from_events(bucket_events, team_identifier)
+        return result
 
     def _empty_special_teams_summary(self):
         return {
