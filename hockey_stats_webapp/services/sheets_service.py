@@ -195,7 +195,7 @@ class SheetsService:
             print(f"Loaded {len(df)} events from Google Sheets")
             
             # Convert string boolean values to Python boolean values with enhanced error handling
-            boolean_columns = ['IsGoal', 'IsPowerPlay', 'IsShortHanded']
+            boolean_columns = ['IsGoal', 'IsPowerPlay', 'IsShortHanded', 'IsPenaltyShot']
             print(f"Starting boolean conversion for Events sheet. Available columns: {list(df.columns)}")
             
             for col in boolean_columns:
