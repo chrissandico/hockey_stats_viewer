@@ -186,11 +186,11 @@ def register_dashboard_callbacks(app, data_service):
                         ], className="kpi-tile border-primary"), xs=12, md=4),
                         dbc.Col(html.Div([
                             html.Div(pp_pct, className="kpi-value text-success"),
-                            html.Div("Power Play (PP%)", className="kpi-label"),
+                            html.Div(f"Power Play (PP%) {f'({st_stats.get(\"pp_goals\", 0)}/{pp_opps} PPG)' if pp_opps > 0 else ''}", className="kpi-label"),
                         ], className="kpi-tile"), xs=6, md=4),
                         dbc.Col(html.Div([
                             html.Div(pk_pct, className="kpi-value text-danger"),
-                            html.Div("Penalty Kill (PK%)", className="kpi-label"),
+                            html.Div(f"Penalty Kill (PK%) {f'({st_stats.get(\"pk_successes\", 0)}/{pk_opps} Kills)' if pk_opps > 0 else ''}", className="kpi-label"),
                         ], className="kpi-tile"), xs=6, md=4),
                     ], className="g-2 justify-content-center mt-2")
 
