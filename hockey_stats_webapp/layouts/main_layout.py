@@ -164,13 +164,24 @@ def register_dashboard_callbacks(app, data_service):
             if is_coach:
                 try:
                     st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
-                    st_index = st_stats.get('combined_st_index', 100.0)
-                    pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%"
-                    pk_pct = f"{st_stats.get('pk_percentage', 100.0):.1f}%"
+                    pp_opps = st_stats.get('pp_opportunities', 0)
+                    pk_opps = st_stats.get('pk_opportunities', 0)
+
+                    pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%" if pp_opps > 0 else "N/A"
+                    pk_pct = f"{st_stats.get('pk_percentage', 0.0):.1f}%" if pk_opps > 0 else "N/A"
+
+                    if pp_opps > 0 and pk_opps > 0:
+                        st_index_display = f"{st_stats.get('combined_st_index', 100.0):.1f}%"
+                    elif pp_opps > 0:
+                        st_index_display = f"{st_stats.get('pp_percentage', 0.0):.1f}% (PP)"
+                    elif pk_opps > 0:
+                        st_index_display = f"{st_stats.get('pk_percentage', 0.0):.1f}% (PK)"
+                    else:
+                        st_index_display = "N/A"
 
                     st_kpi = dbc.Row([
                         dbc.Col(html.Div([
-                            html.Div(f"{st_index:.1f}%", className="kpi-value text-primary"),
+                            html.Div(st_index_display, className="kpi-value text-primary"),
                             html.Div("ST Index (PP% + PK%)", className="kpi-label"),
                         ], className="kpi-tile border-primary"), xs=12, md=4),
                         dbc.Col(html.Div([

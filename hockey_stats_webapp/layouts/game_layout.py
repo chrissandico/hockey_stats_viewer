@@ -316,6 +316,12 @@ def register_game_callbacks(app, data_service, team_context=None):
             if is_coach:
                 try:
                     gst = data_service.calculate_special_teams_stats(team_id=effective_team_id, game_id=game_id_typed)
+                    pp_opps = gst.get('pp_opportunities', 0)
+                    pk_opps = gst.get('pk_opportunities', 0)
+
+                    pp_pct_display = f"{gst.get('pp_percentage', 0.0):.1f}%" if pp_opps > 0 else "N/A"
+                    pk_pct_display = f"{gst.get('pk_percentage', 0.0):.1f}%" if pk_opps > 0 else "N/A"
+
                     game_st_card = dbc.Card([
                         dbc.CardHeader(html.H5([
                             html.I(className="fas fa-bolt text-warning me-2"),
@@ -327,24 +333,24 @@ def register_game_callbacks(app, data_service, team_context=None):
                                     html.Div("Power Play", className="fw-bold text-primary mb-1 border-bottom pb-1"),
                                     html.Div([
                                         html.Span("PP%: ", className="text-muted"),
-                                        html.Strong(f"{gst.get('pp_percentage', 0.0):.1f}%"),
-                                        html.Span(f" ({gst.get('pp_goals', 0)}/{gst.get('pp_opportunities', 0)})", className="small text-muted ms-1")
+                                        html.Strong(pp_pct_display),
+                                        html.Span(f" ({gst.get('pp_goals', 0)}/{pp_opps})", className="small text-muted ms-1")
                                     ]),
                                     html.Div([
                                         html.Span("S/PP: ", className="text-muted"),
-                                        html.Strong(f"{gst.get('pp_shots_per_opp', 0.0):.1f}")
+                                        html.Strong(f"{gst.get('pp_shots_per_opp', 0.0):.1f}" if pp_opps > 0 else "N/A")
                                     ])
                                 ], md=4, xs=12, className="mb-2 mb-md-0"),
                                 dbc.Col([
                                     html.Div("Penalty Kill", className="fw-bold text-danger mb-1 border-bottom pb-1"),
                                     html.Div([
                                         html.Span("PK%: ", className="text-muted"),
-                                        html.Strong(f"{gst.get('pk_percentage', 100.0):.1f}%"),
-                                        html.Span(f" ({gst.get('pk_successes', 0)}/{gst.get('pk_opportunities', 0)})", className="small text-muted ms-1")
+                                        html.Strong(pk_pct_display),
+                                        html.Span(f" ({gst.get('pk_successes', 0)}/{pk_opps})", className="small text-muted ms-1")
                                     ]),
                                     html.Div([
                                         html.Span("SA/PK: ", className="text-muted"),
-                                        html.Strong(f"{gst.get('pk_shots_allowed_per_opp', 0.0):.1f}")
+                                        html.Strong(f"{gst.get('pk_shots_allowed_per_opp', 0.0):.1f}" if pk_opps > 0 else "N/A")
                                     ])
                                 ], md=4, xs=12, className="mb-2 mb-md-0"),
                                 dbc.Col([

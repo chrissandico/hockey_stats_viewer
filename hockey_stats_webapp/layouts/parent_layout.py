@@ -105,9 +105,11 @@ def _build_team_summary_section(data_service, team_id):
     try:
         st = data_service.calculate_special_teams_stats(team_id, game_type=None)
         if st:
-            pp = st.get('pp_percentage', 0.0)
-            pk = st.get('pk_percentage', 0.0)
-            st_summary = f" | PP: {pp:.1f}% | PK: {pk:.1f}%"
+            pp_opps = st.get('pp_opportunities', 0)
+            pk_opps = st.get('pk_opportunities', 0)
+            pp_str = f"{st.get('pp_percentage', 0.0):.1f}%" if pp_opps > 0 else "N/A"
+            pk_str = f"{st.get('pk_percentage', 0.0):.1f}%" if pk_opps > 0 else "N/A"
+            st_summary = f" | PP: {pp_str} | PK: {pk_str}"
     except Exception:
         pass
 
