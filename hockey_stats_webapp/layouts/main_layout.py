@@ -134,52 +134,140 @@ def register_dashboard_callbacks(app, data_service):
         try:
             stats = data_service.calculate_team_stats(team_id, game_type=game_type)
             win_pct = f"{stats['win_percentage']:.0%}"
+
+            # Game-type sub-breakdowns (R/T/P) in smaller sub text. This block
+            # is isolated on purpose: if the breakdown fails for any reason,
+            # the tiles below still render without sub-text (never blank the
+            # whole KPI row).
+            sub_style = {"fontSize": "0.75rem", "color": "#6c757d", "marginTop": "2px"}
+            wins_sub = ""
+            losses_sub = ""
+            ties_sub = ""
+            win_pct_sub = ""
+            goals_for_sub = ""
+            goals_against_sub = ""
+            try:
+                by_type = data_service.calculate_team_stats_by_game_type(team_id)
+                if by_type and by_type.get('ALL'):
+                    # Use the same ALL total the sub-numbers sum to, so the
+                    # on-screen parts always add up to the main metric.
+                    stats = by_type['ALL']
+                    win_pct = f"{stats['win_percentage']:.0%}"
+                r_by = by_type.get('R', {}) if by_type else {}
+                t_by = by_type.get('T', {}) if by_type else {}
+                p_by = by_type.get('P', {}) if by_type else {}
+
+                wins_sub = f"{r_by.get('wins', 0)} R, {t_by.get('wins', 0)} T, {p_by.get('wins', 0)} P"
+                losses_sub = f"{r_by.get('losses', 0)} R, {t_by.get('losses', 0)} T, {p_by.get('losses', 0)} P"
+                ties_sub = f"{r_by.get('ties', 0)} R, {t_by.get('ties', 0)} T, {p_by.get('ties', 0)} P"
+                goals_for_sub = f"{r_by.get('goals_for', 0)} R, {t_by.get('goals_for', 0)} T, {p_by.get('goals_for', 0)} P"
+                goals_against_sub = f"{r_by.get('goals_against', 0)} R, {t_by.get('goals_against', 0)} T, {p_by.get('goals_against', 0)} P"
+
+                def _type_win_pct(s):
+                    if s.get('games_played', 0) > 0:
+                        return f"{s.get('win_percentage', 0):.0%}"
+                    return "N/A"
+
+                win_pct_sub = f"{_type_win_pct(r_by)} R, {_type_win_pct(t_by)} T, {_type_win_pct(p_by)} P"
+            except Exception as e:
+                print(f"WARNING: game-type KPI breakdown failed ({e}); rendering tiles without sub-text")
+
             kpi_row = dbc.Row([
                 dbc.Col(html.Div([
                     html.Div(str(stats['wins']),         className="kpi-value"),
                     html.Div("Wins",                     className="kpi-label"),
+                    html.Div(wins_sub,                   style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(str(stats['losses']),       className="kpi-value"),
                     html.Div("Losses",                   className="kpi-label"),
+                    html.Div(losses_sub,                 style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(str(stats['ties']),         className="kpi-value"),
                     html.Div("Ties",                     className="kpi-label"),
+                    html.Div(ties_sub,                   style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(win_pct,                    className="kpi-value"),
                     html.Div("Win %",                    className="kpi-label"),
+                    html.Div(win_pct_sub,                style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(str(stats['goals_for']),    className="kpi-value"),
                     html.Div("Goals For",                className="kpi-label"),
+                    html.Div(goals_for_sub,              style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
                 dbc.Col(html.Div([
                     html.Div(str(stats['goals_against']), className="kpi-value"),
                     html.Div("Goals Against",            className="kpi-label"),
+                    html.Div(goals_against_sub,         style=sub_style),
                 ], className="kpi-tile"), xs=6, md=2),
             ], className="g-2 justify-content-center")
 
             if is_coach:
                 try:
                     st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
-                    st_index = st_stats.get('combined_st_index', 100.0)
-                    pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%"
-                    pk_pct = f"{st_stats.get('pk_percentage', 100.0):.1f}%"
+                    pp_opps = st_stats.get('pp_opportunities', 0)
+                    pk_opps = st_stats.get('pk_opportunities', 0)
+
+                    pp_pct = f"{st_stats.get('pp_percentage', 0.0):.1f}%" if pp_opps > 0 else "N/A"
+                    pk_pct = f"{st_stats.get('pk_percentage', 100.0):.1f}%" if pk_opps > 0 else "N/A"
+
+                    if pp_opps > 0 and pk_opps > 0:
+                        st_index_display = f"{st_stats.get('combined_st_index', 100.0):.1f}%"
+                    elif pp_opps > 0:
+                        st_index_display = f"{st_stats.get('pp_percentage', 0.0):.1f}% (PP)"
+                    elif pk_opps > 0:
+                        st_index_display = f"{st_stats.get('pk_percentage', 100.0):.1f}% (PK)"
+                    else:
+                        st_index_display = "N/A"
+
+                    pp_count_suffix = f" ({st_stats.get('pp_goals', 0)}/{pp_opps} PPG)" if pp_opps > 0 else ""
+                    pk_count_suffix = f" ({st_stats.get('pk_successes', 0)}/{pk_opps} Kills)" if pk_opps > 0 else ""
+
+                    # ST sub-breakdowns, isolated like the main tiles: a
+                    # failure here leaves the ST tiles without sub-text.
+                    st_index_sub = ""
+                    pp_sub = ""
+                    pk_sub = ""
+                    try:
+                        st_by_type = data_service.calculate_special_teams_stats_by_game_type(team_id)
+
+                        def _st_pct(s, pct_key, opp_key):
+                            if s.get(opp_key, 0) > 0:
+                                return f"{s.get(pct_key, 0.0):.1f}%"
+                            return "N/A"
+
+                        def _st_index_str(s):
+                            if s.get('pp_opportunities', 0) > 0 or s.get('pk_opportunities', 0) > 0:
+                                return f"{s.get('combined_st_index', 0.0):.1f}%"
+                            return "N/A"
+
+                        r_st = st_by_type.get('R', {}) if st_by_type else {}
+                        t_st = st_by_type.get('T', {}) if st_by_type else {}
+                        p_st = st_by_type.get('P', {}) if st_by_type else {}
+                        pp_sub = f"{_st_pct(r_st, 'pp_percentage', 'pp_opportunities')} R, {_st_pct(t_st, 'pp_percentage', 'pp_opportunities')} T, {_st_pct(p_st, 'pp_percentage', 'pp_opportunities')} P"
+                        pk_sub = f"{_st_pct(r_st, 'pk_percentage', 'pk_opportunities')} R, {_st_pct(t_st, 'pk_percentage', 'pk_opportunities')} T, {_st_pct(p_st, 'pk_percentage', 'pk_opportunities')} P"
+                        st_index_sub = f"{_st_index_str(r_st)} R, {_st_index_str(t_st)} T, {_st_index_str(p_st)} P"
+                    except Exception as e:
+                        print(f"WARNING: ST game-type breakdown failed ({e}); rendering ST tiles without sub-text")
 
                     st_kpi = dbc.Row([
                         dbc.Col(html.Div([
-                            html.Div(f"{st_index:.1f}%", className="kpi-value text-primary"),
+                            html.Div(st_index_display, className="kpi-value text-primary"),
                             html.Div("ST Index (PP% + PK%)", className="kpi-label"),
+                            html.Div(st_index_sub, style=sub_style),
                         ], className="kpi-tile border-primary"), xs=12, md=4),
                         dbc.Col(html.Div([
                             html.Div(pp_pct, className="kpi-value text-success"),
-                            html.Div("Power Play (PP%)", className="kpi-label"),
+                            html.Div(f"Power Play (PP%){pp_count_suffix}", className="kpi-label"),
+                            html.Div(pp_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                         dbc.Col(html.Div([
                             html.Div(pk_pct, className="kpi-value text-danger"),
-                            html.Div("Penalty Kill (PK%)", className="kpi-label"),
+                            html.Div(f"Penalty Kill (PK%){pk_count_suffix}", className="kpi-label"),
+                            html.Div(pk_sub, style=sub_style),
                         ], className="kpi-tile"), xs=6, md=4),
                     ], className="g-2 justify-content-center mt-2")
 
