@@ -2240,35 +2240,30 @@ class DataService:
             # For now, we'll use the GoalSituation field if available, otherwise infer from team
             goal_situation = goal_event.get('GoalSituation', '')
             
-            # Apply the decision tree logic
-            if 'Power Play' in goal_situation or goal_event.get('IsPowerPlay', False):
-                # Rule 1: Power Play Goal (No +/- Awarded)
-                print(f"Power play goal - no plus/minus awarded")
+            # CANONICAL RULE (WEB_APP_STATS_SPEC.md, Column K): GoalSituation is
+            # OUR team's manpower state, whoever scored. Plus/minus is awarded
+            # only when the SCORING team was at even strength or short-handed;
+            # a goal scored by a team on its own power play awards nothing:
+            #   our PP goal   ('Power Play' stamp, our goal)       -> skip
+            #   our SH goal   ('Penalty Kill' stamp, our goal)     -> +1
+            #   their PP goal ('Penalty Kill' stamp, their goal)   -> skip
+            #   their SH goal ('Power Play' stamp, their goal)     -> -1
+            #   even strength / situation not recorded             -> award
+            # (The Sheet's short-handed stamp is 'Penalty Kill'; the legacy
+            # 'Short Handed' string is still accepted for old rows.)
+            is_pp_situation = ('Power Play' in goal_situation) or bool(goal_event.get('IsPowerPlay', False))
+            is_pk_situation = ('Penalty Kill' in goal_situation) or ('Short Handed' in goal_situation) or bool(goal_event.get('IsShortHanded', False))
+            scored_by_your_team = scoring_team == team_identifier
+            scorer_had_power_play = (scored_by_your_team and is_pp_situation) or ((not scored_by_your_team) and is_pk_situation)
+            if scorer_had_power_play:
+                print(f"Goal scored on the scoring team's power play - no plus/minus awarded")
                 continue
-            elif 'Even Strength' in goal_situation or goal_situation == '':
-                # Rule 2: Even Strength Goal (+/- Awarded)
-                if scoring_team == team_identifier:
-                    plus_minus += 1
-                    print(f"Even strength goal FOR team - player gets +1")
-                else:
-                    plus_minus -= 1
-                    print(f"Even strength goal AGAINST team - player gets -1")
-            elif 'Short Handed' in goal_situation or goal_event.get('IsShortHanded', False):
-                # Rule 3: Short-Handed Goal (+/- Awarded)
-                if scoring_team == team_identifier:
-                    plus_minus += 1
-                    print(f"Short-handed goal FOR team - player gets +1")
-                else:
-                    plus_minus -= 1
-                    print(f"Short-handed goal AGAINST team - player gets -1")
+            if scored_by_your_team:
+                plus_minus += 1
+                print(f"Goal FOR team at even strength or short-handed - player gets +1")
             else:
-                # Default case - treat as even strength if situation is unclear
-                if scoring_team == team_identifier:
-                    plus_minus += 1
-                    print(f"Unknown situation goal FOR team - treating as even strength, player gets +1")
-                else:
-                    plus_minus -= 1
-                    print(f"Unknown situation goal AGAINST team - treating as even strength, player gets -1")
+                plus_minus -= 1
+                print(f"Goal AGAINST team at even strength or short-handed - player gets -1")
         
         print(f"Final plus/minus for player {player_id}: {plus_minus}")
         return plus_minus
@@ -3464,8 +3459,12 @@ class DataService:
         opp_events = goalie_events[goalie_events['Team'] != team_identifier]
 
         def get_sit_type(row):
+            # Column K is OUR team's manpower state: opponent shots faced while
+            # WE are short-handed are stamped 'Penalty Kill' — those are the PK
+            # shots. Opponent shots stamped 'Power Play' are short-handed shots
+            # against (we had the PP) and belong in the ES bucket here, NOT PK.
             sit = str(row.get('GoalSituation', '') or '')
-            if 'Power Play' in sit or 'Penalty Kill' in sit or bool(row.get('IsPowerPlay', False)):
+            if 'Penalty Kill' in sit or 'Short Handed' in sit or bool(row.get('IsShortHanded', False)):
                 return 'PK'
             return 'ES'
 
@@ -4337,39 +4336,48 @@ class DataService:
                                         self._opponent_mask(game_events, team_identifier)])
         
         # Calculate penalty minutes with proper team identification
-        your_team_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
+        your_team_penalties = game_events[(game_events['EventType'] == 'Penalty') &
                                          (game_events['Team'] == team_identifier)]
-        opponent_penalties = game_events[(game_events['EventType'] == 'Penalty') & 
+        opponent_penalties = game_events[(game_events['EventType'] == 'Penalty') &
                                         self._opponent_mask(game_events, team_identifier)]
-        
-        your_team_pim = your_team_penalties['PenaltyDuration'].sum() if not your_team_penalties.empty else 0
-        opponent_pim = opponent_penalties['PenaltyDuration'].sum() if not opponent_penalties.empty else 0
-        
-        # Calculate power play goals - always use IsGoal with proper team identification
-        your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                           (game_events['Team'] == team_identifier) & 
-                                           (game_events.get('IsPowerPlay', False) == True)])
-        opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) & 
-                                          self._opponent_mask(game_events, team_identifier) & 
-                                          (game_events.get('IsPowerPlay', False) == True)])
-        print(f"Using IsGoal column for power play goals in game {game_id}")
-        
-        # Only estimate power play goals when the IsPowerPlay column is actually missing.
-        # A 0-pp-goals night with penalties taken is a legitimate outcome, not missing data.
-        if 'IsPowerPlay' not in game_events.columns:
-            if 'GoalSituation' in game_events.columns:
-                pp_situation = game_events['GoalSituation'].astype(str).str.contains('Power Play', na=False)
-                your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
-                                                    (game_events['Team'] == team_identifier) &
-                                                    pp_situation])
-                opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
-                                                   self._opponent_mask(game_events, team_identifier) &
-                                                   pp_situation])
-        
-        # Calculate power play opportunities
-        your_team_pp_opps = len(opponent_penalties)
-        opponent_pp_opps = len(your_team_penalties)
-        
+
+        # Synthetic mode-toggle penalties created by the app (blank player,
+        # PenaltyType 'Unspecified') mark PP/PK situations — they are not real
+        # penalties and must not add phantom PIM.
+        def _real_penalties(df):
+            if df.empty or 'PrimaryPlayerId' not in df.columns or 'PenaltyType' not in df.columns:
+                return df
+            player = df['PrimaryPlayerId'].astype(str).str.strip()
+            ptype = df['PenaltyType'].astype(str).str.strip()
+            synthetic = player.isin(['', 'nan', 'None']) & (ptype == 'Unspecified')
+            return df[~synthetic]
+
+        your_team_pim = _real_penalties(your_team_penalties)['PenaltyDuration'].sum() if not your_team_penalties.empty else 0
+        opponent_pim = _real_penalties(opponent_penalties)['PenaltyDuration'].sum() if not opponent_penalties.empty else 0
+
+        # Power play goals — canonical Column K semantics (GoalSituation is OUR
+        # team's manpower state): our PP goal = our goal stamped 'Power Play'
+        # (or legacy IsPowerPlay flag); opponent PP goal = opponent goal while
+        # WE were short-handed, stamped 'Penalty Kill' (or legacy IsShortHanded).
+        sit = game_events['GoalSituation'].astype(str) if 'GoalSituation' in game_events.columns else pd.Series('', index=game_events.index)
+        our_pp_sit = sit.str.contains('Power Play', na=False)
+        if 'IsPowerPlay' in game_events.columns:
+            our_pp_sit = our_pp_sit | (game_events['IsPowerPlay'] == True)
+        opp_pp_sit = sit.str.contains('Penalty Kill', na=False) | sit.str.contains('Short Handed', na=False)
+        if 'IsShortHanded' in game_events.columns:
+            opp_pp_sit = opp_pp_sit | (game_events['IsShortHanded'] == True)
+        your_team_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
+                                           (game_events['Team'] == team_identifier) &
+                                           our_pp_sit])
+        opponent_pp_goals = len(game_events[(game_events['IsGoal'] == True) &
+                                          self._opponent_mask(game_events, team_identifier) &
+                                          opp_pp_sit])
+
+        # Calculate power play opportunities (floored at goals, as in the
+        # special-teams summary, so a missed penalty log can't exceed 100%)
+        your_team_pp_opps = max(len(opponent_penalties), your_team_pp_goals)
+        opponent_pp_opps = max(len(your_team_penalties), opponent_pp_goals)
+
         # Calculate power play percentage
         your_team_pp_pct = your_team_pp_goals / your_team_pp_opps if your_team_pp_opps > 0 else 0
         opponent_pp_pct = opponent_pp_goals / opponent_pp_opps if opponent_pp_opps > 0 else 0
