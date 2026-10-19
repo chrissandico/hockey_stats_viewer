@@ -4,6 +4,7 @@ import time
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+from datetime import datetime
 
 
 def normalize_game_type_value(val):
@@ -26,20 +27,26 @@ class SheetsService:
     Handles authentication, data retrieval, and caching.
     """
     
-    def __init__(self, credentials_path='credentials.json', sheet_id=None, cache_ttl=3600):
+    def __init__(self, credentials_path='credentials.json', sheet_id=None, cache_ttl=120):
         """
         Initialize the SheetsService.
         
         Args:
             credentials_path (str): Path to the service account credentials JSON file
             sheet_id (str): ID of the Google Sheet to connect to
-            cache_ttl (int): Cache time-to-live in seconds (default: 3600)
+            cache_ttl (int): Freshness window in seconds for the shared data snapshot (default: 120)
         """
         self.credentials_path = credentials_path
         self.sheet_id = sheet_id or '1u4olfiYFjXW0Z88U3Q1wOxI7gz04KYbg6LNn8h-rfno'
         self.cache_ttl = cache_ttl
         self.cache = {}
         self.last_refresh = {}
+        # One shared freshness clock for every tab: when the epoch lapses,
+        # all tabs reload together so pages never mix snapshots.
+        self.data_epoch = None
+        # Bumps on every tab reload; computed caches key off this.
+        self.data_generation = 0
+        self._refreshing_all = False
         
         # Initialize the connection
         self._connect()
@@ -105,23 +112,36 @@ class SheetsService:
             print(f"Error getting worksheet '{name}': {e}")
             raise
     
-    def _should_refresh_cache(self, key):
+    def _mark_refreshed(self, key):
+        """Record that a tab was (re)loaded just now."""
+        self.last_refresh[key] = time.time()
+        self.data_generation += 1
+
+    def _refresh_all_if_stale(self):
         """
-        Check if the cache for a given key should be refreshed.
-        
-        Args:
-            key (str): Cache key
-            
-        Returns:
-            bool: True if cache should be refreshed, False otherwise
+        Reload every tab together once the shared freshness window lapses.
+
+        All tabs share one epoch: the first access after the window lapses
+        reloads the whole snapshot, so games, events, players and rosters
+        served afterwards all come from the same point in time. Reloads are
+        lazy (only on access), so an idle site makes no Sheets calls.
         """
-        if key not in self.cache or key not in self.last_refresh:
-            return True
-        
-        current_time = time.time()
-        time_since_refresh = current_time - self.last_refresh[key]
-        
-        return time_since_refresh > self.cache_ttl
+        if self._refreshing_all:
+            return
+        if self.data_epoch is not None and (time.time() - self.data_epoch) <= self.cache_ttl:
+            return
+        self._refreshing_all = True
+        try:
+            self.refresh_all_data()
+        finally:
+            self._refreshing_all = False
+
+    @property
+    def last_refresh_datetime(self):
+        """Local datetime when the current snapshot was loaded, or None."""
+        if self.data_epoch is None:
+            return None
+        return datetime.fromtimestamp(self.data_epoch)
     
     def get_players(self, force_refresh=False):
         """
@@ -134,14 +154,15 @@ class SheetsService:
             pd.DataFrame: DataFrame containing player data
         """
         key = 'players'
+        self._refresh_all_if_stale()
         
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('Players')
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             
             self.cache[key] = df
-            self.last_refresh[key] = time.time()
+            self._mark_refreshed(key)
         
         return self.cache[key]
     
@@ -156,8 +177,9 @@ class SheetsService:
             pd.DataFrame: DataFrame containing game data
         """
         key = 'games'
+        self._refresh_all_if_stale()
         
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('Games')
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
@@ -171,7 +193,7 @@ class SheetsService:
                 print(f"Game type distribution from Google Sheets: {df['GameType'].value_counts().to_dict()}")
             
             self.cache[key] = df
-            self.last_refresh[key] = time.time()
+            self._mark_refreshed(key)
         
         return self.cache[key]
     
@@ -186,8 +208,9 @@ class SheetsService:
             pd.DataFrame: DataFrame containing event data
         """
         key = 'events'
+        self._refresh_all_if_stale()
         
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             print(f"Loading Events data from Google Sheets (force_refresh={force_refresh})")
             worksheet = self._get_worksheet('Events')
             data = worksheet.get_all_records()
@@ -250,7 +273,7 @@ class SheetsService:
                 df['GameType'] = df['GameType'].apply(normalize_game_type_value)
 
             self.cache[key] = df
-            self.last_refresh[key] = time.time()
+            self._mark_refreshed(key)
             print(f"Events data cached successfully with {len(df)} records")
         else:
             print(f"Using cached Events data ({len(self.cache[key])} records)")
@@ -281,14 +304,15 @@ class SheetsService:
             pd.DataFrame: DataFrame containing game roster data
         """
         key = 'game_roster'
+        self._refresh_all_if_stale()
         
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('GameRoster')
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             
             self.cache[key] = df
-            self.last_refresh[key] = time.time()
+            self._mark_refreshed(key)
         
         return self.cache[key]
     
@@ -303,8 +327,9 @@ class SheetsService:
             pd.DataFrame: DataFrame containing team data
         """
         key = 'teams'
+        self._refresh_all_if_stale()
         
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             try:
                 worksheet = self._get_worksheet('Teams')
                 data = worksheet.get_all_records()
@@ -339,7 +364,7 @@ class SheetsService:
                 print(f"Successfully loaded {len(df)} teams from Teams sheet")
                 
                 self.cache[key] = df
-                self.last_refresh[key] = time.time()
+                self._mark_refreshed(key)
                 
             except Exception as e:
                 error_msg = f"Failed to load Teams sheet: {str(e)}"
@@ -359,8 +384,9 @@ class SheetsService:
             pd.DataFrame: DataFrame containing parent code data
         """
         key = 'parent_codes'
+        self._refresh_all_if_stale()
 
-        if force_refresh or self._should_refresh_cache(key):
+        if force_refresh or key not in self.cache:
             try:
                 worksheet = self._get_worksheet('ParentCodes')
                 data = worksheet.get_all_records()
@@ -369,7 +395,7 @@ class SheetsService:
                 if df.empty:
                     print("WARNING: ParentCodes sheet is empty")
                     self.cache[key] = pd.DataFrame(columns=['ParentCode', 'TeamID', 'JerseyNumber', 'ChildName'])
-                    self.last_refresh[key] = time.time()
+                    self._mark_refreshed(key)
                     return self.cache[key]
 
                 # Standardize column names, ensure string types
@@ -382,12 +408,12 @@ class SheetsService:
 
                 print(f"Successfully loaded {len(df)} parent codes from ParentCodes sheet")
                 self.cache[key] = df
-                self.last_refresh[key] = time.time()
+                self._mark_refreshed(key)
 
             except Exception as e:
                 print(f"WARNING: Could not load ParentCodes sheet (may not exist yet): {e}")
                 self.cache[key] = pd.DataFrame(columns=['ParentCode', 'TeamID', 'JerseyNumber', 'ChildName'])
-                self.last_refresh[key] = time.time()
+                self._mark_refreshed(key)
 
         return self.cache[key]
 
@@ -402,4 +428,5 @@ class SheetsService:
         self.get_events(force_refresh=True)
         self.get_game_roster(force_refresh=True)
         
+        self.data_epoch = time.time()
         print("All data refreshed.")
