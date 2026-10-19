@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import logging
 import config
 from dotenv import load_dotenv, find_dotenv
@@ -93,7 +94,16 @@ class AISummaryService:
         if is_completed is False:
             return f"Upcoming Game vs {opp} ({date_str}): Game analysis will be available after the game is played."
 
-        cache_key = f"{game_id}:{mode}"
+        # Cache per game DATA, not just per game: the key carries a hash of
+        # the digest this recap is generated from. If the game's events are
+        # ever corrected, the digest changes, the key changes, and the recap
+        # is regenerated — a recap can never describe a superseded version
+        # of the game. Older keys without a fingerprint simply never match
+        # again and are ignored.
+        digest_fingerprint = hashlib.sha256(
+            json.dumps(game_digest, sort_keys=True, default=str).encode('utf-8')
+        ).hexdigest()[:16]
+        cache_key = f"{game_id}:{mode}:{digest_fingerprint}"
 
         # 1. Return from cache if available
         if not force_refresh and cache_key in self._cache:

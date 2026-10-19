@@ -47,7 +47,11 @@ class DataService:
         # Add leaderboard cache to prevent duplicate calculations
         self._leaderboard_cache = {}
         self._leaderboard_cache_time = {}
-        self._leaderboard_cache_ttl = 1800  # 30 minutes in seconds
+        # Sheets data generation the computed caches were built from.
+        # When the raw snapshot reloads, the generation bumps and
+        # _sync_with_sheets_generation() drops everything computed from
+        # the older snapshot (see _sync_with_sheets_generation).
+        self._seen_generation = None
         
         # Force refresh events data to ensure boolean conversion happens
         self.force_refresh_events_data()
@@ -78,6 +82,33 @@ class DataService:
         except Exception as e:
             self.logger.error(f"Error in force_refresh_all_data: {e}")
             return False
+
+    def _sync_with_sheets_generation(self):
+        """
+        Bind the computed caches (calculated games, leaderboards) to the
+        SheetsService data generation.
+
+        The raw tabs reload together on one shared freshness clock; every
+        reload bumps the generation. Anything computed from an older
+        snapshot is dropped here, so one page never mixes two snapshots.
+        Called at the top of every computed-cache read.
+        """
+        generation = getattr(self.sheets_service, 'data_generation', None)
+        if generation is None:
+            return
+        if self._seen_generation is None:
+            self._seen_generation = generation
+            return
+        if generation != self._seen_generation:
+            self._seen_generation = generation
+            if hasattr(self, '_games_calculated_cache'):
+                self._games_calculated_cache.clear()
+            if hasattr(self, '_games_cache_timestamps'):
+                self._games_cache_timestamps.clear()
+            if hasattr(self, '_leaderboard_cache'):
+                self._leaderboard_cache.clear()
+            if hasattr(self, '_leaderboard_cache_time'):
+                self._leaderboard_cache_time.clear()
 
     def force_refresh_events_data(self):
         """
@@ -1068,55 +1099,13 @@ class DataService:
             if not hasattr(self, '_games_cache_timestamps'):
                 self._games_cache_timestamps = {}
             
-            # Check if cache exists and is still valid
+            # Drop computed results from older snapshots first; a hit below
+            # is therefore always computed from the current raw snapshot.
+            self._sync_with_sheets_generation()
             if cache_key in self._games_calculated_cache:
-                # Check cache age
-                from datetime import datetime, timedelta
-                cache_timestamp = self._games_cache_timestamps.get(cache_key)
-                
-                if cache_timestamp:
-                    cache_age = datetime.now() - cache_timestamp
-                    
-                    # For recent games (within last 7 days), use shorter cache TTL (5 minutes)
-                    # For older games, use longer cache TTL (1 hour)
-                    cached_games = self._games_calculated_cache[cache_key]
-                    has_recent_games = False
-                    
-                    if not cached_games.empty and 'Date' in cached_games.columns:
-                        try:
-                            # Check if any games are recent (within last 7 days)
-                            today = datetime.now().date()
-                            week_ago = today - timedelta(days=7)
-                            
-                            for game_date_str in cached_games['Date']:
-                                try:
-                                    game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
-                                    if game_date >= week_ago:
-                                        has_recent_games = True
-                                        break
-                                except:
-                                    pass
-                        except Exception as e:
-                            self.logger.warning(f"Error checking for recent games: {e}")
-                    
-                    # Determine cache TTL based on whether there are recent games
-                    cache_ttl = timedelta(minutes=5) if has_recent_games else timedelta(hours=1)
-                    
-                    if cache_age < cache_ttl:
-                        self.logger.debug(f"Using cached games data for {cache_key} (age: {cache_age}, TTL: {cache_ttl})")
-                        print(f"Using cached games data for {cache_key} (age: {cache_age.total_seconds():.0f}s)")
-                        return cached_games.copy()
-                    else:
-                        self.logger.info(f"Cache expired for {cache_key} (age: {cache_age}, TTL: {cache_ttl}), refreshing...")
-                        print(f"Cache expired for {cache_key}, refreshing...")
-                        # Remove expired cache
-                        del self._games_calculated_cache[cache_key]
-                        del self._games_cache_timestamps[cache_key]
-                else:
-                    # No timestamp, use cached data but log warning
-                    self.logger.warning(f"Using cached games data for {cache_key} (no timestamp)")
-                    print(f"Using cached games data for {cache_key}")
-                    return self._games_calculated_cache[cache_key].copy()
+                self.logger.debug(f"Using cached games data for {cache_key}")
+                print(f"Using cached games data for {cache_key}")
+                return self._games_calculated_cache[cache_key].copy()
             
             # Get data from sheets service with error handling
             try:
@@ -3894,18 +3883,18 @@ class DataService:
         return f"lb:{stat}:{position}:{team_id}:{game_type}"
     
     def _is_leaderboard_cache_valid(self, cache_key):
-        """Check if a leaderboard cache entry is still valid."""
-        import time
-        if cache_key not in self._leaderboard_cache:
-            return False
-        
-        cache_time = self._leaderboard_cache_time.get(cache_key, 0)
-        elapsed = time.time() - cache_time
-        
-        return elapsed < self._leaderboard_cache_ttl
+        """Check if a leaderboard cache entry is still valid.
+
+        Entries live and die with the sheets data generation (see
+        _sync_with_sheets_generation, invoked on every leaderboard read):
+        an entry is valid exactly while the snapshot it was computed from
+        is current. There is no separate leaderboard clock.
+        """
+        return cache_key in self._leaderboard_cache
     
     def _get_cached_leaderboard(self, cache_key):
-        """Get a leaderboard from cache if valid."""
+        """Get a leaderboard from cache if valid for the current snapshot."""
+        self._sync_with_sheets_generation()
         if self._is_leaderboard_cache_valid(cache_key):
             self.logger.debug(f"Leaderboard cache hit: {cache_key}")
             return self._leaderboard_cache[cache_key]

@@ -580,4 +580,18 @@ def register_dashboard_callbacks(app, data_service):
 
         season_chart = html.Div()
 
+        # Freshness stamp: name the snapshot this page was computed from, so
+        # a short cache window reads as "as of HH:MM" instead of "wrong".
+        try:
+            refreshed_at = data_service.sheets_service.last_refresh_datetime
+        except Exception:
+            refreshed_at = None
+        if refreshed_at is not None:
+            stamp = html.Div(
+                f"Stats as of {refreshed_at.strftime('%I:%M %p').lstrip('0')}",
+                className="text-muted text-end",
+                style={"fontSize": "0.8rem", "marginBottom": "4px"},
+            )
+            kpi_row = html.Div([stamp, kpi_row])
+
         return kpi_row, form_row, last_game, top_performers, season_chart, leaderboard_card
