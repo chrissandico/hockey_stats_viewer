@@ -6,6 +6,12 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 
+try:
+    from zoneinfo import ZoneInfo
+    _DISPLAY_TZ = ZoneInfo("America/Toronto")
+except Exception:  # no tz database on this host: fall back to server-local time
+    _DISPLAY_TZ = None
+
 
 def normalize_game_type_value(val):
     if pd.isna(val) or val is None:
@@ -138,9 +144,14 @@ class SheetsService:
 
     @property
     def last_refresh_datetime(self):
-        """Local datetime when the current snapshot was loaded, or None."""
+        """When the current snapshot was loaded, in America/Toronto time
+        (the teams' timezone), or None. The server runs in UTC, so a plain
+        server-local conversion would show users a time hours ahead of
+        their own."""
         if self.data_epoch is None:
             return None
+        if _DISPLAY_TZ is not None:
+            return datetime.fromtimestamp(self.data_epoch, tz=_DISPLAY_TZ)
         return datetime.fromtimestamp(self.data_epoch)
     
     def get_players(self, force_refresh=False):

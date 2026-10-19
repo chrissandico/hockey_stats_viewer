@@ -20,6 +20,7 @@ Run:  python -m pytest tests/test_freshness.py
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
@@ -99,6 +100,22 @@ def test_reload_bumps_generation_and_stamps_epoch():
     svc.get_games()
     assert svc.data_generation > 0
     assert svc.last_refresh_datetime is not None
+
+
+def test_last_refresh_datetime_is_toronto_time():
+    """The server runs in UTC; the stamp must show the teams' time of day,
+    in both halves of the DST year."""
+    svc = _bare_sheets()
+    # 2026-10-19 22:01 UTC = 6:01 PM in Toronto (EDT, UTC-4)
+    svc.data_epoch = datetime(2026, 10, 19, 22, 1, tzinfo=timezone.utc).timestamp()
+    dt = svc.last_refresh_datetime
+    assert (dt.hour, dt.minute) == (18, 1)
+    assert dt.utcoffset().total_seconds() == -4 * 3600
+    # 2026-01-15 22:01 UTC = 5:01 PM in Toronto (EST, UTC-5)
+    svc.data_epoch = datetime(2026, 1, 15, 22, 1, tzinfo=timezone.utc).timestamp()
+    dt = svc.last_refresh_datetime
+    assert (dt.hour, dt.minute) == (17, 1)
+    assert dt.utcoffset().total_seconds() == -5 * 3600
 
 
 # ---------------------------------------------------------------------------
