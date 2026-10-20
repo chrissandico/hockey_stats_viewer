@@ -172,7 +172,7 @@ def register_player_callbacks(app, data_service):
                 data_service.force_refresh_all_data()
 
         # Handle missing data service
-        if data_service is None:
+        if not data_service:
             if jersey_number is not None:
                 return (
                     html.Div(dbc.Alert([

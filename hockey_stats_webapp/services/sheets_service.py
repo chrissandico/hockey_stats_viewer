@@ -1,10 +1,20 @@
 import os
 import json
 import time
+import random
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
+
+
+# Backoff schedule (seconds) for retrying Google Sheets reads that hit
+# the per-user rate limit (HTTP 429): the service account may make 60
+# reads/minute, and both gunicorn workers bursting at once - at startup
+# or on a coordinated refresh - can exhaust it. Retrying with backoff
+# lets the burst drain instead of failing the whole load; a failed
+# startup load used to poison the worker permanently.
+_RATE_LIMIT_DELAYS = (1, 2, 4, 8)
 
 
 def normalize_game_type_value(val):
@@ -89,7 +99,8 @@ class SheetsService:
             
             # Open the spreadsheet
             sheet_id = os.environ.get('GOOGLE_SHEET_ID', self.sheet_id)
-            self.sheet = self.client.open_by_key(sheet_id)
+            self.sheet = self._with_rate_limit_retries(
+                'open spreadsheet', lambda: self.client.open_by_key(sheet_id))
             
             print(f"Connected to Google Sheet: {self.sheet.title}")
         except Exception as e:
@@ -107,11 +118,38 @@ class SheetsService:
             gspread.Worksheet: The worksheet object
         """
         try:
-            return self.sheet.worksheet(name)
+            return self._with_rate_limit_retries(
+                f"get worksheet '{name}'", lambda: self.sheet.worksheet(name))
         except Exception as e:
             print(f"Error getting worksheet '{name}': {e}")
             raise
     
+    def _is_rate_limit_error(self, exc):
+        """True when a Sheets call failed on the per-user read quota (HTTP 429)."""
+        response = getattr(exc, 'response', None)
+        if response is not None and getattr(response, 'status_code', None) == 429:
+            return True
+        return '429' in str(exc)
+
+    def _with_rate_limit_retries(self, description, operation):
+        """Run a Sheets operation, backing off and retrying on 429 quota errors."""
+        delays = _RATE_LIMIT_DELAYS
+        for attempt in range(len(delays) + 1):
+            try:
+                return operation()
+            except Exception as e:
+                if attempt == len(delays) or not self._is_rate_limit_error(e):
+                    raise
+                wait = delays[attempt] + random.uniform(0, 0.5)
+                print(f"Google Sheets rate limit (429) on {description}; "
+                      f"retrying in {wait:.1f}s (attempt {attempt + 2} of {len(delays) + 1})")
+                time.sleep(wait)
+
+    def _get_records(self, worksheet, name):
+        """worksheet.get_all_records() with 429 backoff."""
+        return self._with_rate_limit_retries(
+            f"read worksheet '{name}'", worksheet.get_all_records)
+
     def _mark_refreshed(self, key):
         """Record that a tab was (re)loaded just now."""
         self.last_refresh[key] = time.time()
@@ -158,7 +196,7 @@ class SheetsService:
         
         if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('Players')
-            data = worksheet.get_all_records()
+            data = self._get_records(worksheet, 'Players')
             df = pd.DataFrame(data)
             
             self.cache[key] = df
@@ -181,7 +219,7 @@ class SheetsService:
         
         if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('Games')
-            data = worksheet.get_all_records()
+            data = self._get_records(worksheet, 'Games')
             df = pd.DataFrame(data)
             
             # Handle game type data
@@ -213,7 +251,7 @@ class SheetsService:
         if force_refresh or key not in self.cache:
             print(f"Loading Events data from Google Sheets (force_refresh={force_refresh})")
             worksheet = self._get_worksheet('Events')
-            data = worksheet.get_all_records()
+            data = self._get_records(worksheet, 'Events')
             df = pd.DataFrame(data)
             print(f"Loaded {len(df)} events from Google Sheets")
             
@@ -308,7 +346,7 @@ class SheetsService:
         
         if force_refresh or key not in self.cache:
             worksheet = self._get_worksheet('GameRoster')
-            data = worksheet.get_all_records()
+            data = self._get_records(worksheet, 'GameRoster')
             df = pd.DataFrame(data)
             
             self.cache[key] = df
@@ -332,7 +370,7 @@ class SheetsService:
         if force_refresh or key not in self.cache:
             try:
                 worksheet = self._get_worksheet('Teams')
-                data = worksheet.get_all_records()
+                data = self._get_records(worksheet, 'Teams')
                 df = pd.DataFrame(data)
 
                 # Validate required columns
@@ -389,7 +427,7 @@ class SheetsService:
         if force_refresh or key not in self.cache:
             try:
                 worksheet = self._get_worksheet('ParentCodes')
-                data = worksheet.get_all_records()
+                data = self._get_records(worksheet, 'ParentCodes')
                 df = pd.DataFrame(data)
 
                 if df.empty:
