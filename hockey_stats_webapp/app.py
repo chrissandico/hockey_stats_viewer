@@ -21,6 +21,7 @@ if 'layouts.parent_layout' in sys.modules:
 from services.sheets_service import SheetsService
 from services.auth_service import AuthService
 from services.data_service import DataService
+from services.service_registry import ServiceRegistry, LazyService
 
 # Import layouts
 from layouts.main_layout import create_main_layout, register_dashboard_callbacks
@@ -48,30 +49,49 @@ app = dash.Dash(
 server = app.server
 server.secret_key = os.environ.get('SECRET_KEY', 'hockey-stats-secret-key')
 
-# Initialize services with error handling
+# Initialize services with error handling.
+#
+# Initialization goes through a registry that retries on later use, and
+# every callback below is registered unconditionally with a lazy stand-in
+# for the data service. A worker whose startup init fails (e.g. a Google
+# Sheets 429 when both workers boot into the same quota window) therefore
+# heals the first time a later attempt succeeds, instead of serving empty
+# pages forever because its callbacks were never registered.
+def _create_services():
+    sheets = SheetsService()
+    auth = AuthService(sheets)  # Pass sheets_service for team-based auth
+    data = DataService(sheets, force_refresh=True)  # Force refresh data on startup
+    return sheets, auth, data
+
+service_registry = ServiceRegistry(_create_services)
+data_service_proxy = LazyService(service_registry, 'data_service')
+
+sheets_service = None
+auth_service = None
+data_service = None
+services_initialized = False
+
+def ensure_services(force=False):
+    """Initialize services if needed and sync the module-level globals."""
+    global sheets_service, auth_service, data_service, services_initialized
+    ok = service_registry.ensure(force=force)
+    sheets_service = service_registry.sheets_service
+    auth_service = service_registry.auth_service
+    data_service = service_registry.data_service
+    services_initialized = service_registry.ready
+    return ok
+
 print("=== STARTUP: Initializing services ===")
-try:
-    sheets_service = SheetsService()
-    auth_service = AuthService(sheets_service)  # Pass sheets_service for team-based auth
-    data_service = DataService(sheets_service, force_refresh=True)  # Force refresh data on startup
-    
+ensure_services(force=True)
+if services_initialized:
     # Verify DataService initialization
     print("=== STARTUP: Verifying DataService initialization ===")
     print(f"DataService instance created: {data_service}")
     print(f"DataService has cache busting attributes: {hasattr(data_service, '_players_cache')}")
-    
-    services_initialized = True
-    
-except Exception as e:
-    print(f"ERROR: Failed to initialize services: {e}")
+else:
+    print("ERROR: Failed to initialize services at startup - initialization will be retried on use.")
     print("This may be expected in local development without credentials.")
     print("On Render, credentials should be available via environment variables.")
-    
-    # Create dummy services for local development
-    sheets_service = None
-    auth_service = None
-    data_service = None
-    services_initialized = False
 
 # Test goalie detection with error handling (only if services are initialized)
 print("=== STARTUP: Testing goalie detection ===")
@@ -308,15 +328,11 @@ def login(n_clicks, password):
     # Check if services are available, attempt lazy initialization if missing
     if not services_initialized or sheets_service is None or auth_service is None:
         print("Services not initialized - attempting lazy re-initialization...")
-        try:
-            sheets_service = SheetsService()
-            auth_service = AuthService(sheets_service)
-            data_service = DataService(sheets_service, force_refresh=False)
-            services_initialized = True
+        if ensure_services(force=True):
             print("Lazy service initialization SUCCESSFUL!")
-        except Exception as lazy_e:
-            print(f"Lazy service initialization failed: {lazy_e}")
-            return dash.no_update, f"Authentication service unavailable: {str(lazy_e)}"
+        else:
+            return dash.no_update, ("Authentication service unavailable: initialization failed "
+                                    "(see server logs). Please try again in a moment.")
     
     try:
         # Try to refresh teams data to get latest passwords from Google Sheets, fall back to cache on quota/network error
@@ -392,30 +408,33 @@ def logout(n_clicks):
     print("User logged out - session cleared")
     return '/login'
 
-# Register callbacks for navigation, player and game views
-# Always register callbacks, but handle the case where services aren't initialized
+# Register callbacks for navigation, player and game views.
+# ALL callbacks are registered unconditionally, with a lazy stand-in for
+# the data service: Dash cannot add callbacks after startup, and gating
+# registration on a successful startup init is what left workers serving
+# empty pages after a failed (e.g. rate-limited) start. The stand-in
+# resolves the real service on every call, so a worker that starts
+# poisoned begins serving data as soon as initialization succeeds.
 register_shell_callbacks(app)
-register_player_callbacks(app, data_service)
+register_player_callbacks(app, data_service_proxy)
 
-if services_initialized:
-    # Register dashboard callbacks for the home page live stats
-    register_dashboard_callbacks(app, data_service)
+# Register dashboard callbacks for the home page live stats
+register_dashboard_callbacks(app, data_service_proxy)
 
-    # Register game callbacks - use the fixed version from game_layout.py
-    # Note: We pass None for team_context since it will be retrieved dynamically from session
-    register_game_callbacks(app, data_service, team_context=None)
+# Register game callbacks - use the fixed version from game_layout.py
+# Note: We pass None for team_context since it will be retrieved dynamically from session
+register_game_callbacks(app, data_service_proxy, team_context=None)
 
-    # Register opponent callbacks
-    register_opponent_callbacks(app, data_service)
+# Register opponent callbacks
+register_opponent_callbacks(app, data_service_proxy)
 
-    # Register game type filter callbacks
-    from components.game_type_filter import register_game_type_filter_callbacks
-    register_game_type_filter_callbacks(app, data_service)
+# Register game type filter callbacks
+from components.game_type_filter import register_game_type_filter_callbacks
+register_game_type_filter_callbacks(app, data_service_proxy)
 
-    print("=== STARTUP: All callbacks registered successfully ===")
-else:
-    print("=== STARTUP: Core callbacks registered, but data-dependent callbacks skipped due to service initialization failure ===")
-    print("This is expected in local development without credentials.")
+print("=== STARTUP: All callbacks registered successfully ===")
+if not services_initialized:
+    print("=== STARTUP: Services not initialized yet - data callbacks will serve empty states until initialization succeeds (retried on use) ===")
 
 
 # Run the app
