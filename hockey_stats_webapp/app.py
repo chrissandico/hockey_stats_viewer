@@ -234,14 +234,14 @@ def display_page(pathname):
 
     # If user is a parent, direct them to parent view layout regardless of path
     if team_context and team_context.get('is_parent', False):
-        return create_parent_layout(data_service, team_context)
+        return create_parent_layout(data_service_proxy, team_context)
 
     if pathname == '/player':
-        return create_player_layout(data_service, team_context)
+        return create_player_layout(data_service_proxy, team_context)
     elif pathname == '/game':
-        return create_game_layout(data_service, team_context)
+        return create_game_layout(data_service_proxy, team_context)
     elif pathname == '/opponent':
-        return create_opponent_layout(data_service, team_context)
+        return create_opponent_layout(data_service_proxy, team_context)
     else:
         return create_main_layout(team_context)
 
