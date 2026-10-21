@@ -61,20 +61,14 @@ def create_opponent_layout(data_service, team_context=None):
         dcc.Store(id='opponent-selection-store', storage_type='session'),
 
         # Main content container — all five sections below come from a single
-        # callback (see update_opponent_stats), so one shared spinner covers
-        # them instead of each section flashing its own.
-        dcc.Loading(
-            id="opponent-stats-loading",
-            type="default",
-            color="#00205b",
-            children=[html.Div([
-                html.Div(id='opponent-h2h-chart-container'),
-                html.Div(id='opponent-head-to-head-container'),
-                html.Div(id='opponent-game-log-container'),
-                html.Div(id='opponent-player-leaders-container'),
-                html.Div(id='opponent-goalie-stats-container'),
-            ], className="container-fluid px-4")]
-        )
+        # callback (see update_opponent_stats).
+        html.Div([
+            html.Div(id='opponent-h2h-chart-container'),
+            html.Div(id='opponent-head-to-head-container'),
+            html.Div(id='opponent-game-log-container'),
+            html.Div(id='opponent-player-leaders-container'),
+            html.Div(id='opponent-goalie-stats-container'),
+        ], className="container-fluid px-4")
     ])
 
 

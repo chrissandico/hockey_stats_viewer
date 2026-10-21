@@ -20,7 +20,7 @@ def create_main_layout(team_context=None):
                 html.P("Season Dashboard & Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
 
-            dcc.Loading(html.Div([
+            html.Div([
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
                 html.Div(id='dashboard-form-row', className="text-center mb-4"),
                 dbc.Row([
@@ -48,7 +48,7 @@ def create_main_layout(team_context=None):
                     ], id='dashboard-position-tabs', active_tab="all", className="mb-3 border-bottom border-2"),
                     html.Div(id='dashboard-leaderboards-container', className="mb-4"),
                 ]),
-            ])),
+            ]),
 
             dbc.Row([
                 _quick_card("Players", "Individual stats and game logs", "/player"),

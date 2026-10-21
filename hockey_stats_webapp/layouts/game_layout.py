@@ -28,7 +28,7 @@ def create_game_layout(data_service, team_context=None):
         dcc.Store(id='game-selected-store'),
         dbc.Container([
             html.H1("Game Log", className="fw-bold mb-4 pt-3"),
-            dcc.Loading(html.Div(id='game-list-container', className="mb-4")),
+            html.Div(id='game-list-container', className="mb-4"),
             html.Div(id='game-detail-container'),
         ], fluid=True),
     ])
