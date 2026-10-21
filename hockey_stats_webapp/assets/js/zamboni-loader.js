@@ -11,6 +11,14 @@
  * (anchoring it to the loading wrapper put it at the page's bottom
  * edge on tall pages).
  *
+ * Detection note: the spinner element itself is the loading signal.
+ * Dash renders it (inside the shell Loading component, #main-loading)
+ * only while a load is active and unmounts it when the load ends. An
+ * earlier version hunted for a `._dash-loading` element containing
+ * the spinner, but in this Dash version that class is never an
+ * ancestor of the spinner, so the readout never fired on the live
+ * site even though the script loaded fine.
+ *
  * Vanilla JS, no dependencies. Everything is guarded: if the expected
  * DOM is not found it silently does nothing - it must never break
  * the app.
@@ -26,12 +34,19 @@
 
     function findSpinner() {
         try {
-            var wrappers = document.querySelectorAll('._dash-loading');
-            for (var i = 0; i < wrappers.length; i++) {
-                var spinner = wrappers[i].querySelector(SPINNER_SEL);
-                if (spinner) {
+            // The spinner element is rendered inside the shell Loading
+            // component (#main-loading) only while a load is active,
+            // so a connected spinner in the document IS the signal.
+            var shell = document.getElementById('main-loading');
+            if (shell) {
+                var spinner = shell.querySelector(SPINNER_SEL);
+                if (spinner && spinner.isConnected) {
                     return spinner;
                 }
+            }
+            var any = document.querySelector(SPINNER_SEL);
+            if (any && any.isConnected) {
+                return any;
             }
         } catch (e) { /* ignore */ }
         return null;
