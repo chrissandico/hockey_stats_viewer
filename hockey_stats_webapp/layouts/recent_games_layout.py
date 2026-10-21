@@ -93,17 +93,11 @@ def _create_recent_games_content():
 
         # Team performance + player leaderboards sections — two separate
         # callbacks, but both keyed off the same recent-games-count and
-        # game-type inputs, so they always reload together. One shared
-        # spinner covers both instead of each flashing its own.
-        dcc.Loading(
-            id="recent-games-loading",
-            type="default",
-            color="#00205b",
-            children=[html.Div([
-                html.Div(id='team-performance-section'),
-                html.Div(id='player-leaderboards-section'),
-            ])]
-        )
+        # game-type inputs, so they always reload together.
+        html.Div([
+            html.Div(id='team-performance-section'),
+            html.Div(id='player-leaderboards-section'),
+        ])
     ], fluid=True)
 
 
