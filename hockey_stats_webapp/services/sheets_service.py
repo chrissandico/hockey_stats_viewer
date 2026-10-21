@@ -37,6 +37,24 @@ def normalize_game_type_value(val):
         return 'E'
     return 'R'
 
+def dedupe_event_rows(df):
+    """Collapse duplicate event rows by ID, keeping the LAST row.
+
+    The sheet can hold two rows for one event ID (a retried app upload
+    appends a copy instead of updating the original), and every stat
+    in the viewer counts rows — a duplicated goal row showed a 0-4
+    game as 0-5 in Oct 2026. Appends land below earlier copies, so
+    the last row is the newest version of the event.
+    """
+    if 'ID' not in df.columns or df.empty:
+        return df
+    before = len(df)
+    df = df.drop_duplicates(subset=['ID'], keep='last')
+    if len(df) != before:
+        print(f"Dropped {before - len(df)} duplicate event row(s) by ID")
+    return df
+
+
 class SheetsService:
     """
     Service for interacting with Google Sheets.
@@ -265,6 +283,7 @@ class SheetsService:
             data = self._get_records(worksheet, 'Events')
             df = pd.DataFrame(data)
             print(f"Loaded {len(df)} events from Google Sheets")
+            df = dedupe_event_rows(df)
             
             # Convert string boolean values to Python boolean values with enhanced error handling
             boolean_columns = ['IsGoal', 'IsPowerPlay', 'IsShortHanded', 'IsPenaltyShot']
