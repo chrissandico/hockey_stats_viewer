@@ -6,6 +6,10 @@
  * an eased estimate from 0% toward 99% (fast start, slowing climb -
  * never 100% while still loading). When the spinner hides, it snaps to
  * 100%, holds briefly, fades out, and resets for the next load.
+ * The readout element is appended inside the spinner element itself,
+ * so it stays glued under the machine wherever Dash centers it
+ * (anchoring it to the loading wrapper put it at the page's bottom
+ * edge on tall pages).
  *
  * Vanilla JS, no dependencies. Everything is guarded: if the expected
  * DOM is not found it silently does nothing - it must never break
@@ -17,29 +21,30 @@
     var PCT_CLASS = 'zamboni-pct';
     var SPINNER_SEL = '.dash-default-spinner, .dash-sk-circle, .dash-dot-spinner';
     var TICK_MS = 120;
-    var state = null; // {wrapper, el, pct, timer, gen}
+    var state = null; // {host, el, pct, timer, gen}
     var gen = 0;
 
-    function findLoadingWrapper() {
+    function findSpinner() {
         try {
             var wrappers = document.querySelectorAll('._dash-loading');
             for (var i = 0; i < wrappers.length; i++) {
-                if (wrappers[i].querySelector(SPINNER_SEL)) {
-                    return wrappers[i];
+                var spinner = wrappers[i].querySelector(SPINNER_SEL);
+                if (spinner) {
+                    return spinner;
                 }
             }
         } catch (e) { /* ignore */ }
         return null;
     }
 
-    function ensureEl(wrapper) {
+    function ensureEl(host) {
         var el = null;
-        try { el = wrapper.querySelector(':scope > .' + PCT_CLASS); } catch (e) { /* ignore */ }
+        try { el = host.querySelector(':scope > .' + PCT_CLASS); } catch (e) { /* ignore */ }
         if (!el) {
             el = document.createElement('div');
             el.className = PCT_CLASS;
             el.setAttribute('aria-hidden', 'true');
-            try { wrapper.appendChild(el); } catch (e) { /* ignore */ }
+            try { host.appendChild(el); } catch (e) { /* ignore */ }
         }
         return el;
     }
@@ -57,14 +62,14 @@
         } catch (e) { /* never break the app */ }
     }
 
-    function start(wrapper) {
+    function start(host) {
         gen += 1;
         if (state && state.timer) {
             try { clearInterval(state.timer); } catch (e) { /* ignore */ }
         }
-        var el = ensureEl(wrapper);
+        var el = ensureEl(host);
         try { el.setAttribute('data-gen', String(gen)); } catch (e) { /* ignore */ }
-        state = { wrapper: wrapper, el: el, pct: 0, timer: null, gen: gen };
+        state = { host: host, el: el, pct: 0, timer: null, gen: gen };
         try {
             el.style.opacity = '1';
             el.textContent = '0%';
@@ -108,17 +113,17 @@
 
     function sync() {
         try {
-            var wrapper = findLoadingWrapper();
-            if (wrapper) {
-                if (!state || state.wrapper !== wrapper) {
-                    start(wrapper);
+            var host = findSpinner();
+            if (host) {
+                if (!state || state.host !== host) {
+                    start(host);
                 } else if (state.el && !state.el.isConnected) {
-                    // Wrapper re-rendered mid-load; re-attach the readout.
-                    state.el = ensureEl(wrapper);
+                    // Spinner re-rendered mid-load; re-attach the readout.
+                    state.el = ensureEl(host);
                     try { state.el.style.opacity = '1'; } catch (e) { /* ignore */ }
                 }
             } else if (state) {
-                if (state.wrapper && !state.wrapper.isConnected) {
+                if (state.host && !state.host.isConnected) {
                     hardReset(); // whole loader was replaced; drop silently
                 } else {
                     finish();
