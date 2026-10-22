@@ -732,22 +732,61 @@ footer {
     min-height: 100px;
 }
 
-/* Loading percentage (element created inside the spinner element by
-   assets/js/zamboni-loader.js; sits under the caption, relative to the
-   spinner) */
+/* Loading percentage + progress bar (elements created inside the
+   spinner element by assets/js/zamboni-loader.js; sit under the
+   caption, relative to the spinner).
+   The readout container is a DIRECT CHILD div of the spinner, and
+   Dash's own spinner stylesheet (.dash-default-spinner > div) paints
+   every such div as one of its animated equalizer bars (width: 6px,
+   height: 100%, background-color: the Loading color, sk-stretchdelay
+   animation). Dash injects those rules after this file, with a more
+   specific selector, so the resets below are !important: without them
+   the readout renders as a thin vertical bar with the text spilling
+   out of it (seen on a phone, 2026-10-21). The text and the bar live
+   one level deeper, where Dash's child selector cannot reach them. */
 .zamboni-pct {
     position: absolute;
     top: calc(100% + 24px);
     left: 50%;
     transform: translateX(-50%);
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0;
+    border: none;
+    background: transparent !important;
+    animation: none !important;
     color: #00205b;
     font-size: 0.85rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+    text-align: center;
     white-space: nowrap;
     opacity: 0;
     transition: opacity 0.4s ease;
     pointer-events: none;
+}
+
+.zamboni-pct-text {
+    display: block;
+}
+
+.zamboni-pct-track {
+    width: 140px;
+    height: 6px;
+    margin: 4px auto 0;
+    border-radius: 3px;
+    background: rgba(0, 32, 91, 0.12);
+    overflow: hidden;
+}
+
+.zamboni-pct-fill {
+    height: 100%;
+    width: 0;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #c47f00, #eca200);
+    transition: width 0.12s linear;
 }
 
 /* Progress Bar Styling */
