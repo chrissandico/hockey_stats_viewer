@@ -3668,7 +3668,8 @@ class DataService:
             game_type (str, optional): Game type to filter by (E, R, T). If None, uses all games.
             stat (str): Statistic to sort by (default: 'points')
             position (str, optional): Filter by position (F, D, G)
-            limit (int): Maximum number of players to return (default: 10)
+            limit (int, optional): Maximum number of players to return (default: 10).
+                If None, no limit is applied.
 
         Returns:
             list: List of dictionaries containing player statistics (same format as get_team_leaderboard)
@@ -3708,6 +3709,28 @@ class DataService:
         # Get team identifier for plus/minus calculation
         team_identifier = self._get_team_identifier_for_events(team_id)
 
+        # Players who dressed for these games, per the game roster. Everyone
+        # who dressed belongs in the table — the old version dropped any
+        # skater whose stat line happened to be all zeros, so a quiet game
+        # made most of the roster vanish from the page.
+        dressed_ids = set()
+        roster = self.sheets_service.get_game_roster()
+        if roster is not None and not roster.empty and {'GameID', 'PlayerID', 'Status'} <= set(roster.columns):
+            game_roster = roster[roster['GameID'].isin(game_ids)]
+            dressed_ids = set(game_roster[game_roster['Status'] == 'Present']['PlayerID'].dropna().astype(str))
+
+        # Players who show up anywhere in these games' events. A skater with
+        # recorded involvement is listed even if roster data is missing for
+        # him (roster-gap safety).
+        involved_ids = set()
+        for col in ('PrimaryPlayerID', 'AssistPlayer1ID', 'AssistPlayer2ID'):
+            if col in events.columns:
+                involved_ids.update(events[col].dropna().astype(str))
+        if 'YourTeamPlayersOnIce' in events.columns:
+            for on_ice in events['YourTeamPlayersOnIce'].dropna():
+                if isinstance(on_ice, str):
+                    involved_ids.update(p for p in on_ice.strip('[]').replace(' ', '').split(',') if p)
+
         # Calculate stats for each player
         player_stats = []
 
@@ -3716,6 +3739,8 @@ class DataService:
 
             # Calculate stats using helper methods (for non-goalies)
             if player['Position'] != 'G':
+                if str(player_id) not in dressed_ids and str(player_id) not in involved_ids:
+                    continue  # Neither dressed nor involved — not part of these games
                 try:
                     # Calculate individual stats using helper methods
                     goals = self.calculate_goals_for_events(player_id, events)
@@ -3723,17 +3748,21 @@ class DataService:
                     points = goals + assists
                     plus_minus = self.calculate_plus_minus_for_events(player_id, events, team_identifier)
                     penalty_minutes = self.calculate_penalty_minutes_for_events(player_id, events)
+                    shots = self.calculate_shots_for_events(player_id, events)
+                    corsi = self.calculate_player_corsi_for_events(player_id, events, team_identifier)
 
-                    # Only include players who have at least some stats
-                    if goals > 0 or assists > 0 or plus_minus != 0 or penalty_minutes > 0:
-                        player_stats.append({
-                            'player': player,  # Store Series object, not dict
-                            'goals': goals,
-                            'assists': assists,
-                            'points': points,
-                            'plus_minus': plus_minus,
-                            'penalty_minutes': penalty_minutes
-                        })
+                    player_stats.append({
+                        'player': player,  # Store Series object, not dict
+                        'goals': goals,
+                        'assists': assists,
+                        'points': points,
+                        'plus_minus': plus_minus,
+                        'penalty_minutes': penalty_minutes,
+                        'shots': shots,
+                        'on_ice_shots_for': int(corsi.get('shots_for', 0)),
+                        'on_ice_shots_against': int(corsi.get('shots_against', 0)),
+                        'on_ice_shot_share_pct': float(corsi.get('shot_share_pct', 0.0))
+                    })
                 except Exception as e:
                     print(f"Error calculating stats for player {player_id} vs {opponent_name}: {e}")
                     continue
@@ -3744,16 +3773,25 @@ class DataService:
         else:
             player_stats.sort(key=lambda x: x.get(stat, 0), reverse=True)
 
-        # Apply limit
+        # Apply limit (None means no cap)
         if limit:
             player_stats = player_stats[:limit]
 
         print(f"Returning {len(player_stats)} players for opponent leaderboard")
         return player_stats
 
+
+
     def get_opponent_goalie_stats(self, opponent_name, team_id=None, game_type=None):
         """
         Calculate goalie performance statistics against a specific opponent.
+
+        Games played, results, and shutouts are derived from who was
+        actually in net — events naming the goalie in GoalieOnIceId — not
+        from the game roster. The roster-based version credited a dressed
+        backup who never played with the game's result and, his own
+        goals-against reading 0, with a shutout (even in a loss where the
+        starter faced every shot).
 
         Args:
             opponent_name (str): Name of the opponent
@@ -3788,34 +3826,82 @@ class DataService:
         events = self.sheets_service.get_events()
         events = events[events['GameID'].isin(game_ids)]
 
-        # Get roster data for games played
+        # Get roster data — only used by the legacy fallback for games where
+        # GoalieOnIceId was never logged (see below)
         roster = self.sheets_service.get_game_roster()
         roster = roster[roster['GameID'].isin(game_ids)]
+
+        goalie_ids = goalies['ID'].tolist()
+
+        # GoalieOnIceId per event, with blanks (missing/empty) told apart
+        # from real attributions. Blank-GoalieOnIceId events in an otherwise
+        # attributed game belong to no one — the old isna() OR-clause handed
+        # them to every goalie at once.
+        if 'GoalieOnIceId' in events.columns:
+            goalie_on_ice = events['GoalieOnIceId']
+            is_blank_goalie = goalie_on_ice.isna() | goalie_on_ice.astype(str).str.strip().isin(['', 'nan', 'None'])
+        else:
+            goalie_on_ice = pd.Series([None] * len(events), index=events.index)
+            is_blank_goalie = pd.Series(True, index=events.index)
+
+        # Determine, per game, which of our goalies actually played: a
+        # goalie played a game iff at least one event in it names him.
+        played_games = {goalie_id: set() for goalie_id in goalie_ids}
+        legacy_credit = {}  # game_id -> goalie_id credited under the legacy fallback
+
+        for game_id in game_ids:
+            attributed = set(goalie_on_ice[(events['GameID'] == game_id) & ~is_blank_goalie].unique())
+            if attributed:
+                for goalie_id in goalie_ids:
+                    if goalie_id in attributed:
+                        played_games[goalie_id].add(game_id)
+            else:
+                # Legacy game: no goalie attribution was logged at all.
+                # Credit the game only when exactly one goalie was rostered
+                # Present — with two dressed goalies and no attribution,
+                # crediting either would fabricate his line.
+                present_goalies = []
+                if not roster.empty and {'GameID', 'PlayerID', 'Status'} <= set(roster.columns):
+                    present_goalies = roster[
+                        (roster['GameID'] == game_id) &
+                        (roster['Status'] == 'Present') &
+                        (roster['PlayerID'].isin(goalie_ids))
+                    ]['PlayerID'].unique()
+                if len(present_goalies) == 1:
+                    legacy_credit[game_id] = present_goalies[0]
+                    played_games[present_goalies[0]].add(game_id)
+
+        # How many of our goalies played each game (the shutout rule needs it)
+        goalies_per_game = {}
+        for goalie_id, played in played_games.items():
+            for game_id in played:
+                goalies_per_game.setdefault(game_id, set()).add(goalie_id)
 
         goalie_stats = []
 
         for _, goalie in goalies.iterrows():
             goalie_id = goalie['ID']
 
-            # Count games played from roster
-            games_played = len(roster[(roster['PlayerID'] == goalie_id) & (roster['Status'] == 'Present')])
+            my_game_ids = played_games.get(goalie_id, set())
 
-            if games_played == 0:
-                continue  # Skip goalies who didn't play
+            if not my_game_ids:
+                continue  # Never actually played vs this opponent
 
-            # Calculate W/L/T from game results
-            goalie_games = opponent_games[opponent_games['ID'].isin(
-                roster[(roster['PlayerID'] == goalie_id) & (roster['Status'] == 'Present')]['GameID']
-            )]
+            games_played = len(my_game_ids)
+
+            # Calculate W/L/T from game results — only games he played
+            goalie_games = opponent_games[opponent_games['ID'].isin(my_game_ids)]
 
             wins = len(goalie_games[goalie_games['Result'] == 'W'])
             losses = len(goalie_games[goalie_games['Result'] == 'L'])
             ties = len(goalie_games[goalie_games['Result'] == 'T'])
 
-            # Get goalie-specific events (events are already filtered to these games above)
+            # Get goalie-specific events: the ones naming him, plus every
+            # event of a legacy game credited to him alone
+            my_legacy_games = [g for g in my_game_ids if legacy_credit.get(g) == goalie_id]
             goalie_events = events[
-                (events['GoalieOnIceId'] == goalie_id) |
-                (events['GoalieOnIceId'].isna())  # Backward compat when GoalieOnIceId not logged
+                (goalie_on_ice == goalie_id) |
+                (events['GameID'].isin(my_legacy_games))
             ]
 
             # Count goals against (goals by opposing team)
@@ -3843,11 +3929,19 @@ class DataService:
             # Calculate GAA (goals against average) — per game, matching calculate_goalie_stats
             gaa = goals_against / games_played if games_played > 0 else 0.0
 
-            # Count shutouts
+            # Count shutouts. A shutout requires being the team's only
+            # goalie in a game the team kept scoreless — a split game, or a
+            # game he dressed for but never entered, earns none.
             shutouts = 0
-            for game_id in goalie_games['ID']:
-                game_goals_against = len(goals_against_events[goals_against_events['GameID'] == game_id])
-                if game_goals_against == 0:
+            for game_id in my_game_ids:
+                if goalies_per_game.get(game_id) != {goalie_id}:
+                    continue
+                team_goals_against = len(events[
+                    (events['GameID'] == game_id) &
+                    (events['IsGoal'] == True) &
+                    (events['Team'] != team_identifier)
+                ])
+                if team_goals_against == 0:
                     shutouts += 1
 
             goalie_stats.append({
@@ -3869,6 +3963,8 @@ class DataService:
 
         print(f"Returning {len(goalie_stats)} goalies for opponent stats")
         return goalie_stats
+
+
 
     # ============================================================================
     # END OPPONENT STATISTICS METHODS
