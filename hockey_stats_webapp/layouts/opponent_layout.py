@@ -304,14 +304,19 @@ def create_player_table(players, is_coach=False):
     # Build table data and columns based on coach status
     try:
         if is_coach:
-            # Coaches see plus/minus
+            # Coaches see plus/minus and PIM, plus the on-ice shot-share
+            # columns (SF / SA / SF%) the main leaderboard carries
             table_data = [
                 {
                     'Player': format_player_label(p['player']),
                     'G': p['goals'],
                     'A': p['assists'],
                     'P': p['points'],
-                    '+/-': p['plus_minus']
+                    '+/-': p['plus_minus'],
+                    'SF': p.get('on_ice_shots_for', 0),
+                    'SA': p.get('on_ice_shots_against', 0),
+                    'SF%': f"{p.get('on_ice_shot_share_pct', 0.0):.1f}%",
+                    'PIM': p['penalty_minutes']
                 }
                 for p in players
             ]
@@ -320,16 +325,23 @@ def create_player_table(players, is_coach=False):
                 {'name': 'G', 'id': 'G'},
                 {'name': 'A', 'id': 'A'},
                 {'name': 'P', 'id': 'P'},
-                {'name': '+/-', 'id': '+/-'}
+                {'name': '+/-', 'id': '+/-'},
+                {'name': 'SF', 'id': 'SF'},
+                {'name': 'SA', 'id': 'SA'},
+                {'name': 'SF%', 'id': 'SF%'},
+                {'name': 'PIM', 'id': 'PIM'}
             ]
         else:
-            # Players don't see plus/minus
+            # Players don't see plus/minus or PIM (coaches-only stats)
             table_data = [
                 {
                     'Player': format_player_label(p['player']),
                     'G': p['goals'],
                     'A': p['assists'],
-                    'P': p['points']
+                    'P': p['points'],
+                    'SF': p.get('on_ice_shots_for', 0),
+                    'SA': p.get('on_ice_shots_against', 0),
+                    'SF%': f"{p.get('on_ice_shot_share_pct', 0.0):.1f}%"
                 }
                 for p in players
             ]
@@ -337,8 +349,12 @@ def create_player_table(players, is_coach=False):
                 {'name': 'Player', 'id': 'Player'},
                 {'name': 'G', 'id': 'G'},
                 {'name': 'A', 'id': 'A'},
-                {'name': 'P', 'id': 'P'}
+                {'name': 'P', 'id': 'P'},
+                {'name': 'SF', 'id': 'SF'},
+                {'name': 'SA', 'id': 'SA'},
+                {'name': 'SF%', 'id': 'SF%'}
             ]
+
     except Exception as e:
         logger.error(f"Error building player table: {e}")
         return html.P(f"Error displaying player data: {str(e)}", className="text-danger")
@@ -534,8 +550,8 @@ def register_opponent_callbacks(app, data_service):
             # Get stats from data service
             head_to_head = data_service.calculate_opponent_head_to_head(opponent_name, team_id, game_type)
             games = data_service.get_opponent_games(opponent_name, team_id, game_type)
-            forwards = data_service.get_opponent_player_leaderboard(opponent_name, team_id, game_type, stat='points', position='F', limit=10)
-            defense = data_service.get_opponent_player_leaderboard(opponent_name, team_id, game_type, stat='points', position='D', limit=10)
+            forwards = data_service.get_opponent_player_leaderboard(opponent_name, team_id, game_type, stat='points', position='F', limit=None)
+            defense = data_service.get_opponent_player_leaderboard(opponent_name, team_id, game_type, stat='points', position='D', limit=None)
             goalies = data_service.get_opponent_goalie_stats(opponent_name, team_id, game_type)
 
             # Build H2H donut chart
