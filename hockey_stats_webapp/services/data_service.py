@@ -3,6 +3,81 @@ import logging
 from datetime import datetime, date
 import config
 
+
+# States returned by load_opponent_options() — see its docstring.
+OPPONENTS_READY = 'ready'      # opponents found
+OPPONENTS_EMPTY = 'empty'      # data verifiably loaded; team has no opponents yet
+OPPONENTS_LOADING = 'loading'  # sheets snapshot not usable yet; caller may retry
+
+
+def _try_get_unique_opponents(data_service, team_id):
+    """get_unique_opponents() that reports failure as None instead of raising."""
+    try:
+        return data_service.get_unique_opponents(team_id, None)
+    except Exception:
+        return None
+
+
+def load_opponent_options(data_service, team_id):
+    """
+    Fetch the opponent list for the vs-Opponents dropdown, healing a
+    failed boot snapshot once if needed.
+
+    Why this exists: when a worker's startup Sheets load fails (the
+    known 429 race), the snapshot it serves is unusable —
+    get_unique_opponents() raises (the lazy proxy's
+    ServiceUnavailableError before initialization succeeds, or an error
+    from an empty games frame) or comes back empty. The dropdown
+    callback used to turn that into a permanent
+    '-- Error loading opponents --' option, because nothing ever
+    re-ran it. Here, a failed or empty first fetch triggers ONE heal
+    through the service's own force-refresh machinery (the same call
+    the Refresh button makes) and one re-fetch.
+
+    Args:
+        data_service: a DataService (or the app's LazyService proxy for one)
+        team_id: team whose opponents to load
+
+    Returns:
+        (opponents, state), where state is one of:
+          OPPONENTS_READY   — opponents is the non-empty opponent list
+          OPPONENTS_EMPTY   — opponents is []; a forced refresh SUCCEEDED
+                              and there is still nothing, so the team
+                              genuinely has no completed games yet
+          OPPONENTS_LOADING — opponents is None; the snapshot is still
+                              not usable. The caller may re-ask a bounded
+                              number of times (see the retry interval in
+                              layouts/opponent_layout.py).
+
+    An empty result is only trusted as OPPONENTS_EMPTY after a verified
+    successful refresh — an empty frame is also exactly what a failed
+    boot load leaves behind. At most two fetches and one heal happen
+    per call; nothing here loops.
+    """
+    opponents = _try_get_unique_opponents(data_service, team_id)
+    if opponents:
+        return opponents, OPPONENTS_READY
+
+    # Fetch raised or came back empty: the snapshot may be the failed
+    # boot state. Heal once through the service's force-refresh, then
+    # look again. Through the lazy proxy this can raise
+    # ServiceUnavailableError until the registry's own throttled
+    # initialization succeeds — that still nudges recovery, and the
+    # re-fetch below simply reports LOADING again.
+    healed = False
+    try:
+        healed = bool(data_service.force_refresh_all_data())
+    except Exception:
+        healed = False
+
+    opponents = _try_get_unique_opponents(data_service, team_id)
+    if opponents:
+        return opponents, OPPONENTS_READY
+    if opponents is not None and healed:
+        return [], OPPONENTS_EMPTY
+    return None, OPPONENTS_LOADING
+
+
 class DataService:
     """
     Service for processing hockey statistics data.
