@@ -10,9 +10,28 @@ import logging
 import plotly.graph_objects as go
 from utils import format_player_label, resolve_game_type
 import config
+from services.data_service import (
+    load_opponent_options,
+    OPPONENTS_READY,
+    OPPONENTS_EMPTY,
+    OPPONENTS_LOADING,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Bounded self-heal for the opponent dropdown (see load_opponent_options
+# in services/data_service.py): after a restart whose boot-time Sheets
+# load failed, the dropdown callback re-fires on this interval until the
+# data lands — at most MAX_INTERVALS times (~60s) per page view, then
+# the dropdown settles into a "tap Refresh" placeholder and stops.
+OPPONENT_RETRY_INTERVAL_MS = 5000
+OPPONENT_RETRY_MAX_INTERVALS = 12
+
+OPPONENT_LOADING_OPTIONS = [{'label': '-- Loading opponents --', 'value': '', 'disabled': True}]
+OPPONENT_SETTLED_OPTIONS = [{'label': '-- Still loading — tap Refresh --', 'value': '', 'disabled': True}]
+OPPONENT_NO_OPPONENTS_OPTIONS = [{'label': '-- No opponents found --', 'value': '', 'disabled': True}]
+OPPONENT_NO_TEAM_OPTIONS = [{'label': '-- No team selected --', 'value': '', 'disabled': True}]
 
 
 def create_opponent_layout(data_service, team_context=None):
@@ -34,15 +53,23 @@ def create_opponent_layout(data_service, team_context=None):
             dbc.Alert("Please log in to view opponent statistics.", color="warning", className="m-4")
         ])
 
-    # Get opponents for initial load (all game types)
+    # Get opponents for initial load (all game types), through the same
+    # self-healing fetch the dropdown callback uses: if this worker's
+    # boot-time Sheets load failed, the fetch heals the snapshot on the
+    # spot, or reports OPPONENTS_LOADING and the retry interval below
+    # keeps asking until the data lands.
     try:
-        opponents = data_service.get_unique_opponents(team_id, game_type=None)
+        opponents, opponents_state = load_opponent_options(data_service, team_id)
     except Exception as e:
         logger.error(f"Error loading opponents: {e}")
-        opponents = []
+        opponents, opponents_state = None, OPPONENTS_LOADING
 
     # Create opponent dropdown
-    opponent_dropdown = create_opponent_dropdown(opponents)
+    if opponents_state == OPPONENTS_LOADING:
+        opponent_dropdown = create_opponent_dropdown(
+            None, options=OPPONENT_LOADING_OPTIONS, value='')
+    else:
+        opponent_dropdown = create_opponent_dropdown(opponents)
 
     return html.Div([
         # Title
@@ -60,6 +87,17 @@ def create_opponent_layout(data_service, team_context=None):
         # Store for opponent selection
         dcc.Store(id='opponent-selection-store', storage_type='session'),
 
+        # Bounded dropdown self-heal: ticks only while the opponent data
+        # hasn't loaded (the dropdown callback disables it the moment
+        # real options land, and max_intervals caps it regardless).
+        dcc.Interval(
+            id='opponent-dropdown-retry',
+            interval=OPPONENT_RETRY_INTERVAL_MS,
+            n_intervals=0,
+            max_intervals=OPPONENT_RETRY_MAX_INTERVALS,
+            disabled=opponents_state != OPPONENTS_LOADING
+        ),
+
         # Main content container — all five sections below come from a single
         # callback (see update_opponent_stats).
         html.Div([
@@ -72,37 +110,44 @@ def create_opponent_layout(data_service, team_context=None):
     ])
 
 
-def create_opponent_dropdown(opponents_list):
+def _format_opponent_options(opponents):
+    """(options, value) for a non-empty opponent list: a disabled
+    placeholder first, then opponents alphabetically with game counts,
+    with the first opponent pre-selected."""
+    sorted_opponents = sorted(opponents, key=lambda x: x['opponent'])
+
+    options = [{'label': '-- Select Opponent --', 'value': '', 'disabled': True}]
+    options.extend([
+        {
+            'label': f"{opp['opponent']} ({opp['games']} games)",
+            'value': opp['opponent']
+        }
+        for opp in sorted_opponents
+    ])
+
+    return options, sorted_opponents[0]['opponent']
+
+
+def create_opponent_dropdown(opponents_list, options=None, value=None):
     """
     Create opponent selection dropdown.
 
     Args:
         opponents_list (list): List of opponent dictionaries
+        options (list, optional): Pre-built options to use verbatim
+            (e.g. the loading placeholder while the data snapshot heals);
+            takes precedence over opponents_list
+        value: Pre-selected value to pair with pre-built options
 
     Returns:
         dash.html.Div: Dropdown component
     """
-    if not opponents_list:
-        options = [{'label': '-- No opponents found --', 'value': '', 'disabled': True}]
-        value = ''
-    else:
-        # Sort alphabetically and format with game count
-        sorted_opponents = sorted(opponents_list, key=lambda x: x['opponent'])
-
-        # Add placeholder option
-        options = [{'label': '-- Select Opponent --', 'value': '', 'disabled': True}]
-
-        # Add opponent options
-        options.extend([
-            {
-                'label': f"{opp['opponent']} ({opp['games']} games)",
-                'value': opp['opponent']
-            }
-            for opp in sorted_opponents
-        ])
-
-        # Select first opponent by default (skip placeholder)
-        value = sorted_opponents[0]['opponent'] if sorted_opponents else ''
+    if options is None:
+        if not opponents_list:
+            options = OPPONENT_NO_OPPONENTS_OPTIONS
+            value = ''
+        else:
+            options, value = _format_opponent_options(opponents_list)
 
     return html.Div([
         html.Label("Opponent", className="form-label fw-bold mb-1"),
@@ -446,51 +491,53 @@ def register_opponent_callbacks(app, data_service):
         data_service: DataService instance
     """
 
-    # Callback 1: Update opponent dropdown
+    # Callback 1: Update opponent dropdown (self-healing — see
+    # load_opponent_options in services/data_service.py)
     @app.callback(
         [dash.dependencies.Output('opponent-selection-dropdown', 'options'),
-         dash.dependencies.Output('opponent-selection-dropdown', 'value')],
-        [dash.dependencies.Input('global-refresh-btn', 'n_clicks')],
+         dash.dependencies.Output('opponent-selection-dropdown', 'value'),
+         dash.dependencies.Output('opponent-dropdown-retry', 'disabled')],
+        [dash.dependencies.Input('global-refresh-btn', 'n_clicks'),
+         dash.dependencies.Input('opponent-dropdown-retry', 'n_intervals')],
         prevent_initial_call=False
     )
-    def update_opponent_dropdown(refresh_clicks):
-        """Update opponent dropdown options."""
-        game_type = None
+    def update_opponent_dropdown(refresh_clicks, retry_intervals):
+        """Update opponent dropdown options.
 
+        Third output drives the retry interval: it stays enabled only
+        while the sheets snapshot is unusable (a restart whose boot
+        load failed). Each tick re-runs the self-healing fetch; real
+        options disable the interval at once, and once the bounded
+        retry budget is spent the dropdown settles into a
+        "tap Refresh" placeholder with the interval disabled — it
+        never dead-ends on an error option the way it used to.
+        """
         # Get team_id from session
         team_id = session.get('team_id') if session.get('authenticated') else None
 
         if not team_id:
-            return [{'label': '-- No team selected --', 'value': '', 'disabled': True}], ''
+            return OPPONENT_NO_TEAM_OPTIONS, '', True
 
         try:
-            # Get opponents for this game type
-            opponents = data_service.get_unique_opponents(team_id, game_type)
-
-            if not opponents:
-                return [{'label': '-- No opponents found --', 'value': '', 'disabled': True}], ''
-
-            # Format options
-            sorted_opponents = sorted(opponents, key=lambda x: x['opponent'])
-
-            # Add placeholder
-            options = [{'label': '-- Select Opponent --', 'value': '', 'disabled': True}]
-
-            # Add opponent options
-            options.extend([
-                {
-                    'label': f"{opp['opponent']} ({opp['games']} games)",
-                    'value': opp['opponent']
-                }
-                for opp in sorted_opponents
-            ])
-
-            # Select first opponent by default
-            return options, sorted_opponents[0]['opponent'] if sorted_opponents else ''
-
+            opponents, state = load_opponent_options(data_service, team_id)
         except Exception as e:
+            # load_opponent_options is built not to raise; if it ever
+            # does, treat it as "still loading" so the bounded retry
+            # below keeps a path to recovery.
             logger.error(f"Error updating opponent dropdown: {e}")
-            return [{'label': '-- Error loading opponents --', 'value': '', 'disabled': True}], ''
+            opponents, state = None, OPPONENTS_LOADING
+
+        if state == OPPONENTS_READY:
+            options, value = _format_opponent_options(opponents)
+            return options, value, True
+
+        if state == OPPONENTS_EMPTY:
+            return OPPONENT_NO_OPPONENTS_OPTIONS, '', True
+
+        # OPPONENTS_LOADING: keep retrying while budget remains.
+        if (retry_intervals or 0) >= OPPONENT_RETRY_MAX_INTERVALS:
+            return OPPONENT_SETTLED_OPTIONS, '', True
+        return OPPONENT_LOADING_OPTIONS, '', False
 
     # Callback 2: Store opponent selection
     @app.callback(
