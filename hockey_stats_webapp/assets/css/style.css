@@ -673,7 +673,29 @@ footer {
 .dash-sk-circle,
 .dash-dot-spinner {
     display: block !important;
-    position: relative;
+    /* Pinned to the viewport, just under the navbar - not left to
+       Dash's own centering. Dash 2.13's dcc.Loading renders the
+       spinner inside an absolutely-positioned overlay that spans
+       the FULL height of the wrapped content and flex-centers the
+       spinner in it. The shell Loading wraps the entire page, so
+       on any page taller than the screen the spinner (machine,
+       caption, percentage and bar) lands in the middle of the
+       full page height - measured 1,980px down a 3,414px-tall
+       page on a phone, i.e. below the fold for the whole wait,
+       while the hidden content left a blank screen up top. That
+       is why the loader seemed to show on initial load (content
+       still short, centred spinner near the top) but not when
+       switching the Games window on a built page. position:fixed
+       keeps the whole experience where the user is looking, on
+       every load, at any scroll position. The caption (::after)
+       and the percentage readout (.zamboni-pct) are positioned
+       against the spinner itself, so they stay glued to it
+       exactly as before. */
+    position: fixed !important;
+    top: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
     width: 180px !important;
     height: 64px !important;
     margin: 0 auto;
