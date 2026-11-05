@@ -84,15 +84,28 @@ def create_last_n_filter_component():
             style={'width': '220px', 'display': 'inline-block', 'verticalAlign': 'middle'},
         ),
         html.Span(
-            dcc.Input(
-                id=LAST_N_CUSTOM_ID,
-                type='number',
-                min=LAST_N_MIN,
-                max=LAST_N_MAX,
-                step=1,
-                placeholder='1–30',
-                style={'width': '90px', 'marginLeft': '10px'},
-            ),
+            [
+                html.Span(
+                    'Number of games:',
+                    style={'marginLeft': '10px', 'fontWeight': 'bold',
+                           'color': '#2c3e50'},
+                ),
+                dcc.Input(
+                    id=LAST_N_CUSTOM_ID,
+                    type='number',
+                    # Deliberately NO min/max attributes: Dash's number
+                    # input swallows out-of-range values before any
+                    # callback can see them, so 45 would silently do
+                    # nothing. Without the attributes the value reaches
+                    # the write callback, normalize_last_n_choice clamps
+                    # it to 1-30, and the sync callback rewrites the box
+                    # to the clamped number — visible feedback instead
+                    # of a silent dead end.
+                    step=1,
+                    placeholder='1–30',
+                    style={'width': '90px', 'marginLeft': '6px'},
+                ),
+            ],
             id=LAST_N_CUSTOM_WRAP_ID,
             style={'display': 'none'},
         ),
@@ -110,14 +123,26 @@ def create_last_n_filter_component():
 
 
 def register_last_n_callbacks(app):
-    """Register the store write + control sync callbacks (call once).
+    """Register the store write + control sync + visibility callbacks.
 
-    Both callbacks are equality-guarded: the write callback returns
-    no_update when the resolved window already equals the store, and the
-    sync callback returns no_update when the rendered control already
-    agrees with the store. That pair prevents callback loops and stops a
-    freshly mounted control (which defaults to 'all') from clobbering a
-    window the user set on another page.
+    The write and sync callbacks are equality-guarded: the write
+    callback returns no_update when the resolved window already equals
+    the store, and the sync callback returns no_update when the rendered
+    control already agrees with the store. That pair prevents callback
+    loops and stops a freshly mounted control (which defaults to 'all')
+    from clobbering a window the user set on another page.
+
+    The custom input's VISIBILITY is owned by a separate callback keyed
+    on the preset selection itself — NOT on the store. (It used to be
+    an output of the sync callback, which only fires when the store
+    changes; selecting "Custom…" with an empty number resolves to the
+    current store value, the write guard swallowed it as no_update, the
+    sync never fired, and the input could never appear — a deadlock
+    that made the custom window unreachable in the real app.) When the
+    sync callback sets the preset to 'custom' (arriving from another
+    page with a custom window stored), the visibility callback fires
+    off that preset change and reveals the input, so cross-page
+    behaviour is unchanged.
     """
 
     @app.callback(
@@ -128,6 +153,14 @@ def register_last_n_callbacks(app):
         prevent_initial_call=True,
     )
     def _write_last_n_store(preset, custom, current):
+        # Mid-gesture guard: "Custom…" chosen but no usable number yet.
+        # The user is about to type — keep the current window rather
+        # than resolving the empty box to All and clearing it.
+        if preset == 'custom':
+            try:
+                int(custom)
+            except (TypeError, ValueError):
+                return no_update
         resolved = normalize_last_n_choice(preset, custom)
         if resolved == current:
             return no_update
@@ -135,8 +168,7 @@ def register_last_n_callbacks(app):
 
     @app.callback(
         [Output(LAST_N_PRESET_ID, 'value'),
-         Output(LAST_N_CUSTOM_ID, 'value'),
-         Output(LAST_N_CUSTOM_WRAP_ID, 'style')],
+         Output(LAST_N_CUSTOM_ID, 'value')],
         [Input(LAST_N_STORE_ID, 'data')],
         [State(LAST_N_PRESET_ID, 'value'),
          State(LAST_N_CUSTOM_ID, 'value')],
@@ -144,15 +176,28 @@ def register_last_n_callbacks(app):
     def _sync_last_n_control(stored, current_preset, current_custom):
         if stored is None:
             target_preset, target_custom = 'all', current_custom
-            wrap_style = {'display': 'none'}
+        elif current_preset == 'custom':
+            # The user is mid custom-gesture on THIS control: reflect
+            # the number, but do not snap the control to a preset just
+            # because the typed value coincides with one (typing 3
+            # would otherwise flip the dropdown to "Last 3 Games" and
+            # hide the box the user is still typing in).
+            target_preset, target_custom = 'custom', stored
         elif stored in LAST_N_PRESETS:
             target_preset, target_custom = str(stored), current_custom
-            wrap_style = {'display': 'none'}
         else:
             target_preset, target_custom = 'custom', stored
-            wrap_style = {'display': 'inline'}
         if target_preset == current_preset and target_custom == current_custom:
-            return no_update, no_update, no_update
-        return target_preset, target_custom, wrap_style
+            return no_update, no_update
+        return target_preset, target_custom
+
+    @app.callback(
+        Output(LAST_N_CUSTOM_WRAP_ID, 'style'),
+        [Input(LAST_N_PRESET_ID, 'value')],
+    )
+    def _toggle_custom_input(preset):
+        if preset == 'custom':
+            return {'display': 'inline'}
+        return {'display': 'none'}
 
     return app
