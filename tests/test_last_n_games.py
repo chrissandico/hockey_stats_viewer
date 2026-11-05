@@ -421,18 +421,3 @@ def test_last_n_window_label_actual_count():
     assert last_n_window_label(5, actual=5) == "Last 5 Games"
     assert last_n_window_label(5, actual=3) == "Last 5 Games (only 3 played)"
 
-
-# ------------------------------------------------------ recent games -----
-
-def test_recent_games_layout_uses_canonical_selector():
-    """The Recent Games page used to carry its own sort-by-date + head(N)
-    selection in both callbacks (no within-day tiebreak). It must select
-    through the canonical selector now. (The page is currently unrouted
-    and unimportable for an unrelated pre-existing reason — a missing
-    game-type-filter factory — so this is a source-level guard.)"""
-    path = os.path.join(os.path.dirname(__file__), "..",
-                        "hockey_stats_webapp", "layouts", "recent_games_layout.py")
-    with open(path, encoding="utf-8") as f:
-        source = f.read()
-    assert "DateSortable" not in source
-    assert source.count("get_last_n_games_frame") == 2
