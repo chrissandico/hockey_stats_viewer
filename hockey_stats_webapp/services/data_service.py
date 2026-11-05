@@ -726,6 +726,30 @@ class DataService:
 
         return False
 
+    @staticmethod
+    def _parse_game_date_value(date_str):
+        """Parse a game date into a datetime.date, or None if unparseable.
+
+        THE one date-parse rule for game selection, shared by
+        _filter_games_by_date (completed-game filtering) and the Last-N
+        window selector, so a date that cannot be parsed fails the
+        same way on every surface: the game is not a completed game.
+        """
+        if date_str is None:
+            return None
+        try:
+            if pd.isna(date_str) or str(date_str).strip() == '':
+                return None
+        except (TypeError, ValueError):
+            return None
+        try:
+            dt = pd.to_datetime(date_str, errors='coerce')
+            if pd.notna(dt):
+                return dt.date()
+        except Exception:
+            pass
+        return None
+
     def _filter_games_by_date(self, games, include_future=False):
         """
         Filter games to only include completed games (or all games if include_future=True).
@@ -752,20 +776,12 @@ class DataService:
         # Create a copy to avoid pandas warnings
         filtered_games = games.copy()
         
-        # Parse dates and filter
+        # Parse dates and filter (shared parse rule: _parse_game_date_value)
         def parse_game_date(date_str):
-            """Parse various date formats using pandas to_datetime for maximum robustness"""
-            if pd.isna(date_str) or str(date_str).strip() == '':
-                return None
-            try:
-                dt = pd.to_datetime(date_str, errors='coerce')
-                if pd.notna(dt):
-                    return dt.date()
-            except Exception:
-                pass
-            
-            print(f"WARNING: Could not parse date '{date_str}'. Treating as future game.")
-            return None
+            parsed = DataService._parse_game_date_value(date_str)
+            if parsed is None and not pd.isna(date_str) and str(date_str).strip() != '':
+                print(f"WARNING: Could not parse date '{date_str}'. Treating as future game.")
+            return parsed
         
         # Apply date parsing
         filtered_games['ParsedDate'] = filtered_games['Date'].apply(parse_game_date)
@@ -801,6 +817,74 @@ class DataService:
 
         clean_gt = games['GameType'].astype(str).str.strip(' "\'').str.upper()
         return games[clean_gt != 'E']
+
+    @staticmethod
+    def _normalize_last_n(last_n):
+        """Normalize a Last-N window size.
+
+        None stays None (no window). Anything else is coerced to an
+        int clamped to the product range 1-30. Un-coercible values
+        become None (no window) rather than an error, matching how
+        the UI treats an empty or invalid custom entry.
+        """
+        if last_n is None:
+            return None
+        try:
+            n = int(last_n)
+        except (TypeError, ValueError):
+            return None
+        return max(1, min(30, n))
+
+    def get_last_n_games_frame(self, games, last_n):
+        """Return the completed, non-Exhibition games restricted to the
+        Last-N window, ordered most recent first.
+
+        THE canonical Last-N selection, shared by every windowed
+        surface so no page re-implements it: _filter_games_by_type
+        (non-Exhibition) and _filter_games_by_date (the completed-game
+        definition: date on/before today AND stats recorded) decide
+        membership; ordering is parsed date DESC with game ID DESC as
+        the within-day tiebreak (doubleheaders); the first N rows are
+        the window. With last_n=None, the full ordered completed
+        frame is returned.
+        """
+        if games is None or games.empty or 'ID' not in games.columns:
+            return games if games is not None else pd.DataFrame()
+        n = self._normalize_last_n(last_n)
+        eligible = self._filter_games_by_type(games, None)
+        completed = self._filter_games_by_date(eligible, include_future=False)
+        if completed is None or completed.empty:
+            return pd.DataFrame(columns=games.columns)
+        if 'Date' not in completed.columns:
+            self.logger.warning("Last-N selection: games data has no Date column; returning games in sheet order")
+            return completed if n is None else completed.head(n)
+        work = completed.copy()
+        work['_ParsedGameDate'] = work['Date'].apply(self._parse_game_date_value)
+        work = work[work['_ParsedGameDate'].notna()]
+        work['_GameIdSort'] = pd.to_numeric(work['ID'], errors='coerce')
+        work = work.sort_values(
+            ['_ParsedGameDate', '_GameIdSort'],
+            ascending=[False, False],
+            kind='mergesort',
+        )
+        work = work.drop(columns=['_ParsedGameDate', '_GameIdSort'])
+        if n is not None:
+            work = work.head(n)
+        return work
+
+    def _select_last_n_game_ids(self, games, last_n):
+        """Return the ordered game IDs of the Last-N window for a games frame.
+
+        Returns None when last_n is None (no restriction). Otherwise a
+        list of game IDs, most recent first — possibly shorter than
+        last_n, possibly empty, when fewer completed games exist.
+        """
+        if last_n is None:
+            return None
+        frame = self.get_last_n_games_frame(games, last_n)
+        if frame is None or frame.empty or 'ID' not in frame.columns:
+            return []
+        return frame['ID'].tolist()
 
     @staticmethod
     def _normalize_game_type_code(raw_value):
@@ -1141,7 +1225,7 @@ class DataService:
         
         return players
     
-    def get_games(self, team_id=None, game_type=None):
+    def get_games(self, team_id=None, game_type=None, last_n=None):
         """
         Get all games with calculated goal statistics, optionally filtered by team and game type.
         Enhanced with comprehensive error handling and logging.
@@ -1149,6 +1233,8 @@ class DataService:
         Args:
             team_id (str, optional): Team ID to filter by
             game_type (str, optional): Game type to filter by (E, R, T). If None, returns all games.
+            last_n (int, optional): Restrict to the Last-N window of completed games
+                (see _select_last_n_game_ids). If None, no window is applied.
             
         Returns:
             pd.DataFrame: DataFrame containing game data with calculated columns
@@ -1165,8 +1251,16 @@ class DataService:
                 self.logger.error(f"Invalid game_type parameter: '{game_type}'. Must be 'R', 'T', 'P', or None.")
                 return pd.DataFrame()
             
-            # Create a cache key based on team_id and game_type
+            # Normalize the Last-N window (None = all games). The window
+            # is part of the cache key: a windowed frame is a different
+            # result from the full frame and must never be served in
+            # its place (or vice versa).
+            last_n = self._normalize_last_n(last_n)
+            
+            # Create a cache key based on team_id and game type
             cache_key = f"games_{team_id}_{game_type}" if team_id or game_type else "games_all"
+            if last_n is not None:
+                cache_key = f"{cache_key}_last{last_n}"
             
             # Check if we have cached results
             if not hasattr(self, '_games_calculated_cache'):
@@ -1377,6 +1471,15 @@ class DataService:
                 if not games.empty and 'Result' not in games.columns:
                     games['Result'] = 'Unknown'
                     self.logger.warning("Added fallback Result column due to calculation error")
+            
+            # Apply the Last-N window last: window membership follows
+            # the completed-game definition, which needs the calculated
+            # scores above (and the events behind them). The frame
+            # cached under a windowed key is the windowed frame.
+            if last_n is not None and games is not None and not games.empty:
+                window_ids = self._select_last_n_game_ids(games, last_n)
+                if window_ids is not None:
+                    games = games[games['ID'].isin(window_ids)]
             
             # Cache the results with enhanced error handling
             try:
@@ -2158,7 +2261,7 @@ class DataService:
             print(f"get_game_by_id: Game {game_id} not found (team_id={team_id})")
             return None
     
-    def get_player_games(self, player_id, team_id=None, include_future=False, game_type=None):
+    def get_player_games(self, player_id, team_id=None, include_future=False, game_type=None, last_n=None):
         """
         Get all games a player participated in, optionally filtered by team, date, and game type.
         For goalies, only includes games where they faced at least 1 shot on goal (SOG > 0).
@@ -2176,7 +2279,7 @@ class DataService:
         game_roster = self.get_game_roster(team_id)
         
         # Get games filtered by team and game type if specified
-        games = self.get_games(team_id, game_type)
+        games = self.get_games(team_id, game_type, last_n=last_n)
         
         # Apply date filtering to only show completed games by default
         games = self._filter_games_by_date(games, include_future=include_future)
@@ -2636,7 +2739,7 @@ class DataService:
             self.logger.error(f"Unexpected error in calculate_penalty_minutes_for_events for player '{player_id}': {str(e)}")
             return 0
 
-    def calculate_player_stats(self, player_id, team_id=None, game_type=None):
+    def calculate_player_stats(self, player_id, team_id=None, game_type=None, last_n=None):
         """
         Calculate statistics for a player with comprehensive error handling and logging.
         
@@ -2681,7 +2784,7 @@ class DataService:
                     self.logger.error("Failed to retrieve events data for player stats calculation")
                     return None
                 
-                games = self.get_player_games(player_id, team_id, game_type=game_type)
+                games = self.get_player_games(player_id, team_id, game_type=game_type, last_n=last_n)
                 if games is None:
                     self.logger.warning(f"No games data returned for player '{player_id}' - using empty DataFrame")
                     games = pd.DataFrame()
@@ -2695,7 +2798,7 @@ class DataService:
             # we don't fall back to using ALL events (which was the bug)
             if game_type is not None:
                 # Get all games of the specified type for proper event filtering
-                all_games_of_type = self.get_games(team_id, game_type)
+                all_games_of_type = self.get_games(team_id, game_type, last_n=last_n)
                 if not all_games_of_type.empty:
                     game_ids_of_type = all_games_of_type['ID'].tolist()
                     events = events[events['GameID'].isin(game_ids_of_type)]
@@ -2720,7 +2823,7 @@ class DataService:
                     # Get player games for each game type individually and combine
                     all_player_games = []
                     for gt in ['R', 'T', 'P']:  # Regular Season, Tournament, Playoffs
-                        gt_games = self.get_player_games(player_id, team_id, game_type=gt)
+                        gt_games = self.get_player_games(player_id, team_id, game_type=gt, last_n=last_n)
                         if not gt_games.empty:
                             all_player_games.append(gt_games)
                             print(f"Found {len(gt_games)} games for player {player_id} in game type '{gt}'")
@@ -2741,6 +2844,14 @@ class DataService:
                         print(f"Filtered events to {len(events)} events from combined games")
                     else:
                         print(f"No games found for player {player_id} in any game type")
+            
+            # Last-N guard: whichever branch above produced the event
+            # set, nothing outside the window may leak into the totals.
+            if last_n is not None:
+                window_ids = self._select_last_n_game_ids(self.get_games(team_id, game_type), last_n)
+                if window_ids is not None:
+                    events = events[events['GameID'].isin(window_ids)]
+                    games = games[games['ID'].isin(window_ids)]
             
             # Get all teams in events
             unique_teams = events['Team'].unique()
@@ -3080,7 +3191,7 @@ class DataService:
         print(f"DEBUG: Returning enhanced goalie game stats for game {game_id}: {result_dict}")
         return result_dict
     
-    def get_player_game_log(self, player_id, team_id=None, game_type=None):
+    def get_player_game_log(self, player_id, team_id=None, game_type=None, last_n=None):
         """
         Get a game log for a player, optionally filtered by team and game type.
         
@@ -3092,7 +3203,7 @@ class DataService:
         Returns:
             list: List of dictionaries containing game statistics
         """
-        player_games = self.get_player_games(player_id, team_id, game_type=game_type)
+        player_games = self.get_player_games(player_id, team_id, game_type=game_type, last_n=last_n)
         player = self.get_player_by_id(player_id)
         
         game_log = []
@@ -3126,7 +3237,7 @@ class DataService:
         games = self.get_games(team_id)
         completed_games = self._filter_games_by_date(games, include_future=False)
         return len(completed_games)
-    def calculate_team_stats(self, team_id=None, game_type=None):
+    def calculate_team_stats(self, team_id=None, game_type=None, last_n=None):
         """
         Calculate team statistics.
         
@@ -3139,7 +3250,7 @@ class DataService:
         """
         # Use the provided game_type parameter directly - don't get from session
         # This ensures consistency between UI selection and actual calculation
-        games = self.get_games(team_id, game_type)
+        games = self.get_games(team_id, game_type, last_n=last_n)
         
         # Ensure Result column exists
         games = self._ensure_result_column(games)
@@ -3251,7 +3362,7 @@ class DataService:
             'win_percentage': win_percentage
         }
 
-    def calculate_team_stats_by_game_type(self, team_id=None):
+    def calculate_team_stats_by_game_type(self, team_id=None, last_n=None):
         """Calculate team stats broken down by game type (R/T/P) in one pass.
 
         Buckets locally from the same all-games list that
@@ -3263,7 +3374,7 @@ class DataService:
             dict: {'R': {...}, 'T': {...}, 'P': {...}, 'ALL': {...}} with the
             same keys as calculate_team_stats.
         """
-        games = self.get_games(team_id)
+        games = self.get_games(team_id, last_n=last_n)
         games = self._ensure_result_column(games)
         completed_games = self._filter_games_by_date(games, include_future=False)
         if completed_games is None:
@@ -3306,7 +3417,7 @@ class DataService:
             result[code] = self._tally_team_stats(sub)
         result['ALL'] = self._tally_team_stats(eligible)
         return result
-    def calculate_special_teams_stats(self, team_id=None, game_type=None, game_id=None):
+    def calculate_special_teams_stats(self, team_id=None, game_type=None, game_id=None, last_n=None):
         """
         Calculate Special Teams metrics (PP%, PK%, S/PP, SA/PK, Net ST Goals, Combined ST Index, Discipline Index)
         following WEB_APP_STATS_SPEC.md.
@@ -3345,6 +3456,15 @@ class DataService:
             if not all_games.empty:
                 game_ids = all_games['ID'].astype(str).tolist()
                 events = events[events['GameID'].astype(str).isin(game_ids)]
+
+        # Last-N window: restrict the event set to the window's games.
+        # A specific-game request (game_id) is never windowed — it
+        # names its game directly.
+        if last_n is not None and game_id is None and team_id is not None:
+            window_ids = self._select_last_n_game_ids(self.get_games(team_id), last_n)
+            if window_ids is not None:
+                window_id_strs = [str(w) for w in window_ids]
+                events = events[events['GameID'].astype(str).isin(window_id_strs)]
 
         if events.empty:
             return self._empty_special_teams_summary()
@@ -3443,7 +3563,7 @@ class DataService:
             'net_penalties': net_penalties,
         }
 
-    def calculate_special_teams_stats_by_game_type(self, team_id=None):
+    def calculate_special_teams_stats_by_game_type(self, team_id=None, last_n=None):
         """Calculate special-teams stats broken down by game type (R/T/P).
 
         Derives per-type game-ID sets from local GameType bucketing (no
@@ -3457,12 +3577,23 @@ class DataService:
         games = self.get_games(team_id)
         buckets = self._bucket_game_ids_by_type(games)
 
+        # Last-N: the window is selected first (completed,
+        # non-Exhibition games), then the type buckets are taken
+        # inside it, so the parts describe the same game set as the
+        # windowed headline numbers.
+        window_id_strs = None
+        if last_n is not None:
+            window_ids = self._select_last_n_game_ids(games, last_n)
+            window_id_strs = {str(w) for w in (window_ids or [])}
+
         events = self.get_events()
         team_identifier = self._get_team_identifier_for_events(team_id or 'your_team')
 
         result = {}
         for code in ('R', 'T', 'P'):
             game_ids = buckets[code]
+            if window_id_strs is not None:
+                game_ids = [g for g in game_ids if g in window_id_strs]
             if events is None or events.empty or not game_ids or 'GameID' not in events.columns:
                 result[code] = self._empty_special_teams_summary()
                 continue
@@ -3492,7 +3623,7 @@ class DataService:
             'net_penalties': 0,
         }
 
-    def calculate_goalie_advanced_stats(self, player_id, team_id=None, game_type=None, game_id=None):
+    def calculate_goalie_advanced_stats(self, player_id, team_id=None, game_type=None, game_id=None, last_n=None):
         """
         Calculate advanced situational and period save percentages for a goalie
         following WEB_APP_STATS_SPEC.md.
@@ -3505,7 +3636,8 @@ class DataService:
         if events is None or events.empty:
             return self._empty_goalie_advanced_summary()
 
-        games = self.get_player_games(player_id, team_id, game_type=game_type)
+        games = self.get_player_games(player_id, team_id, game_type=game_type,
+                                      last_n=last_n if game_id is None else None)
         if game_id is not None and not games.empty:
             games = games[games['ID'].astype(str) == str(game_id)]
 
@@ -4049,9 +4181,14 @@ class DataService:
     # LEADERBOARD CACHING METHODS
     # ============================================================================
     
-    def _get_leaderboard_cache_key(self, stat, position, team_id, game_type):
-        """Generate a cache key for leaderboard results."""
-        return f"lb:{stat}:{position}:{team_id}:{game_type}"
+    def _get_leaderboard_cache_key(self, stat, position, team_id, game_type, last_n=None):
+        """Generate a cache key for leaderboard results.
+
+        The Last-N window is part of the key: a windowed leaderboard
+        is a different result from the all-games one and must never
+        be served in its place.
+        """
+        return f"lb:{stat}:{position}:{team_id}:{game_type}:{last_n}"
     
     def _is_leaderboard_cache_valid(self, cache_key):
         """Check if a leaderboard cache entry is still valid.
@@ -4084,7 +4221,7 @@ class DataService:
         self._leaderboard_cache_time.clear()
         self.logger.info("Leaderboard cache cleared")
 
-    def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None, game_type=None):
+    def get_team_leaderboard(self, stat='points', position=None, limit=None, team_id=None, game_type=None, last_n=None):
         """
         Get a team leaderboard for a specific statistic.
         
@@ -4099,13 +4236,13 @@ class DataService:
             list: List of dictionaries containing player statistics
         """
         # **PERFORMANCE OPTIMIZATION**: Check cache first
-        cache_key = self._get_leaderboard_cache_key(stat, position, team_id, game_type)
+        cache_key = self._get_leaderboard_cache_key(stat, position, team_id, game_type, last_n)
         cached_result = self._get_cached_leaderboard(cache_key)
         if cached_result is not None:
             return cached_result
         
         # First check if there are any completed games for this team/game type
-        games = self.get_games(team_id, game_type)
+        games = self.get_games(team_id, game_type, last_n=last_n)
         completed_games = self._filter_games_by_date(games, include_future=False)
         if completed_games.empty:
             print(f"No completed games found for game type '{game_type}' - returning empty leaderboard")
@@ -4138,7 +4275,7 @@ class DataService:
             
             if player['Position'] == 'G':
                 # Use goalie stats calculation for goalies
-                stats = self.calculate_goalie_stats(player_id, team_id, game_type)
+                stats = self.calculate_goalie_stats(player_id, team_id, game_type, last_n=last_n)
                 # Add missing fields for goalies to match skater stats structure
                 if stats:
                     stats['points'] = 0  # Goalies don't have points
@@ -4150,7 +4287,7 @@ class DataService:
                     stats['goals_per_game'] = 0
             else:
                 # Use regular player stats calculation for skaters
-                stats = self.calculate_player_stats(player_id, team_id, game_type)
+                stats = self.calculate_player_stats(player_id, team_id, game_type, last_n=last_n)
                 # Add missing fields for skaters to match goalie stats structure
                 if stats:
                     stats['wins'] = 0  # Skaters don't have wins
@@ -4187,7 +4324,7 @@ class DataService:
         
         return result
     
-    def calculate_goalie_stats(self, player_id, team_id=None, game_type=None):
+    def calculate_goalie_stats(self, player_id, team_id=None, game_type=None, last_n=None):
         """
         Calculate statistics for a goalie with GoalieOnIceId support.
         
@@ -4213,7 +4350,7 @@ class DataService:
         events = self.get_events()
         print(f"Total events: {len(events)}")
         
-        games = self.get_player_games(player_id, team_id, game_type=game_type)
+        games = self.get_player_games(player_id, team_id, game_type=game_type, last_n=last_n)
         print(f"Goalie games count: {len(games)}")
         
         # Filter events to only include events from the goalie's non-exhibition games
