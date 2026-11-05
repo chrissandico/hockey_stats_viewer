@@ -1,9 +1,13 @@
 import logging
-from dash import html, dcc, dash_table
+from dash import html, dcc, dash_table, Input, Output, no_update
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
+from flask import session as flask_session
 from utils import format_player_label
+from components.last_n_filter import (
+    create_last_n_filter_component, LAST_N_STORE_ID, last_n_window_label,
+)
 import config
 
 logger = logging.getLogger(__name__)
@@ -56,23 +60,26 @@ def create_parent_layout(data_service, team_context=None):
                 html.P("Parent Portal & Player Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
 
-            # High-level Team Stats Card
-            team_summary_content,
+            create_last_n_filter_component(),
+
+            # High-level Team Stats Card (container is re-rendered by
+            # register_parent_callbacks when the Last N window changes)
+            html.Div(team_summary_content, id='parent-team-summary-container'),
 
             html.Hr(className="my-4"),
 
             # Child's Individual Section
-            child_section_content,
+            html.Div(child_section_content, id='parent-child-section-container'),
 
             html.Div(className="py-3")
         ], fluid=True)
     ])
 
 
-def _build_team_summary_section(data_service, team_id):
+def _build_team_summary_section(data_service, team_id, last_n=None):
     """Build the high-level team stats summary section combining all non-exhibition games."""
     try:
-        t_stats = data_service.calculate_team_stats(team_id, game_type=None)
+        t_stats = data_service.calculate_team_stats(team_id, game_type=None, last_n=last_n)
     except Exception as e:
         logger.error(f"Parent Layout: Error calculating team stats: {e}")
         t_stats = None
@@ -103,7 +110,7 @@ def _build_team_summary_section(data_service, team_id):
     # Special teams
     st_summary = ""
     try:
-        st = data_service.calculate_special_teams_stats(team_id, game_type=None)
+        st = data_service.calculate_special_teams_stats(team_id, game_type=None, last_n=last_n)
         if st:
             pp = st.get('pp_percentage', 0.0)
             pk = st.get('pk_percentage', 0.0)
@@ -144,7 +151,11 @@ def _build_team_summary_section(data_service, team_id):
         ], xs=6, sm=4, md=3),
     ]
 
-    card_children = [dbc.Row(team_kpi_cards, className="g-3 mb-2")]
+    card_children = []
+    window_label = last_n_window_label(last_n)
+    if window_label:
+        card_children.append(html.P(f"Stats window: {window_label}", className="text-muted small text-center mb-1"))
+    card_children.append(dbc.Row(team_kpi_cards, className="g-3 mb-2"))
     if st_summary:
         card_children.append(html.P(f"Special Teams{st_summary}", className="text-muted small text-center mb-0"))
 
@@ -159,7 +170,7 @@ def _build_team_summary_section(data_service, team_id):
     ], className="shadow-sm mb-4 border-0")
 
 
-def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx, child_name_ctx):
+def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx, child_name_ctx, last_n=None):
     """Build the child player individual stats & game log section."""
     players_df = data_service.get_players(team_id)
     if players_df is None or players_df.empty:
@@ -202,6 +213,7 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
         )
 
     player_id = data_service._get_player_id_from_series(target_player)
+    window_label = last_n_window_label(last_n)
     position = str(target_player.get('Position', 'F') or 'F').upper()
     is_goalie = position == 'G'
     display_name = format_player_label(target_player)
@@ -209,9 +221,9 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
     # Calculate stats across all games
     try:
         if is_goalie:
-            stats = data_service.calculate_goalie_stats(player_id, team_id, game_type=None)
+            stats = data_service.calculate_goalie_stats(player_id, team_id, game_type=None, last_n=last_n)
         else:
-            stats = data_service.calculate_player_stats(player_id, team_id, game_type=None)
+            stats = data_service.calculate_player_stats(player_id, team_id, game_type=None, last_n=last_n)
     except Exception as e:
         logger.error(f"Parent Layout: Error calculating stats for player {player_id}: {e}")
         stats = None
@@ -287,13 +299,14 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
             dbc.Badge(f"Position: {position}", color="secondary", className="float-end fs-6 mt-1")
         ]),
         dbc.CardBody([
+            html.P(f"Stats window: {window_label}", className="text-muted mb-2") if window_label else html.Div(),
             html.Div(kpi_tiles, className="d-flex flex-wrap gap-3 my-2"),
         ]),
     ], className="shadow-sm mb-4 border-0")
 
     # Game Log
-    game_log_data = data_service.get_player_game_log(player_id, team_id, game_type=None)
-    game_log_card = _build_game_log_card(game_log_data, is_goalie)
+    game_log_data = data_service.get_player_game_log(player_id, team_id, game_type=None, last_n=last_n)
+    game_log_card = _build_game_log_card(game_log_data, is_goalie, last_n=last_n)
 
     return html.Div([
         player_card,
@@ -301,11 +314,12 @@ def _build_child_section(data_service, team_id, jersey_number_str, player_id_ctx
     ])
 
 
-def _build_game_log_card(game_log, is_goalie):
+def _build_game_log_card(game_log, is_goalie, last_n=None):
     """Build game log table and chart for skater or goalie."""
+    window_label = last_n_window_label(last_n)
     if not game_log:
         return dbc.Card([
-            dbc.CardHeader(html.H4("Game Log", className="card-title mb-0")),
+            dbc.CardHeader(html.H4(f"Game Log — {window_label}" if window_label else "Game Log", className="card-title mb-0")),
             dbc.CardBody(html.P("No game log records available.", className="text-muted text-center py-3")),
         ], className="shadow-sm border-0")
 
@@ -429,9 +443,44 @@ def _build_game_log_card(game_log, is_goalie):
     )
 
     return dbc.Card([
-        dbc.CardHeader(html.H4("Individual Game Log", className="card-title mb-0")),
+        dbc.CardHeader(html.H4(f"Individual Game Log — {window_label}" if window_label else "Individual Game Log", className="card-title mb-0")),
         dbc.CardBody([
             dcc.Graph(figure=fig, config={'displayModeBar': False}, className="mb-4"),
             log_table
         ])
     ], className="shadow-sm border-0")
+
+
+def register_parent_callbacks(app, data_service):
+    """Re-render the parent page's stat sections when the Last N window changes.
+
+    The parent page is server-rendered at navigation time with the
+    default (All) window. This callback rebuilds both sections from the
+    flask-session context whenever the shared store changes; it also
+    runs on mount, so a window chosen on another page in the same tab is
+    applied here too.
+    """
+
+    @app.callback(
+        [Output('parent-team-summary-container', 'children'),
+         Output('parent-child-section-container', 'children')],
+        [Input(LAST_N_STORE_ID, 'data')],
+    )
+    def _refresh_parent_sections(last_n):
+        if not flask_session.get('authenticated', False):
+            return no_update, no_update
+        team_id = flask_session.get('team_id')
+        if not team_id:
+            return no_update, no_update
+        team_section = _build_team_summary_section(data_service, team_id, last_n=last_n)
+        child_section = _build_child_section(
+            data_service,
+            team_id,
+            str(flask_session.get('jersey_number', '') or '').strip(),
+            str(flask_session.get('player_id', '') or '').strip(),
+            str(flask_session.get('child_name', '') or '').strip(),
+            last_n=last_n,
+        )
+        return team_section, child_section
+
+    return app

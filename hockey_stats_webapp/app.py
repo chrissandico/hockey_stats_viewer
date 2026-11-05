@@ -26,7 +26,8 @@ from services.service_registry import ServiceRegistry, LazyService
 # Import layouts
 from layouts.main_layout import create_main_layout, register_dashboard_callbacks
 from layouts.player_layout import create_player_layout, register_player_callbacks
-from layouts.parent_layout import create_parent_layout
+from layouts.parent_layout import create_parent_layout, register_parent_callbacks
+from components.last_n_filter import create_last_n_store, register_last_n_callbacks
 from layouts.game_layout import create_game_layout, register_game_callbacks
 from layouts.opponent_layout import create_opponent_layout, register_opponent_callbacks
 from layouts.shell import create_shell_header, create_shell_footer, register_shell_callbacks
@@ -205,6 +206,7 @@ def validate_team_session():
 # Define the app layout
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
+    create_last_n_store(),  # Session-scoped Last N games window, shared by all pages
     html.Div(id='shell-header-container'),
     dcc.Loading(
         id="main-loading",
@@ -427,6 +429,8 @@ register_game_callbacks(app, data_service_proxy, team_context=None)
 
 # Register opponent callbacks
 register_opponent_callbacks(app, data_service_proxy)
+register_last_n_callbacks(app)
+register_parent_callbacks(app, data_service_proxy)
 
 # Register game type filter callbacks
 from components.game_type_filter import register_game_type_filter_callbacks

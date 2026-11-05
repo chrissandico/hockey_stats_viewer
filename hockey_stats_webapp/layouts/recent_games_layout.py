@@ -599,20 +599,22 @@ def register_recent_games_callbacks(app, data_service):
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
-            games = data_service._filter_games_by_date(games, include_future=False)
 
             if games.empty:
                 return dbc.Alert("No games found for selected filters", color="info")
 
-            # Sort by date and get N most recent
-            # Convert Date to datetime for proper sorting and reset index
-            games = games.copy()
-            games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
-            games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
-
+            # Select the N most recent games through the canonical
+            # Last-N selector (completed, non-Exhibition games only;
+            # parsed-date DESC with game-ID DESC as the within-day
+            # tiebreak) — the same rule every windowed surface uses,
+            # replacing the local sort-by-date + head(N) copy this page
+            # used to carry (which also had no doubleheader tiebreak).
             # Convert num_games to int (it comes as string from dcc.Store)
             num_games = int(num_games) if num_games else 5
-            recent_games = games_sorted.head(num_games)
+            recent_games = data_service.get_last_n_games_frame(games, num_games)
+
+            if recent_games.empty:
+                return dbc.Alert("No games found for selected filters", color="info")
 
             # Ensure clean dataframe before passing to aggregation
             recent_games = recent_games.copy()
@@ -654,20 +656,22 @@ def register_recent_games_callbacks(app, data_service):
 
             # Get games filtered by team and game type
             games = data_service.get_games(team_id, game_type)
-            games = data_service._filter_games_by_date(games, include_future=False)
 
             if games.empty:
                 return dbc.Alert("No games found for selected filters", color="info")
 
-            # Sort by date and get N most recent
-            # Convert Date to datetime for proper sorting and reset index
-            games = games.copy()
-            games['DateSortable'] = pd.to_datetime(games['Date'], errors='coerce')
-            games_sorted = games.sort_values('DateSortable', ascending=False).reset_index(drop=True)
-
+            # Select the N most recent games through the canonical
+            # Last-N selector (completed, non-Exhibition games only;
+            # parsed-date DESC with game-ID DESC as the within-day
+            # tiebreak) — the same rule every windowed surface uses,
+            # replacing the local sort-by-date + head(N) copy this page
+            # used to carry (which also had no doubleheader tiebreak).
             # Convert num_games to int (it comes as string from dcc.Store)
             num_games = int(num_games) if num_games else 5
-            recent_games = games_sorted.head(num_games)
+            recent_games = data_service.get_last_n_games_frame(games, num_games)
+
+            if recent_games.empty:
+                return dbc.Alert("No games found for selected filters", color="info")
 
             # Ensure clean dataframe
             recent_games = recent_games.copy()

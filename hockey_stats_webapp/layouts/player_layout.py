@@ -6,6 +6,9 @@ import logging
 import json
 import plotly.graph_objects as go
 from utils import format_player_label, resolve_game_type
+from components.last_n_filter import (
+    create_last_n_filter_component, LAST_N_STORE_ID, last_n_window_label,
+)
 import config
 
 logger = logging.getLogger(__name__)
@@ -83,6 +86,7 @@ def create_player_layout(data_service, team_context=None):
         html.Div(id='player-scroll-dummy', style={'display': 'none'}),
         dbc.Container([
             html.H1("Players", className="fw-bold mb-4 pt-3"),
+            create_last_n_filter_component(),
             roster_grid,
             html.Hr(className="my-4"),
             html.Div([
@@ -157,9 +161,10 @@ def register_player_callbacks(app, data_service):
         [Output('player-info-container', 'children'),
          Output('player-game-log-container', 'children')],
         [Input('player-selected-store', 'data'),
-         Input('global-refresh-btn', 'n_clicks')],
+         Input('global-refresh-btn', 'n_clicks'),
+         Input(LAST_N_STORE_ID, 'data')],
     )
-    def update_player_info(jersey_number, refresh_clicks):
+    def update_player_info(jersey_number, refresh_clicks, last_n):
         """Populate the player info card and game log for the selected player."""
         empty_prompt = html.P(
             "Select a player above to view their stats.",
@@ -193,6 +198,9 @@ def register_player_callbacks(app, data_service):
 
         # Always show all non-exhibition games
         game_type = None
+
+        # Last N window from the shared session store (None = All games).
+        window_label = last_n_window_label(last_n)
 
         # ---------------------------------------------------------------
         # Cache management: clear stale entries when player or game type
@@ -276,9 +284,9 @@ def register_player_callbacks(app, data_service):
         # Calculate stats
         try:
             if is_goalie:
-                stats = data_service.calculate_goalie_stats(player_id, team_id, game_type)
+                stats = data_service.calculate_goalie_stats(player_id, team_id, game_type, last_n=last_n)
             else:
-                stats = data_service.calculate_player_stats(player_id, team_id, game_type)
+                stats = data_service.calculate_player_stats(player_id, team_id, game_type, last_n=last_n)
         except Exception as e:
             logger.error(f"Player layout: Error calculating stats for player {player_id}: {e}")
             stats = None
@@ -351,6 +359,7 @@ def register_player_callbacks(app, data_service):
             dbc.CardHeader(html.H4(format_player_label(player), className="card-title")),
             dbc.CardBody([
                 html.P(f"Position: {player['Position']}", className="text-muted mb-3"),
+                html.P(f"Stats window: {window_label}", className="text-muted mb-3") if window_label else html.Div(),
                 html.Div(kpi_tiles, className="d-flex flex-wrap gap-3"),
             ]),
         ], className="mb-4 shadow-sm")
@@ -362,7 +371,7 @@ def register_player_callbacks(app, data_service):
         if is_coach:
             if is_goalie:
                 try:
-                    adv_goalie = data_service.calculate_goalie_advanced_stats(player_id, team_id, game_type)
+                    adv_goalie = data_service.calculate_goalie_advanced_stats(player_id, team_id, game_type, last_n=last_n)
                     if adv_goalie:
                         es = adv_goalie.get('even_strength', {})
                         pk = adv_goalie.get('penalty_kill', {})
@@ -453,7 +462,7 @@ def register_player_callbacks(app, data_service):
         # ---------------------------------------------------------------
         # Game log
         # ---------------------------------------------------------------
-        game_log = data_service.get_player_game_log(player_id, team_id, game_type)
+        game_log = data_service.get_player_game_log(player_id, team_id, game_type, last_n=last_n)
 
         if game_log:
             game_log_data = []
@@ -553,7 +562,7 @@ def register_player_callbacks(app, data_service):
                     columns.append({'name': '+/-', 'id': '+/-'})
 
             game_log_card = dbc.Card([
-                dbc.CardHeader(html.H4("Game Log", className="card-title")),
+                dbc.CardHeader(html.H4(f"Game Log — {window_label}" if window_label else "Game Log", className="card-title")),
                 dbc.CardBody([
                     dcc.Graph(figure=fig, config={'displayModeBar': False}),
                     dash_table.DataTable(
@@ -589,7 +598,7 @@ def register_player_callbacks(app, data_service):
             ], className="shadow-sm")
         else:
             game_log_card = dbc.Card([
-                dbc.CardHeader(html.H4("Game Log", className="card-title")),
+                dbc.CardHeader(html.H4(f"Game Log — {window_label}" if window_label else "Game Log", className="card-title")),
                 dbc.CardBody([
                     html.P("No games found for this player.")
                 ]),

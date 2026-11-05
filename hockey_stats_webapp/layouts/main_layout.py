@@ -3,6 +3,9 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from flask import session as flask_session
 from utils import format_player_label, resolve_game_type
+from components.last_n_filter import (
+    create_last_n_filter_component, LAST_N_STORE_ID, last_n_window_label,
+)
 import config
 
 
@@ -19,6 +22,8 @@ def create_main_layout(team_context=None):
                 html.H1(team_name, className="display-5 fw-bold mb-1"),
                 html.P("Season Dashboard & Analytics", className="text-muted mb-3"),
             ], className="text-center pt-4 pb-2"),
+
+            create_last_n_filter_component(),
 
             html.Div([
                 html.Div(id='dashboard-kpi-row', className="mb-4"),
@@ -106,9 +111,10 @@ def register_dashboard_callbacks(app, data_service):
         Output('dashboard-leaderboards-container', 'children'),
         [Input('dashboard-trigger', 'data'),
          Input('dashboard-position-tabs', 'active_tab'),
-         Input('global-refresh-btn', 'n_clicks')]
+         Input('global-refresh-btn', 'n_clicks'),
+         Input(LAST_N_STORE_ID, 'data')]
     )
-    def populate_dashboard(_trigger, active_tab, refresh_clicks):
+    def populate_dashboard(_trigger, active_tab, refresh_clicks, last_n):
         team_id = flask_session.get('team_id')
         if not team_id or not data_service:
             return [html.Div()] * 6
@@ -128,11 +134,14 @@ def register_dashboard_callbacks(app, data_service):
         # Show all games (Regular Season, Tournament, Playoffs)
         game_type = None
 
+        # Last N window from the shared session store (None = All games).
+        window_label = last_n_window_label(last_n)
+
         is_coach = flask_session.get('is_coach', False)
 
         # ── KPI tiles ─────────────────────────────────────────────────────────
         try:
-            stats = data_service.calculate_team_stats(team_id, game_type=game_type)
+            stats = data_service.calculate_team_stats(team_id, game_type=game_type, last_n=last_n)
             win_pct = f"{stats['win_percentage']:.0%}"
 
             # Game-type sub-breakdowns (R/T/P) in smaller sub text. This block
@@ -147,7 +156,7 @@ def register_dashboard_callbacks(app, data_service):
             goals_for_sub = ""
             goals_against_sub = ""
             try:
-                by_type = data_service.calculate_team_stats_by_game_type(team_id)
+                by_type = data_service.calculate_team_stats_by_game_type(team_id, last_n=last_n)
                 if by_type and by_type.get('ALL'):
                     # Use the same ALL total the sub-numbers sum to, so the
                     # on-screen parts always add up to the main metric.
@@ -207,7 +216,7 @@ def register_dashboard_callbacks(app, data_service):
 
             if is_coach:
                 try:
-                    st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type)
+                    st_stats = data_service.calculate_special_teams_stats(team_id, game_type=game_type, last_n=last_n)
                     pp_opps = st_stats.get('pp_opportunities', 0)
                     pk_opps = st_stats.get('pk_opportunities', 0)
 
@@ -232,7 +241,7 @@ def register_dashboard_callbacks(app, data_service):
                     pp_sub = ""
                     pk_sub = ""
                     try:
-                        st_by_type = data_service.calculate_special_teams_stats_by_game_type(team_id)
+                        st_by_type = data_service.calculate_special_teams_stats_by_game_type(team_id, last_n=last_n)
 
                         def _st_pct(s, pct_key, opp_key):
                             if s.get(opp_key, 0) > 0:
@@ -289,10 +298,25 @@ def register_dashboard_callbacks(app, data_service):
         except Exception:
             pass
 
+        # Windowed game set for the recent-form dots, via the canonical
+        # selector. The Last Game card below always uses the full
+        # completed set — it is the team's actual last completed game,
+        # which is the same game under any window.
+        window_games = None
+        window_form_label = window_label
+        if last_n is not None and games_df is not None and not games_df.empty:
+            try:
+                window_frame = data_service.get_last_n_games_frame(games_df, last_n)
+                window_games = window_frame.head(5)
+                window_form_label = last_n_window_label(last_n, actual=len(window_frame))
+            except Exception:
+                window_games = None
+
         # ── Recent form dots ──────────────────────────────────────────────────
         try:
-            if completed_games is not None and not completed_games.empty:
-                recent = completed_games.head(5)
+            form_source = window_games if window_games is not None else completed_games
+            if form_source is not None and not form_source.empty:
+                recent = form_source.head(5)
                 dots = []
                 for _, row in recent.iterrows():
                     result = str(row.get('Result', '')).upper()
@@ -307,7 +331,8 @@ def register_dashboard_callbacks(app, data_service):
                         letter = 'T'
                     dots.append(html.Span(letter, className=f"form-dot {css} me-1"))
                 form_row = html.Div([
-                    html.Span("Recent form: ", className="text-muted me-2"),
+                    html.Span(f"Recent form ({window_form_label}): " if window_form_label else "Recent form: ",
+                              className="text-muted me-2"),
                     *dots,
                 ])
             else:
@@ -387,6 +412,7 @@ def register_dashboard_callbacks(app, data_service):
                 limit=None,
                 team_id=team_id,
                 game_type=game_type,
+                last_n=last_n,
             )
             skaters = [p for p in leaderboard if p.get('player', {}).get('Position') != 'G']
 
@@ -420,7 +446,8 @@ def register_dashboard_callbacks(app, data_service):
                             ))
 
             top_performers = dbc.Card(dbc.CardBody([
-                html.H6("Top Performers (All-time)", className="text-muted mb-2"),
+                html.H6(f"Top Performers ({window_label})" if window_label else "Top Performers (All-time)",
+                        className="text-muted mb-2"),
                 dbc.ListGroup(items, flush=True),
             ])) if items else html.Div()
         except Exception:
@@ -433,7 +460,8 @@ def register_dashboard_callbacks(app, data_service):
                     stat='save_percentage' if is_coach else 'jersey_number',
                     position='G',
                     team_id=team_id,
-                    game_type=game_type
+                    game_type=game_type,
+                    last_n=last_n
                 )
                 table_columns = [
                     {'name': 'Player', 'id': 'Player', 'type': 'text'},
@@ -475,7 +503,8 @@ def register_dashboard_callbacks(app, data_service):
                     stat=stat_sort,
                     position=pos_code,
                     team_id=team_id,
-                    game_type=game_type
+                    game_type=game_type,
+                    last_n=last_n
                 )
                 table_columns = [
                     {'name': 'Player', 'id': 'Player', 'type': 'text'},
@@ -571,7 +600,9 @@ def register_dashboard_callbacks(app, data_service):
                 ])
 
             leaderboard_card = dbc.Card([
-                dbc.CardHeader(html.H5(f"Roster Leaderboard — {tab_title_text}", className="card-title mb-0")),
+                dbc.CardHeader(html.H5(
+                    f"Roster Leaderboard — {tab_title_text}" + (f" · {window_label}" if window_label else ""),
+                    className="card-title mb-0")),
                 dbc.CardBody([leaderboard_body])
             ], className="mb-4 shadow-sm")
 
@@ -579,6 +610,18 @@ def register_dashboard_callbacks(app, data_service):
             leaderboard_card = html.Div(f"Error loading leaderboards: {str(e)}", className="text-danger")
 
         season_chart = html.Div()
+
+        # Window stamp: when a Last N window is active, say so above the
+        # KPI tiles (the R/T/P sub-numbers are computed inside the window).
+        if window_label:
+            kpi_row = html.Div([
+                html.Div(
+                    f"Stats window: {window_label}",
+                    className="text-muted text-end",
+                    style={"fontSize": "0.8rem", "marginBottom": "4px"},
+                ),
+                kpi_row,
+            ])
 
         # Freshness stamp: name the snapshot this page was computed from, so
         # a short cache window reads as "as of HH:MM" instead of "wrong".
