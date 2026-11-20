@@ -425,7 +425,7 @@ class SheetsService:
                 non_empty = df[df['Password'] != '']
                 duplicate_passwords = non_empty[non_empty.duplicated(subset=['Password'], keep=False)]
                 if not duplicate_passwords.empty:
-                    error_msg = f"Duplicate passwords found in Teams sheet: {duplicate_passwords['Password'].tolist()}"
+                    error_msg = f"Duplicate passwords found in Teams sheet: {len(duplicate_passwords)} row(s) share password values (values not logged)"
                     print(f"ERROR: {error_msg}")
                     raise ValueError(error_msg)
                 
