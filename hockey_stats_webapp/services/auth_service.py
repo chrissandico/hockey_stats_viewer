@@ -59,7 +59,6 @@ class AuthService:
                         info = {
                             'team_id': team_id,
                             'team_name': team_name,
-                            'password': clean_pwd,
                             'is_coach': False,
                             'is_parent': True,
                             'jersey_number': jersey_number,
@@ -76,7 +75,7 @@ class AuthService:
             matching_team = teams[teams['Password'] == clean_pwd]
             
             if matching_team.empty:
-                print(f"WARNING: Invalid password attempt: '{clean_pwd}'")
+                print("WARNING: Invalid password attempt (value not logged)")
                 return False
             
             # Get the first matching team (should be only one due to duplicate check)
@@ -88,7 +87,6 @@ class AuthService:
             team_info = {
                 'team_id': team['TeamID'],
                 'team_name': team['TeamName'],
-                'password': team['Password'],
                 'is_coach': is_coach,
                 'is_parent': False,
                 'jersey_number': None,

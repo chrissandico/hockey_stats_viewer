@@ -321,7 +321,7 @@ def login(n_clicks, password):
 
     print(f"=== LOGIN CALLBACK TRIGGERED ===")
     print(f"n_clicks: {n_clicks}")
-    print(f"password: {password}")
+    print("Password submitted for verification (value not logged)")
     
     if n_clicks is None:
         print("n_clicks is None, returning no_update")
@@ -344,9 +344,9 @@ def login(n_clicks, password):
         except Exception as refresh_e:
             print(f"Warning: Could not force refresh teams data, using cached teams: {refresh_e}")
 
-        print(f"Attempting to verify password: {password}")
+        print("Attempting to verify password")
         team_info = auth_service.verify_password(password)
-        print(f"Auth service returned: {team_info}")
+        print(f"Auth service returned: {'match' if team_info else 'no match'}")
         
         if team_info:
             # Store authentication and team information in session
